@@ -1,0 +1,28 @@
+# Local AI Server Requirements for Adventure Stories Game
+# MiniCPM-2B-128k Local Inference Server
+
+# Core dependencies - Updated for MiniCPM-2B-128k compatibility
+torch>=2.0.0
+transformers>=4.37.0
+accelerate>=0.25.0
+huggingface-hub>=0.20.0
+
+# Quantization for memory efficiency
+bitsandbytes>=0.41.0
+
+# Web server
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.0.0
+
+# System monitoring
+psutil>=5.9.0
+
+# Optional: GPU acceleration (install separately if needed)
+# For NVIDIA GPUs, install: pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+# For AMD GPUs, install: pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm5.6
+
+# Development dependencies (optional)
+# pytest>=7.0.0
+# black>=23.0.0
+# flake8>=6.0.0

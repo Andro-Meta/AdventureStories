@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <meta name="theme-color" content="#1a1a2e">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Adventure">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>Adventure Stories</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Phase 4.0: PWA manifest enables "Add to Home Screen" / installable behavior on mobile -->
+    <link rel="manifest" href="manifest.json">
+    <!-- Inline SVG icons keep the app self-contained (no extra HTTP fetches) and degrade gracefully -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎮</text></svg>">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'><rect width='180' height='180' fill='%231a1a2e' rx='32'/><text x='50%25' y='62%25' font-size='100' text-anchor='middle' dominant-baseline='middle'>🎮</text></svg>">
+</head>
+<body>
+    <!-- Error Log Container -->
+    <div id="errorLogContainer" class="error-log-container hidden">
+        <div class="error-log-header">
+            <h3>Error Log</h3>
+            <div class="error-log-controls">
+                <button id="errorLogToggleBtn">Toggle</button>
+                <button id="errorLogClearBtn">Clear</button>
+                <button id="errorLogCopyBtn">Copy</button>
+            </div>
+        </div>
+        <div id="errorLogContent" class="error-log-content"></div>
+    </div>
+
+    <!-- Main Container -->
+    <div class="container">
+
+        <!-- Main Menu Screen -->
+        <div id="mainMenuScreen" class="screen active">
+            <h1>Adventure Stories</h1>
+            <div class="card">
+                <div class="button-container vertical">
+                    <button id="newGameBtn">New Adventure</button>
+                    <button id="continueGameBtn" class="hidden">Continue Last Game</button>
+                    <button id="loadGameBtn">Load Game</button>
+                    <button id="localAIBtn">Local AI Status</button>
+                    <button id="aboutBtn">About</button>
+                </div>
+            </div>
+            <footer>
+                <p class="version-info">v0.3.0-refactor</p> <!-- Example Version -->
+            </footer>
+        </div>
+
+        <!-- Local AI Status Screen -->
+        <div id="localAIScreen" class="screen hidden">
+            <h1>Adventure Stories</h1>
+            <div class="card">
+                <h2>Local AI Server Status</h2>
+                <p id="localAIBanner">Adventure Stories runs entirely on a local LLM. The active model and server are populated when this screen opens.</p>
+
+                <div class="local-ai-info">
+                    <h3>🚀 Local AI Benefits:</h3>
+                    <ul>
+                        <li>✅ No API limits or costs</li>
+                        <li>✅ Large context windows for rich storytelling</li>
+                        <li>✅ Faster responses with local processing</li>
+                        <li>✅ Complete privacy - data never leaves your computer</li>
+                    </ul>
+                </div>
+
+                <div class="local-ai-status">
+                    <h3>Server Status:</h3>
+                    <p id="localAIStatus" class="status-message">Checking local AI server...</p>
+                </div>
+
+                <div class="local-ai-instructions">
+                    <h3>📋 Setup Instructions:</h3>
+                    <ol id="localAISetupSteps">
+                        <li>Configure <code>LLM_BACKEND</code> in <code>config.js</code> (<code>llama-cpp</code> recommended).</li>
+                        <li>Run <code>python setup_local_ai.py --backend &lt;backend&gt;</code> once to prepare directories and dependencies.</li>
+                        <li>Launch with <code>python start_game.py</code> — it boots the configured AI backend and the static web server.</li>
+                    </ol>
+                </div>
+
+                <div class="button-container">
+                    <button id="checkLocalAIBtn">Check Server Status</button>
+                    <button class="backBtn" data-target="mainMenuScreen">Back</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Player Count Selection Screen -->
+        <div id="playerCountScreen" class="screen hidden">
+            <h1>Adventure Stories</h1>
+            <div class="card">
+                <h2>How many players?</h2>
+                <div class="button-container vertical">
+                    <button class="playerCountBtn primary" data-count="1">Solo Adventure</button>
+                </div>
+                <details class="experimental-multiplayer">
+                    <summary>Co-op (experimental — see notes below)</summary>
+                    <p class="info-message" style="font-size: 0.85em; margin-top: 0.6rem;">
+                        Multi-player turn rotation works, but several systems (god mode, custom actions, equipment auto-equip,
+                        per-player choice routing, NPC reactions) currently target only the first player. We're shipping
+                        2-4 player co-op as an experimental feature; expect rough edges. Solo is the polished experience.
+                    </p>
+                    <div class="button-container vertical" style="margin-top: 0.5rem;">
+                        <button class="playerCountBtn" data-count="2">2 Players (experimental)</button>
+                        <button class="playerCountBtn" data-count="3">3 Players (experimental)</button>
+                        <button class="playerCountBtn" data-count="4">4 Players (experimental)</button>
+                    </div>
+                </details>
+                 <div class="button-container">
+                     <button class="backBtn" data-target="mainMenuScreen">Back</button>
+                 </div>
+            </div>
+        </div>
+
+        <!-- Adventure Type Selection Screen -->
+        <div id="adventureTypeScreen" class="screen hidden">
+            <h1>Adventure Stories</h1>
+            <div class="card">
+                <h2>Choose Your Adventure Theme</h2>
+                <select id="adventureTypeSelect">
+                    <option value="fantasy" selected>Fantasy Kingdom</option>
+                    <option value="space">Space Exploration</option>
+                    <option value="pirate">Pirate Seas</option>
+                    <option value="underwater">Underwater World</option>
+                    <option value="jungle">Jungle Expedition</option>
+                    <option value="future_utopia">Utopian Future</option>
+                    <option value="dinosaur">Dinosaur Times</option>
+                    <option value="arctic">Arctic Adventure</option>
+                    <option value="steampunk">Steampunk City</option>
+                    <option value="haunted">Haunted Mansion</option>
+                    <option value="cyberpunk">Cyberpunk City</option>
+                    <option value="wild_west">Wild West</option>
+                    <option value="post_apoc">Post-Apocalypse</option>
+                    <option value="custom">Custom Theme</option>
+                </select>
+                <div id="customThemeContainer" class="hidden">
+                    <label for="customThemeInput">Describe Custom Theme:</label>
+                    <input type="text" id="customThemeInput" placeholder="e.g., Magical Animal Forest, Ancient Egypt">
+                </div>
+                <div class="button-container">
+                    <button id="adventureTypeNextBtn">Next</button>
+                    <button class="backBtn" data-target="playerCountScreen">Back</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Age Input Screen -->
+        <div id="ageInputScreen" class="screen hidden">
+            <h1>Adventure Stories</h1>
+            <div class="card">
+                <h2>Player Ages</h2>
+                <p>Age helps tailor the story (Recommended: 6-99).</p>
+                <div id="ageInputsContainer" class="input-grid">
+                    <!-- Age inputs generated here by ui.js -->
+                </div>
+                 <p id="ageError" class="error-message hidden"></p>
+                <div class="button-container">
+                    <button id="ageInputNextBtn">Next</button>
+                    <button class="backBtn" data-target="adventureTypeScreen">Back</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Player Names Screen -->
+        <div id="nameInputScreen" class="screen hidden">
+            <h1>Adventure Stories</h1>
+            <div class="card">
+                <h2>Player Names</h2>
+                <div id="nameInputsContainer" class="input-grid">
+                    <!-- Name inputs generated here by ui.js -->
+                </div>
+                 <p id="nameError" class="error-message hidden"></p>
+                <div class="button-container">
+                    <button id="nameInputStartBtn">Start Adventure!</button>
+                    <button class="backBtn" data-target="ageInputScreen">Back</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Game Screen -->
+        <div id="gameScreen" class="screen hidden">
+            <header id="gameHeader" class="card">
+                 <div class="header-info">
+                    <h2 id="adventureTitle">Adventure Name</h2>
+                    <div id="adventureGoalContainer"><strong>Goal:</strong> <span id="adventureGoal">Objective</span></div>
+                    <!-- Quest Progress Bar -->
+                    <div id="questProgressContainer" class="progress-container">
+                        <div class="progress-header">
+                            <span id="questPhase">Beginning</span>
+                            <span id="questPercentage">0%</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div id="questProgressBar" class="progress-fill" style="width: 0%"></div>
+                        </div>
+                    </div>
+                 </div>
+                 <div class="turn-info">
+                    Turn: <span id="turnCounter">1</span>
+                 </div>
+            </header>
+
+            <!-- Quest Progress Details (Collapsible) -->
+            <section id="questProgressDetails" class="card collapsible">
+                <h3 id="questProgressToggle" class="collapsible-header">📋 Quest Progress <span class="toggle-icon">▼</span></h3>
+                <div id="questProgressContent" class="collapsible-content">
+                    <div id="currentObjectives" class="objectives-section">
+                        <h4>Current Objectives:</h4>
+                        <ul id="objectivesList"></ul>
+                    </div>
+                    <div id="recentMilestones" class="milestones-section">
+                        <h4>Recent Milestones:</h4>
+                        <div id="milestonesList"></div>
+                    </div>
+                    <div id="sideQuestsSection" class="side-quests-section hidden">
+                        <h4>Side Quests:</h4>
+                        <div id="sideQuestsList"></div>
+                    </div>
+                    <div id="discoveredSecrets" class="secrets-section hidden">
+                        <h4>Discovered Secrets:</h4>
+                        <div id="secretsList"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Player Stats Area -->
+            <section id="playerStatsContainer" class="card">
+                <h3>Players (<span id="currentPlayerIndicator">Current Turn: Player</span>)</h3>
+                <div id="playersDisplay">
+                    <!-- Player cards generated by ui.js -->
+                </div>
+                 <nav id="quickActions">
+                     <button class="quick-btn" id="inventoryBtn" title="Inventory">🎒 Inv.</button>
+                     <button class="quick-btn" id="shopBtn" title="Shop">🛒 Shop</button>
+                     <button class="quick-btn" id="specialBtn" title="Special Moves">✨ Spec.</button>
+                     <button class="quick-btn hidden" id="helpAllyBtn" title="Help Ally (Uses Turn & Item)">💖 Help</button>
+                     <button class="quick-btn" id="menuBtn" title="Game Menu">📜 Menu</button>
+                 </nav>
+            </section>
+
+            <!-- Enemy Area -->
+            <section id="enemyContainer" class="card hidden">
+                <h3>Enemies</h3>
+                <div id="enemiesDisplay">
+                    <!-- Enemy cards generated by ui.js -->
+                </div>
+            </section>
+
+            <!-- Story Card -->
+            <section id="storyCard" class="card">
+                <h3>Story</h3>
+                <div id="storyText">
+                    The adventure begins...
+                </div>
+                <!-- Removed toggleStoryBtn -->
+            </section>
+
+            <!-- Combat Log Card (Phase 3.5 P4) — only visible during combat -->
+            <section id="combatLogCard" class="card hidden">
+                <h3>Combat Log</h3>
+                <div id="combatLogStrip" class="combat-log-strip">
+                    <!-- Latest events appended here by ui.appendCombatLog() -->
+                </div>
+            </section>
+
+             <!-- Choices Card -->
+            <section id="choicesCard" class="card">
+                 <h3>Choose Your Action:</h3>
+                 <div id="choicesContainer" class="button-container vertical">
+                    <!-- Choice buttons generated by ui.js based on AI response -->
+                 </div>
+                 <!-- Custom Action Input -->
+                <div id="customActionContainer" class="hidden">
+                    <hr>
+                    <p><strong>Goal Complete!</strong> You can now type your own actions.</p>
+                    <input type="text" id="customActionInput" placeholder="Enter your custom action...">
+                    <button id="customActionBtn">Submit Custom Action</button>
+                </div>
+            </section>
+
+        </div> <!-- End Game Screen -->
+
+        <!-- In-Game Menu Screen -->
+        <div id="menuScreen" class="screen hidden">
+            <h1>Menu</h1>
+            <div class="card">
+                <nav class="button-container vertical">
+                    <button id="resumeBtn">Resume Game</button>
+                    <button class="menuDirectBtn" data-target="inventoryScreen">Inventory</button>
+                    <button class="menuDirectBtn" data-target="shopScreen">Shop</button>
+                    <button class="menuDirectBtn" data-target="specialMovesScreen">Special Moves</button>
+                    <button id="saveGameBtn">Save Game</button>
+                    <button id="exitToMainMenuBtn">Save and Exit to Menu</button>
+                    <button id="exitWithoutSavingBtn">Exit Without Saving</button>
+                </nav>
+            </div>
+        </div>
+
+        <!-- Inventory Screen -->
+        <div id="inventoryScreen" class="screen hidden">
+             <div class="card">
+                <header class="screen-header">
+                    <h1>Inventory</h1>
+                     <div class="player-context">Items for: <span class="contextPlayerName">Player</span> | Coins: <span class="contextPlayerCoins">0</span>💰</div>
+                </header>
+                <div id="inventoryDisplay" class="item-grid">
+                    <!-- Inventory items generated by ui.js -->
+                </div>
+                <nav class="button-container">
+                     <button class="backToGameBtn">Back to Game</button>
+                     <button class="backToMenuBtn hidden">Back to Menu</button>
+                </nav>
+            </div>
+        </div>
+
+        <!-- Shop Screen -->
+        <div id="shopScreen" class="screen hidden">
+             <div class="card">
+                <header class="screen-header">
+                    <h1>Shop</h1>
+                    <div class="player-context">Shopping for: <span class="contextPlayerName">Player</span> | Coins: <span id="shopCoins">0</span>💰</div>
+                </header>
+                <div id="shopDisplay" class="item-grid">
+                    <!-- Shop items generated by ui.js -->
+                </div>
+                <nav class="button-container">
+                    <button class="backToGameBtn">Back to Game</button>
+                    <button class="backToMenuBtn hidden">Back to Menu</button>
+                </nav>
+            </div>
+        </div>
+
+        <!-- Special Moves Screen -->
+        <div id="specialMovesScreen" class="screen hidden">
+            <div class="card">
+                 <header class="screen-header">
+                    <h1>Special Moves</h1>
+                    <div class="player-context">Moves for: <span class="contextPlayerName">Player</span></div>
+                 </header>
+                <div id="specialMovesDisplay" class="item-grid">
+                    <!-- Special moves generated by ui.js -->
+                </div>
+                <nav class="button-container">
+                    <button class="backToGameBtn">Back to Game</button>
+                     <button class="backToMenuBtn hidden">Back to Menu</button>
+                </nav>
+            </div>
+        </div>
+
+        <!-- Game-Over Screen (Phase 3.5 P5) -->
+        <div id="gameOverScreen" class="screen hidden">
+            <h1 id="gameOverTitle">The Tale Ends</h1>
+            <div class="card">
+                <p id="gameOverFlavor" class="info-message">Your story has reached a fateful pause...</p>
+                <div id="gameOverSummary" class="game-over-summary">
+                    <!-- Populated by ui.showGameOverScreen() -->
+                </div>
+                <div class="button-container">
+                    <button id="gameOverContinueBtn" class="primary">Continue Anyway</button>
+                    <button id="gameOverSaveBtn">Save Final State</button>
+                    <button id="gameOverNewTaleBtn">Begin a New Tale</button>
+                </div>
+                <p class="info-message" style="font-size: 0.85em; opacity: 0.7;">
+                    Continue Anyway: revive at 1 HP and keep playing, accepting the cost.<br>
+                    Save Final State: preserve your current run as a save slot before deciding.<br>
+                    Begin a New Tale: return to the main menu to start fresh.
+                </p>
+            </div>
+        </div>
+
+        <!-- Load Game Screen -->
+        <div id="loadGameScreen" class="screen hidden">
+            <h1>Load Game</h1>
+            <div class="card">
+                <div id="savedGamesList">
+                    <!-- Saved game slots generated by ui.js -->
+                    <p class="info-message">Loading saved games list...</p>
+                </div>
+                 <p id="loadError" class="error-message hidden"></p>
+                 <p id="noSavesMessage" class="info-message hidden">No saved games found.</p>
+                <div class="button-container">
+                    <button class="backBtn" data-target="mainMenuScreen">Back</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- About Screen -->
+        <div id="aboutScreen" class="screen hidden">
+            <h1>About Adventure Stories</h1>
+            <div class="card about-content">
+                 <p>Adventure Stories is an AI-powered, text-based RPG where your choices shape the narrative, guided by an AI storyteller.</p>
+                 <p>Create characters, explore themed worlds, battle monsters, find items, and complete your adventure goal! The game uses a local MiniCPM-2B-128k AI model to power the storyteller (no API keys required).</p>
+                 <p><strong>Features:</strong> Multiple themes, dynamic goals, combat, status effects, item tiers, AI-generated choices mapped to fixed action types (Good, Bad, Risky, Silly, Investigative) with implicit consequences, expandable story display, local saves, faction reputation system with trust-based difficulty.</p>
+                 <hr>
+                 <p><em>Made with ❤️ for Brookston, Vincent, Toby, and Katie by their Dad.</em></p>
+                 <hr>
+                 <p><em>Concept & Development: AI & Dad Collaboration</em></p>
+                <nav class="button-container">
+                    <button class="backBtn" data-target="mainMenuScreen">Back</button>
+                </nav>
+            </div>
+        </div>
+
+         <!-- Confirmation Modal (Generic) -->
+        <div id="confirmationModal" class="modal hidden">
+            <div class="modal-content card">
+                <h3 id="confirmationTitle">Confirm Action</h3>
+                <p id="confirmationMessage">Are you sure?</p>
+                <div class="button-container">
+                    <button id="confirmYesBtn">Yes</button>
+                    <button id="confirmNoBtn">No</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Help Ally Target Selection Modal -->
+        <div id="helpAllyModal" class="modal hidden">
+            <div class="modal-content card">
+                <h3>Help Ally</h3>
+                <p id="revivalItemStatus">Revival Items (<span class="revival-item-name">Item</span>): <span id="revivalItemCount">0</span></p>
+                <p>Select a downed ally to help. Uses your turn and 1 Revival Item.</p>
+                <div id="helpAllyTargetList" class="button-container vertical">
+                    <!-- Buttons for downed allies appear here -->
+                    <p class="info-message">No allies need help.</p>
+                </div>
+                 <div class="button-container">
+                    <button id="cancelHelpAllyBtn">Cancel</button>
+                </div>
+            </div>
+        </div>
+
+         <!-- Save Game Modal -->
+         <div id="saveGameModal" class="modal hidden">
+             <div class="modal-content card">
+                 <h3>Save Game</h3>
+                 <p>Enter a name for your save file:</p>
+                 <input type="text" id="saveGameNameInput" placeholder="My Awesome Adventure">
+                 <p id="saveError" class="error-message hidden"></p>
+                 <div class="button-container">
+                     <button id="confirmSaveBtn">Save</button>
+                     <button id="cancelSaveBtn">Cancel</button>
+                 </div>
+                 <div id="existingSavesForOverwrite" class="hidden">
+                     <hr>
+                     <p>Or overwrite an existing save:</p>
+                     <div id="overwriteSaveList" class="button-container vertical">
+                         <!-- Existing save buttons appear here -->
+                     </div>
+                 </div>
+             </div>
+         </div>
+
+
+        <!-- Popup Message Area -->
+        <div id="popupMessage" class="popup"></div>
+
+        <!-- Loading Indicator -->
+        <div id="loadingIndicator" class="loading-overlay hidden">
+            <div class="spinner"></div>
+            <p id="loadingMessage">Loading...</p>
+        </div>
+
+    </div> <!-- End Container -->
+
+    <!-- Link JavaScript Entry Point -->
+        <script type="module" src="main.js?v=20250915013000"></script>
+
+</body>
+</html>

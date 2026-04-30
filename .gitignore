@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+
+# Virtual environments
+venv_local_ai/
+venv/
+.venv/
+
+# Local AI model weights (large; download via setup_local_ai.py)
+models/
+*.gguf
+*.bin
+*.safetensors
+
+# llama.cpp binaries (download from upstream; OS-specific)
+llama-cpp/
+
+# Node (future React Native port)
+node_modules/
+package-lock.json
+yarn.lock
+.pnp/
+.pnp.js
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs / runtime artifacts
+*.log
+*.pid
+.cache/
+
+# Build artifacts
+dist/
+build/
+*.tgz
+
+# Save files (browser localStorage usually, but in case any leak to disk)
+advStorySave_*
+*.save
+
+# Editor scratch
+*.bak
+*.orig

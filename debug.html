@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug - Adventure Stories</title>
+    <style>
+        body { font-family: monospace; background: #000; color: #0f0; padding: 20px; }
+        .error { color: #f00; }
+        .success { color: #0f0; }
+        .info { color: #ff0; }
+    </style>
+</head>
+<body>
+    <h1>Adventure Stories Debug Page</h1>
+    <div id="log"></div>
+    
+    <script>
+        const log = document.getElementById('log');
+        
+        function addLog(message, type = 'info') {
+            const div = document.createElement('div');
+            div.className = type;
+            div.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            log.appendChild(div);
+            console.log(message);
+        }
+        
+        addLog('Debug page loaded', 'success');
+        
+        // Test basic JavaScript
+        try {
+            addLog('JavaScript is working', 'success');
+            
+            // Test module import
+            import('./config.js').then(Config => {
+                addLog('Config module loaded successfully', 'success');
+                addLog(`LOCAL_AI_CONFIG exists: ${!!Config.LOCAL_AI_CONFIG}`, 'success');
+            }).catch(error => {
+                addLog(`Config module failed: ${error.message}`, 'error');
+            });
+            
+            // Test state import
+            import('./state.js').then(({ gameState }) => {
+                addLog('State module loaded successfully', 'success');
+                addLog(`gameState exists: ${!!gameState}`, 'success');
+            }).catch(error => {
+                addLog(`State module failed: ${error.message}`, 'error');
+            });
+            
+            // Test UI import
+            import('./ui.js').then(UI => {
+                addLog('UI module loaded successfully', 'success');
+                addLog(`UI.showScreen exists: ${!!UI.showScreen}`, 'success');
+            }).catch(error => {
+                addLog(`UI module failed: ${error.message}`, 'error');
+            });
+            
+            // Test local AI
+            fetch('http://localhost:8001/health')
+                .then(response => response.json())
+                .then(data => {
+                    addLog(`AI Server health: ${JSON.stringify(data)}`, 'success');
+                })
+                .catch(error => {
+                    addLog(`AI Server failed: ${error.message}`, 'error');
+                });
+                
+        } catch (error) {
+            addLog(`JavaScript error: ${error.message}`, 'error');
+        }
+    </script>
+</body>
+</html>
