@@ -1,0 +1,32 @@
+# Dependabot — keeps GitHub Actions and any future package manifests up
+# to date with security advisories. Free for public repos. PRs land
+# automatically when a vulnerable dep gets a patch upstream.
+
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"
+
+  # Pre-wired for the future React Native port (Phase 4.2). The block is a
+  # no-op until package.json exists; uncomment-and-go later.
+  # - package-ecosystem: "npm"
+  #   directory: "/"
+  #   schedule:
+  #     interval: "weekly"
+  #   open-pull-requests-limit: 10
+  #   labels:
+  #     - "dependencies"
+  #     - "npm"
+
+  # Python tooling — start_game.py + start_llama_server.py are stdlib-only
+  # right now, but if we add a requirements.txt later this picks it up.
+  # - package-ecosystem: "pip"
+  #   directory: "/"
+  #   schedule:
+  #     interval: "weekly"
