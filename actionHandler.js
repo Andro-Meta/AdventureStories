@@ -1753,7 +1753,6 @@ export async function useInventoryItem(itemId) {
          }
          // Cure Effect
          else if (item.stats?.cure) {
-             consumed = true;
              const cureType = item.stats.cure;
              let curedEffects = [];
              if (player.statusEffects) {
@@ -1767,11 +1766,14 @@ export async function useInventoryItem(itemId) {
              }
              actionLog = `${player.name} uses ${item.name}.`;
              if (curedEffects.length > 0) {
+                 // Only consume the item if it actually cured something — don't
+                 // burn a cure potion when the player has no matching debuff.
+                 consumed = true;
                  actionLog += ` Result: Cured ${curedEffects.join(', ')}.`;
                  UI.showPopup(`Cured: ${curedEffects.join(', ')}!`, 'healing');
              } else {
                  actionLog += ` Result: No relevant effects to cure.`;
-                 UI.showPopup(`${item.name} had no effect.`, 'info');
+                 UI.showPopup(`${item.name} had no effect — it was not consumed.`, 'info');
              }
              log(actionLog);
 
@@ -1846,8 +1848,10 @@ export async function useInventoryItem(itemId) {
               setTimeout(() => { if (gameState.currentScreen === 'inventoryScreen') UI.showScreen('gameScreen'); }, 100);
           }
      } else if (!consumed) {
-         // Action failed early (e.g., trying to 'use' armor)
-         log("Item use action completed without consumption or turn advance.");
+         // Item was not consumed — either a cure potion that had no effect (turn
+         // was already advanced inside the cure branch) or a non-consumable that
+         // returned early above.
+         log("Item use completed without consumption.");
      }
 
      log("useInventoryItem finished.");

@@ -217,6 +217,7 @@ export class GameLoop {
         const log = window.displayVisualError || console.log;
         
         // Investigative actions have a chance to reveal secrets or provide information
+        // lgtm[js/insecure-randomness] — game narrative RNG, not a security context
         if (Math.random() < 0.3) {
             const secrets = [
                 'hidden passage',
@@ -225,7 +226,7 @@ export class GameLoop {
                 'secret compartment',
                 'forgotten knowledge'
             ];
-            
+            // lgtm[js/insecure-randomness] — picking flavor text, not generating tokens/IDs
             const secret = secrets[Math.floor(Math.random() * secrets.length)];
             
             if (!gameState.narrativeContext.discoveredSecrets) {

@@ -163,11 +163,11 @@ export class EncounterSystem {
         // Adjust roll for remaining encounter types
         const adjustedRoll = (roll - bossChance) / (1 - bossChance);
         
-        // Base probabilities for non-boss encounters
+        // Base probabilities for non-boss encounters (must sum to 1.0).
+        // eventChance is the implicit remainder — the final return 'event' catches it.
         let combatChance = 0.6;
         let discoveryChance = 0.25;
-        let eventChance = 0.15;
-        
+
         // Adjust based on location type
         if (location && location.type) {
             switch (location.type) {
@@ -175,13 +175,11 @@ export class EncounterSystem {
                 case 'city':
                     combatChance = 0.2;
                     discoveryChance = 0.3;
-                    eventChance = 0.5;
                     break;
                 case 'dungeon':
                 case 'ruins':
                     combatChance = 0.8;
                     discoveryChance = 0.15;
-                    eventChance = 0.05;
                     break;
             }
         }

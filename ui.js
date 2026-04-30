@@ -1134,7 +1134,7 @@ export function updateQuickActions() {
     elements.quickActionButtons.menuBtn.disabled = menuDisabled;
 
     // Determine Help Ally state
-    let helpAllyDisabled = true;
+    let helpAllyDisabled;
     let alliesDown = false;
     let hasRevivalItem = false;
     if (currentPlayer && !baseDisabled) {
