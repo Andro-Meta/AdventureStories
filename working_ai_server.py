@@ -55,8 +55,10 @@ def load_model():
 
     try:
         # EXACT code from official MiniCPM-2B-128k documentation
-        tokenizer = AutoTokenizer.from_pretrained(str(path))
-        model = AutoModelForCausalLM.from_pretrained(
+        # nosec B615 — loading from a local filesystem path, not the HuggingFace Hub;
+        # revision pinning is not applicable here.
+        tokenizer = AutoTokenizer.from_pretrained(str(path))  # nosec B615 — local path, not Hub
+        model = AutoModelForCausalLM.from_pretrained(  # nosec B615
             str(path),
             dtype=torch.bfloat16,
             device_map='cuda' if torch.cuda.is_available() else 'cpu',

@@ -12,22 +12,30 @@ import argparse
 from pathlib import Path
 
 def run_command(command, check=True):
-    """Run a command and return the result"""
-    print(f"Running: {command}")
-    result = subprocess.run(command, shell=True, capture_output=True, text=True)
-    
+    """Run a command and return the result.
+
+    Pass a list for safe execution (no shell — preferred).
+    Pass a string only when shell features like pipes are genuinely required.
+    """
+    display = command if isinstance(command, str) else ' '.join(str(c) for c in command)
+    print(f"Running: {display}")
+    # Use shell only when the caller passes a string (e.g. "lspci | grep amd").
+    # List arguments never need shell=True and avoid injection risk.
+    use_shell = isinstance(command, str)
+    result = subprocess.run(command, shell=use_shell, capture_output=True, text=True)  # nosec B602 — shell=True only when caller passes a string with pipe/redirect; all other callers use lists
+
     if check and result.returncode != 0:
-        print(f"Error running command: {command}")
+        print(f"Error running command: {display}")
         print(f"Error output: {result.stderr}")
         sys.exit(1)
-    
+
     return result
 
 def detect_gpu():
     """Detect available GPU"""
     try:
         # Check for NVIDIA GPU
-        result = run_command("nvidia-smi", check=False)
+        result = run_command(["nvidia-smi"], check=False)
         if result.returncode == 0:
             return "nvidia"
     except:
@@ -36,7 +44,7 @@ def detect_gpu():
     try:
         # Check for AMD GPU (basic check)
         if platform.system() == "Linux":
-            result = run_command("lspci | grep -i amd", check=False)
+            result = run_command("lspci | grep -i amd", check=False)  # pipe requires shell
             if result.returncode == 0 and "VGA" in result.stdout:
                 return "amd"
     except:
@@ -49,15 +57,15 @@ def install_pytorch(gpu_type):
     print(f"Installing PyTorch for {gpu_type}...")
     
     if gpu_type == "nvidia":
-        # Install PyTorch with CUDA support
-        command = "pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118"
+        command = ["pip", "install", "torch", "torchvision", "torchaudio",
+                   "--index-url", "https://download.pytorch.org/whl/cu118"]
     elif gpu_type == "amd":
-        # Install PyTorch with ROCm support
-        command = "pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm5.6"
+        command = ["pip", "install", "torch", "torchvision", "torchaudio",
+                   "--index-url", "https://download.pytorch.org/whl/rocm5.6"]
     else:
-        # CPU-only PyTorch
-        command = "pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu"
-    
+        command = ["pip", "install", "torch", "torchvision", "torchaudio",
+                   "--index-url", "https://download.pytorch.org/whl/cpu"]
+
     run_command(command)
 
 def create_virtual_environment():
@@ -69,7 +77,7 @@ def create_virtual_environment():
         return venv_path
     
     print("Creating virtual environment...")
-    run_command(f"{sys.executable} -m venv {venv_path}")
+    run_command([sys.executable, "-m", "venv", str(venv_path)])
     
     return venv_path
 
@@ -94,21 +102,24 @@ def install_dependencies(venv_path, gpu_type):
     # Upgrade pip using the proper method for virtual environments
     python_cmd = get_python_command(venv_path)
     print("Upgrading pip...")
-    result = run_command(f"{python_cmd} -m pip install --upgrade pip", check=False)
+    result = run_command([python_cmd, "-m", "pip", "install", "--upgrade", "pip"], check=False)
     if result.returncode != 0:
         print("Note: Pip upgrade had warnings, but continuing with installation...")
         print("This is usually not a problem.")
     
     # Install PyTorch first
     if gpu_type == "nvidia":
-        run_command(f"{pip_cmd} install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118")
+        run_command([pip_cmd, "install", "torch", "torchvision", "torchaudio",
+                     "--index-url", "https://download.pytorch.org/whl/cu118"])
     elif gpu_type == "amd":
-        run_command(f"{pip_cmd} install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm5.6")
+        run_command([pip_cmd, "install", "torch", "torchvision", "torchaudio",
+                     "--index-url", "https://download.pytorch.org/whl/rocm5.6"])
     else:
-        run_command(f"{pip_cmd} install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu")
-    
+        run_command([pip_cmd, "install", "torch", "torchvision", "torchaudio",
+                     "--index-url", "https://download.pytorch.org/whl/cpu"])
+
     # Install other requirements
-    run_command(f"{pip_cmd} install -r requirements_local_ai.txt")
+    run_command([pip_cmd, "install", "-r", "requirements_local_ai.txt"])
 
 def create_startup_scripts(venv_path):
     """Create startup scripts for easy server launch"""
@@ -141,7 +152,7 @@ echo ""
     
     # Make shell script executable
     if platform.system() != "Windows":
-        run_command("chmod +x start_local_ai_server.sh")
+        run_command(["chmod", "+x", "start_local_ai_server.sh"])
     
     print(f"Created startup scripts using virtual environment: {venv_path}")
 
