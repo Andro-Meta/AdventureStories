@@ -417,6 +417,11 @@ export async function completeSetupAndStartGameIntelligent() {
             }
         }, 2000);
 
+        // Reset stale task state from any previous game in this session.
+        // Without this, all phases are silently skipped on the second+ start
+        // because completedTasks still holds entries from the first run.
+        initManager.reset();
+
         // Execute the intelligent initialization
         const result = await initManager.executeInitialization();
         clearInterval(progressInterval);

@@ -549,6 +549,24 @@ export class InitializationManager {
     }
 
     /**
+     * Reset task state so a subsequent executeInitialization() re-runs all
+     * phases from scratch. Must be called before starting a new game within
+     * the same browser session; without this, completedTasks still has entries
+     * from the previous game and every phase is silently skipped.
+     */
+    reset() {
+        this.completedTasks.clear();
+        this.failedTasks.clear();
+        this.runningTasks.clear();
+        this.retryAttempts.clear();
+        // Clear cached task results so stale context doesn't bleed into the new run.
+        for (const task of this.tasks.values()) {
+            delete task.result;
+        }
+        this.log('InitManager: Reset — all tasks will re-execute on next initialization.');
+    }
+
+    /**
      * Get initialization results summary
      */
     getResults() {
