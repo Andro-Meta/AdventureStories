@@ -392,8 +392,8 @@ export class ReputationContextualizer {
         
         let hostility = 0;
         let helpfulness = 0;
-        let trustLevel = 'neutral';
-        
+        let trustLevel;
+
         if (reputation >= 60) {
             hostility = -2;
             helpfulness = 2;

@@ -1101,7 +1101,6 @@ export async function processStatusEffectTicks(character) {
             if (typeof effect.onTick === 'function') {
                 try {
                     effect.onTick(character);
-                    effectsChanged = true;
                 } catch (e) {
                     log(`Error in status effect tick handler for ${effect.name}:`, e);
                 }

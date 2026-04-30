@@ -323,16 +323,16 @@ Respond with a JSON object containing: name, effect, stats (object with relevant
         const maxStatValue = this.getMaxStatForTier(tier);
         
         // Validate common stats with safe property access
-        if (stats && typeof stats === 'object' && stats.atk !== undefined && typeof stats.atk === 'number') {
+        if (stats.atk !== undefined && typeof stats.atk === 'number') {
             validatedStats.atk = Math.max(0, Math.min(stats.atk, maxStatValue));
         }
-        if (stats && typeof stats === 'object' && stats.def !== undefined && typeof stats.def === 'number') {
+        if (stats.def !== undefined && typeof stats.def === 'number') {
             validatedStats.def = Math.max(0, Math.min(stats.def, maxStatValue));
         }
-        if (stats && typeof stats === 'object' && stats.hp !== undefined && typeof stats.hp === 'number') {
+        if (stats.hp !== undefined && typeof stats.hp === 'number') {
             validatedStats.hp = Math.max(0, Math.min(stats.hp, maxStatValue * 2));
         }
-        if (stats && typeof stats === 'object' && stats.mp !== undefined && typeof stats.mp === 'number') {
+        if (stats.mp !== undefined && typeof stats.mp === 'number') {
             validatedStats.mp = Math.max(0, Math.min(stats.mp, maxStatValue));
         }
         
@@ -944,24 +944,17 @@ async function generateBatchItems(itemRequests, theme, batchType) {
         
         let response;
         
-        // Use optimized single agent call instead of hyperthreading for batch generation
-        if (true) { // Always use enhanced processing for MiniCPM
-            const API = await import('./api_new.js?cb=014');
-            const messages = [{
-                role: 'user',
-                content: batchPrompt
-            }];
-            
-            response = await API.getAIResponse(messages, {
-                max_tokens: Math.min(1024, 150 * itemRequests.length), // Scale tokens with item count
-                temperature: 0.3 // Lower temperature for consistent item generation
-            });
-        } else {
-            // Fallback for other providers
-            const aiHandler = await import('./aiHandler.js?cb=014');
-            const aiResponse = await aiHandler.makeAICallForSystemAction(batchPrompt, true);
-            response = aiResponse.narrative;
-        }
+        // Use optimized single agent call for batch generation
+        const API = await import('./api_new.js?cb=014');
+        const messages = [{
+            role: 'user',
+            content: batchPrompt
+        }];
+
+        response = await API.getAIResponse(messages, {
+            max_tokens: Math.min(1024, 150 * itemRequests.length), // Scale tokens with item count
+            temperature: 0.3 // Lower temperature for consistent item generation
+        });
         
         UI.showLoading(false);
         

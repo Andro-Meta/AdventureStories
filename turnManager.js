@@ -178,10 +178,8 @@ export async function advanceTurn() {
 
     // --- Increment Global Turn Counter ---
     // Increment turn ONLY if we have wrapped around back to the first player (or equivalent)
-    let turnIncremented = false;
     if (wrappedAround && canAnyoneAct) { // Only increment if someone can actually take the new turn
         gameState.turn++;
-        turnIncremented = true;
         log(`--- Starting Turn ${gameState.turn} ---`);
         // Refresh shop periodically
          if (gameState.turn > 1 && gameState.turn % 5 === 0) {

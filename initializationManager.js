@@ -625,8 +625,7 @@ export class InitializationManager {
 
         // Find current phase
         let currentPhase = this.phases.FINALIZE;
-        for (const [phase, tasks] of Object.entries(this.getTasksByPhase())) {
-            const phaseTasks = Array.from(this.tasks.values()).filter(task => task.phase === phase);
+        for (const [phase, phaseTasks] of Object.entries(this.getTasksByPhase())) {
             const completedInPhase = phaseTasks.filter(task => this.completedTasks.has(task.name)).length;
             
             if (completedInPhase < phaseTasks.length) {

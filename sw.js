@@ -92,6 +92,9 @@ self.addEventListener('fetch', (event) => {
 // nuke the cache without a version bump (used by main.js's first-load
 // poison-recovery routine).
 self.addEventListener('message', (event) => {
+    // Only honour messages from same-origin clients — prevents a cross-origin
+    // iframe from triggering a cache wipe (denial-of-service via cache).
+    if (!event.origin || event.origin !== self.location.origin) return;
     if (event.data && event.data.type === 'PURGE_CACHE') {
         event.waitUntil(
             caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k))))

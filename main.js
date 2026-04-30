@@ -580,8 +580,8 @@ window.addEventListener('error', (event) => {
     try { if(UI && UI.showLoading) UI.showLoading(false); } catch(e){ d("Error trying to stop loading indicator during global error.", e); }
 });
 window.addEventListener('unhandledrejection', (event) => {
-    let message = 'Unhandled GLOBAL promise rejection.'; let errorObj = event.reason;
-    if (errorObj instanceof Error) { message = `Async Error: ${errorObj.message}`; } else { message = `Async Error: ${String(errorObj)}`; }
+    const errorObj = event.reason;
+    const message = errorObj instanceof Error ? `Async Error: ${errorObj.message}` : `Async Error: ${String(errorObj)}`;
     const d = window.displayVisualError || console.error;
     d(message, errorObj);
     // Attempt to stop loading indicator
