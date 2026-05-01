@@ -475,6 +475,8 @@ test.describe('Full game loop @integration', () => {
     test('Cure item is not consumed when it has no effect', async ({ page }) => {
         // Regression test for the actionHandler.js cure-item bug (fixed in PR #3):
         // consumed = true was set unconditionally; now only set if effects were cured.
+        // Uses mock AI — this test verifies game mechanics, not the AI pipeline.
+        await mockAIRoutes(page);
         await gotoMainMenu(page);
         await runSetup(page, { theme: 'fantasy', playerCount: 1 });
         await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 90_000 });
@@ -509,6 +511,8 @@ test.describe('Full game loop @integration', () => {
     });
 
     test('Quest progress display updates after turns', async ({ page }) => {
+        // Uses mock AI — this test verifies UI wiring, not the AI pipeline.
+        await mockAIRoutes(page);
         await gotoMainMenu(page);
         await runSetup(page, { theme: 'fantasy', playerCount: 1 });
         await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 90_000 });
@@ -523,6 +527,8 @@ test.describe('Full game loop @integration', () => {
     });
 
     test('God mode becomes available after sufficient quest progress', async ({ page }) => {
+        // Uses mock AI — this test verifies manager wiring, not the AI pipeline.
+        await mockAIRoutes(page);
         await gotoMainMenu(page);
         await runSetup(page, { theme: 'fantasy', playerCount: 1 });
         await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 90_000 });
@@ -540,8 +546,8 @@ test.describe('Full game loop @integration', () => {
 
             // Trigger the unlock check
             try {
-                gameState.godModeManager.checkUnlock(gameState);
-                return { unlocked: gameState.godModeManager.isUnlocked() };
+                gameState.godModeManager.checkUnlockConditions();
+                return { unlocked: gameState.godModeManager.isUnlocked };
             } catch (e) {
                 return { error: e.message };
             }
