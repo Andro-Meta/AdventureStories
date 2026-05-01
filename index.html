@@ -53,39 +53,78 @@
             </footer>
         </div>
 
-        <!-- Local AI Status Screen -->
+        <!-- AI Backend Settings Screen (Phase 0) -->
         <div id="localAIScreen" class="screen hidden">
             <h1>Adventure Stories</h1>
             <div class="card">
-                <h2>Local AI Server Status</h2>
-                <p id="localAIBanner">Adventure Stories runs entirely on a local LLM. The active model and server are populated when this screen opens.</p>
+                <h2>AI Backend</h2>
+                <p id="localAIBanner">Choose how you want to play. Local AI is private and unlimited; cloud AI requires no setup but uses a free online provider.</p>
 
-                <div class="local-ai-info">
+                <!-- Backend mode toggle -->
+                <div class="backend-mode-section">
+                    <h3>Mode:</h3>
+                    <label class="backend-mode-label">
+                        <input type="radio" name="backendMode" id="backendModeLocal" value="local">
+                        <span>🖥️ Local AI (llama.cpp / Gemma 3 4B)</span>
+                    </label>
+                    <label class="backend-mode-label">
+                        <input type="radio" name="backendMode" id="backendModeCloud" value="cloud">
+                        <span>☁️ Cloud AI (free online — no setup)</span>
+                    </label>
+                </div>
+
+                <!-- Cloud provider section (visible only when cloud mode selected) -->
+                <div id="cloudConfigSection" class="cloud-config hidden">
+                    <h3>Cloud Provider:</h3>
+                    <select id="cloudProviderSelect" class="cloud-provider-select">
+                        <option value="openrouter">OpenRouter — Gemma 4 31B (Free, recommended)</option>
+                        <option value="openrouter_gemma3">OpenRouter — Gemma 3 27B (Free)</option>
+                        <option value="groq">Groq — Llama 3.3 70B (Free, fastest)</option>
+                        <option value="googleai">Google AI Studio — Gemini Flash Lite (Free)</option>
+                    </select>
+
+                    <p id="cloudProviderNotes" class="cloud-provider-notes"></p>
+
+                    <h3>API Key:</h3>
+                    <div class="api-key-row">
+                        <input type="password" id="cloudApiKeyInput" class="api-key-input" placeholder="Paste your free API key here" autocomplete="off" spellcheck="false">
+                        <button id="cloudApiKeySaveBtn" class="primary">Save</button>
+                    </div>
+                    <p class="api-key-hint">
+                        Don't have a key? <a id="cloudSignupLink" href="#" target="_blank" rel="noopener noreferrer">Get a free one →</a>
+                        (No credit card required.)
+                    </p>
+                    <p class="api-key-security-note">
+                        🔒 Your key is stored locally in your browser only — never sent anywhere except the provider you chose.
+                    </p>
+                </div>
+
+                <!-- Local AI info section (visible only when local mode selected) -->
+                <div id="localConfigSection" class="local-ai-info">
                     <h3>🚀 Local AI Benefits:</h3>
                     <ul>
                         <li>✅ No API limits or costs</li>
                         <li>✅ Large context windows for rich storytelling</li>
-                        <li>✅ Faster responses with local processing</li>
-                        <li>✅ Complete privacy - data never leaves your computer</li>
+                        <li>✅ Complete privacy — data never leaves your computer</li>
                     </ul>
+
+                    <div class="local-ai-instructions">
+                        <h3>📋 Setup Instructions:</h3>
+                        <ol id="localAISetupSteps">
+                            <li>Configure <code>LLM_BACKEND</code> in <code>config.js</code> (<code>llama-cpp</code> recommended).</li>
+                            <li>Run <code>python setup_local_ai.py --backend &lt;backend&gt;</code> once to prepare directories and dependencies.</li>
+                            <li>Launch with <code>python start_game.py</code> — it boots the configured AI backend and the static web server.</li>
+                        </ol>
+                    </div>
                 </div>
 
                 <div class="local-ai-status">
-                    <h3>Server Status:</h3>
-                    <p id="localAIStatus" class="status-message">Checking local AI server...</p>
-                </div>
-
-                <div class="local-ai-instructions">
-                    <h3>📋 Setup Instructions:</h3>
-                    <ol id="localAISetupSteps">
-                        <li>Configure <code>LLM_BACKEND</code> in <code>config.js</code> (<code>llama-cpp</code> recommended).</li>
-                        <li>Run <code>python setup_local_ai.py --backend &lt;backend&gt;</code> once to prepare directories and dependencies.</li>
-                        <li>Launch with <code>python start_game.py</code> — it boots the configured AI backend and the static web server.</li>
-                    </ol>
+                    <h3>Status:</h3>
+                    <p id="localAIStatus" class="status-message">Checking AI backend...</p>
                 </div>
 
                 <div class="button-container">
-                    <button id="checkLocalAIBtn">Check Server Status</button>
+                    <button id="checkLocalAIBtn">Test Connection</button>
                     <button class="backBtn" data-target="mainMenuScreen">Back</button>
                 </div>
             </div>

@@ -14,6 +14,8 @@ import { makeAICallForSystemAction } from './aiHandler.js?cb=014';
 import { determineContext } from './state.js?cb=014';
 // Import local AI orchestrator for enhanced resolution processing
 import { localAIOrchestrator } from './localAIOrchestrator.js?cb=014';
+// Phase 2: jail mechanic — replaces the old "soft revive at 1 HP same location" flow
+import { transitionToJail, recordFailedEscape, getJailForTheme } from './jailSystem.js?cb=014';
 
 
 /**
@@ -72,12 +74,23 @@ Describe the scene after the victorious battle, mentioning the state of the defe
 }
 
 /**
- * Handles the situation when all players are downed. Applies penalties, revives players, triggers AI.
+ * Phase 2.3: Handles the situation when all players are downed.
+ *
+ * NEW FLOW (replaces the old soft-revive + consecutiveWipes >= 2 hard
+ * game-over):
+ *
+ *   Wiped while NOT imprisoned    → wake up in jail, jail_escape activates
+ *   Wiped while imprisoned        → record failed attempt; if exceeded max
+ *                                   attempts, real game over (executed)
+ *
+ * The jail IS the consequence of dying. There is no "2 wipes = game over"
+ * arbitrary cutoff anymore — the player can keep playing as long as they
+ * keep escaping. Real game-over only triggers if they fail to escape jail
+ * three times.
  */
 export async function handlePartyWipe() {
-    // (Unchanged - already uses makeAICallForSystemAction)
     console.error("Party Wipe! Processing resolution...");
-    displayVisualError("Party Wipe! Processing resolution..."); // Visual log
+    displayVisualError("Party Wipe! Processing resolution...");
     if (gameState.handlingPartyWipe) {
         console.warn("Party wipe already being handled. Skipping.");
         displayVisualError("Warning: Party wipe already being handled. Skipping.");
@@ -85,78 +98,97 @@ export async function handlePartyWipe() {
     }
     gameState.handlingPartyWipe = true;
 
-    // P5: Track consecutive wipes. If we cross the threshold AND the player
-    // is not in god mode (god-mode players can author their way out, plus
-    // they've already won at least once), surface the game-over screen
-    // instead of the silent soft-recovery. Reset counter on combat victory
-    // (see handleCombatVictory).
-    gameState.consecutiveWipes = (gameState.consecutiveWipes || 0) + 1;
-    const MAX_CONSECUTIVE_WIPES = 2;
-    const showGameOver = gameState.consecutiveWipes >= MAX_CONSECUTIVE_WIPES && !gameState.isGoalComplete;
-    if (showGameOver) {
-        try {
-            const ui = await import('./ui.js?cb=014');
-            if (typeof ui.showGameOverScreen === 'function') {
-                gameState.handlingPartyWipe = false; // release lock
-                ui.showGameOverScreen({
-                    reason: 'party_wipe',
-                    consecutiveWipes: gameState.consecutiveWipes,
-                    lastEnemies: (gameState.enemies || []).map(e => e.name).join(', '),
-                    lastLocation: gameState.currentLocation?.name || 'an unknown place'
-                });
-                return; // do not soft-revive; the player chooses from the screen
+    // Branch 1: wiped while ALREADY imprisoned. Record the failed escape
+    // attempt; if maxAttempts exceeded, this is the real game over (the
+    // player tried to escape and could not).
+    if (gameState.imprisoned) {
+        const exhausted = recordFailedEscape();
+        if (exhausted) {
+            try {
+                const ui = await import('./ui.js?cb=014');
+                if (typeof ui.showGameOverScreen === 'function') {
+                    gameState.handlingPartyWipe = false;
+                    ui.showGameOverScreen({
+                        reason: 'jail_execution',
+                        consecutiveWipes: gameState.jailEscape?.attempts || 0,
+                        lastEnemies: (gameState.enemies || []).map(e => e.name).join(', '),
+                        lastLocation: gameState.jail?.name || 'the cell'
+                    });
+                    return;
+                }
+            } catch (e) {
+                displayVisualError(`Game-over screen import failed: ${e?.message}`);
             }
-        } catch (e) {
-            displayVisualError(`Game-over screen import failed: ${e?.message}; falling back to soft recovery.`);
         }
+        // Not yet exhausted — the AI gets another shot at narrating a
+        // brutal beating that returns the players to the cell at low HP.
+        UI.showPopup('Your escape attempt failed. Back in the cell.', 'error', 5000);
+        gameState.inCombat = false;
+        gameState.enemies = [];
+        gameState.players.forEach(p => {
+            if (!p) return;
+            p.hp = Math.max(1, Math.floor((p.maxHp || 100) * 0.25));
+            p.isDowned = false;
+            p.downedTurns = 0;
+            p.statusEffects = [];
+            Combat.recalculateCharacterStats(p);
+        });
+
+        const failPrompt = `[Action Report: Failed Jail Escape]
+The party tried to escape ${gameState.jail?.name || 'the cell'} and was beaten back.
+Players: ${gameState.players.map(p => `${p.name} (HP: ${p.hp}/${p.maxHp})`).join(', ')}
+Attempts remaining: ${(gameState.jailEscape?.maxAttempts || 3) - (gameState.jailEscape?.attempts || 0)}
+
+Describe the failure vividly: the guards' counter-attack, the consequences (a beating, an additional restraint, perhaps a warning), and the party returned to the cell. Then provide choices for what to try next. The objectives of the jail_escape quest persist — the player must still find a weakness and escape.]`;
+        try {
+            await makeAICallForSystemAction(failPrompt, false);
+        } catch (e) {
+            console.error('AI call failed during jail-escape-failure resolution.', e);
+        } finally {
+            gameState.handlingPartyWipe = false;
+            UI.renderPlayerCards();
+            UI.updateQuickActions();
+            UI.updateContextHeaders();
+        }
+        return;
     }
 
+    // Branch 2: wiped in the open world. Transition to jail.
     UI.showPopup('The entire party has fallen!', 'error', 6000);
-    gameState.inCombat = false;
-    gameState.enemies = [];
 
-    displayVisualError("Applying party wipe consequences...");
-    gameState.players.forEach(player => {
-        if (!player) return;
-        let coinLoss = 0;
-        if (player.coins > 0) {
-            coinLoss = Math.max(1, Math.floor(player.coins * Config.PARTY_WIPE_COIN_LOSS_PERCENT));
-            player.coins -= coinLoss;
-        }
-        displayVisualError(`${player.name} lost ${coinLoss} coins. Remaining: ${player.coins}`);
-        player.equipment = { weapon: null, armor: null };
-        player.inventory?.forEach(item => { if (item) item.equippedSlot = null; });
-        displayVisualError(`${player.name}: Equipment removed.`);
-        const questItems = player.inventory?.filter(item => item?.type === 'Quest') || [];
-        const lostItemCount = (player.inventory?.length || 0) - questItems.length;
-        player.inventory = questItems;
-        displayVisualError(`${player.name} lost ${lostItemCount} non-quest items.`);
-        player.hp = 1;
-        player.isDowned = false;
-        player.downedTurns = 0;
-        player.statusEffects = [];
-        Combat.recalculateCharacterStats(player);
-        displayVisualError(`${player.name} revived with 1 HP, status cleared, stats recalculated.`);
+    // Recalculate stats post-revive (transitionToJail sets HP to 50%).
+    transitionToJail();
+    gameState.players.forEach(p => {
+        if (p) Combat.recalculateCharacterStats(p);
     });
 
-    const wipePrompt = `[Action Report: Party Wipe Recovery]
-Players: ${gameState.players.map(p => `${p.name} (HP: ${p.hp}/${p.maxHp}, Lost Items: ${(p.inventory?.length || 0)}, Coins Lost: ${Math.floor(p.coins * Config.PARTY_WIPE_COIN_LOSS_PERCENT)})`).join(', ')}
-Previous Location: ${gameState.currentLocation?.name || 'Unknown'}
-Previous Combat: ${gameState.enemies?.map(e => e.name).join(', ') || 'Unknown enemies'}
-Environment: ${determineContext(getCurrentPlayer()).environment}
+    const jail = getJailForTheme(gameState.adventureTheme || 'fantasy');
+    const wipePrompt = `[Action Report: Captured]
+The party was overwhelmed and has woken up imprisoned.
+Players: ${gameState.players.map(p => `${p.name} (HP: ${p.hp}/${p.maxHp})`).join(', ')}
+Imprisoned in: ${jail.name}
+Setting: ${jail.description}
+Items confiscated: ${(gameState.confiscatedItems || []).length}
+Gold confiscated: ${gameState.confiscatedGold || 0}
+Captured from: ${gameState.captureLocation?.name || 'an unknown place'}
 
-Describe the party regaining consciousness in a disadvantageous situation (e.g., waking up in a ditch, captured, or rescued by a mysterious figure). Focus on their vulnerable state and immediate survival needs. Then provide appropriate choices for their next actions.]`;
+Describe the party regaining consciousness in their cell. Establish:
+1. The setting (sights, sounds, smells)
+2. Visible guards or security
+3. The state of their belongings (weapons gone)
+4. One immediate hint at a possible weakness (a dropped key, a sleeping guard, a loose stone, an air vent — choose one)
+
+Then provide three concrete choices that begin the escape attempt: assess the cell, watch the guards, or attempt to talk to a fellow prisoner / guard. The jail_escape quest is now active and the player must complete it to leave.]`;
 
     try {
-        await makeAICallForSystemAction(wipePrompt, false); // preventTurnAdvance = false
+        await makeAICallForSystemAction(wipePrompt, false);
     } catch (error) {
-         console.error("AI call failed during party wipe resolution.");
-         displayVisualError("ERROR: AI call failed during party wipe resolution.", error);
+         console.error("AI call failed during party wipe → jail resolution.");
+         displayVisualError("ERROR: AI call failed during jail transition.", error);
     } finally {
-        console.log("Party wipe handling complete.");
-        displayVisualError("Party wipe handling complete.");
+        console.log("Party wipe → jail transition complete.");
+        displayVisualError("Party wipe → jail transition complete.");
         gameState.handlingPartyWipe = false;
-        // Update UI after flag reset
         UI.renderPlayerCards();
         UI.updateQuickActions();
         UI.updateContextHeaders();

@@ -216,22 +216,28 @@ export async function loadGame(slotName) {
         Object.assign(gameState, loadedGameState);
         log("SaveLoad: Loaded game state applied.");
         
-        // Validate and initialize spellcasting data for loaded players
+        // Phase 1.1: Validate and initialize spellcasting data for loaded
+        // players. Previously this used `forEach(async ...)` which dropped
+        // the promises on the floor — the function would return before any
+        // spellcasting init completed, leaving combat without spell data.
+        // Use Promise.all over a `.map()` so we await every player's init
+        // before continuing to the rest of the load flow.
         if (gameState.players && Array.isArray(gameState.players)) {
-            gameState.players.forEach(async (player) => {
-                if (player && !player.spellcasting) {
-                    try {
-                        // Initialize spellcasting for players who don't have it
-                        const Spells = await import('./spells.js?cb=014');
-                        if (Spells && Spells.initializePlayerSpellcasting) {
-                            Spells.initializePlayerSpellcasting(player);
-                            log(`SaveLoad: Initialized missing spellcasting data for ${player.name}`);
-                        }
-                    } catch (error) {
-                        log(`SaveLoad: Error initializing spellcasting for ${player.name}:`, error);
+            const playersNeedingInit = gameState.players.filter(p => p && !p.spellcasting);
+            if (playersNeedingInit.length > 0) {
+                try {
+                    const Spells = await import('./spells.js?cb=014');
+                    if (Spells && Spells.initializePlayerSpellcasting) {
+                        await Promise.all(playersNeedingInit.map(player =>
+                            Promise.resolve(Spells.initializePlayerSpellcasting(player))
+                                .then(() => log(`SaveLoad: Initialized missing spellcasting data for ${player.name}`))
+                                .catch(err => log(`SaveLoad: Error initializing spellcasting for ${player.name}:`, err))
+                        ));
                     }
+                } catch (error) {
+                    log(`SaveLoad: Error loading spells module:`, error);
                 }
-            });
+            }
         }
 
         // Restore Maps from Objects

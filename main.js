@@ -51,7 +51,14 @@ try {
     // Import local AI integration
     await import('./localAI.js?cb=014');
     displayVisualError('LocalAI: Integration initialized');
-    
+
+    // Phase 2: load the jail system module so it registers itself on
+    // window.__jailSystem before any AI prompts are built. Without this
+    // import being explicit somewhere, modules that lazily reach for
+    // window.__jailSystem (questDefinitions, engine) won't find it.
+    await import('./jailSystem.js?cb=014');
+    displayVisualError('JailSystem: registered.');
+
     setup = await import('./setup.js?cb=014');
     actionHandler = await import('./actionHandler.js?cb=014');
     saveLoad = await import('./saveLoad.js?cb=014');
@@ -263,7 +270,9 @@ function setupEventListeners(UI, setup, actionHandler, saveLoad) { // Added acti
     // yet. Phase 0 audit P0 #8.
     safeAddListener('loadGameBtn', 'click', () => { UI.showScreen('loadGameScreen'); saveLoad.listSaves(); }, 'loadGameBtn');
     safeAddListener('localAIBtn', 'click', () => showLocalAIStatus(), 'localAIBtn');
-    safeAddListener('checkLocalAIBtn', 'click', () => showLocalAIStatus(), 'checkLocalAIBtn');
+    safeAddListener('checkLocalAIBtn', 'click', () => runConnectionCheck(), 'checkLocalAIBtn');
+    // Phase 0: cloud backend selection + API key save
+    setupCloudBackendListeners();
     safeAddListener('aboutBtn', 'click', () => UI.showScreen('aboutScreen'), 'aboutBtn');
     // saveApiKeyBtn removed - using local AI exclusively
     safeAddListener('adventureTypeNextBtn', 'click', setup.proceedToAgeInput, 'adventureTypeNextBtn');
@@ -508,20 +517,138 @@ function updateContinueButtonVisibility() {
 }
 
 /**
- * Shows the Local AI Status screen with current server information
+ * Phase 0: Show the AI backend settings screen. Supports both local and
+ * cloud modes. The visible sections, status text, and "Test Connection"
+ * button all branch on whichever mode is currently active.
  */
 async function showLocalAIStatus() {
     const statusElement = document.getElementById('localAIStatus');
     if (!statusElement) return;
-    
+
+    UI.showScreen('localAIScreen');
+
+    // Sync the radio buttons + visible sections with the active backend
+    syncBackendModeUI();
+
+    // Run an initial connection check for whichever mode is active
+    await runConnectionCheck();
+}
+
+/**
+ * Phase 0: Sync the radio buttons, cloud config visibility, and provider
+ * dropdown to match the currently active backend. Called on screen show
+ * and after any backend mode change.
+ */
+function syncBackendModeUI() {
+    const isCloud = Config.LLM_BACKEND === 'cloud';
+    const localRadio = document.getElementById('backendModeLocal');
+    const cloudRadio = document.getElementById('backendModeCloud');
+    const cloudSection = document.getElementById('cloudConfigSection');
+    const localSection = document.getElementById('localConfigSection');
+
+    if (localRadio) localRadio.checked = !isCloud;
+    if (cloudRadio) cloudRadio.checked = isCloud;
+    if (cloudSection) cloudSection.classList.toggle('hidden', !isCloud);
+    if (localSection) localSection.classList.toggle('hidden', isCloud);
+
+    // Populate cloud provider dropdown selection
+    const providerKey = (() => {
+        try { return localStorage.getItem('adv.cloudProvider') || Config.DEFAULT_CLOUD_PROVIDER; }
+        catch (_) { return Config.DEFAULT_CLOUD_PROVIDER; }
+    })();
+    const select = document.getElementById('cloudProviderSelect');
+    if (select) select.value = providerKey;
+
+    // Populate API key field (masked) — show that one is saved without
+    // revealing the value. Only set the placeholder; actual value stays
+    // hidden until the user clicks save.
+    const keyInput = document.getElementById('cloudApiKeyInput');
+    if (keyInput) {
+        const hasKey = !!Config.getCloudApiKey();
+        keyInput.placeholder = hasKey ? '✓ Key saved (paste new key to replace)' : 'Paste your free API key here';
+        keyInput.value = '';
+    }
+
+    updateCloudProviderNotes(providerKey);
+}
+
+/**
+ * Phase 0: Update the description and signup link for the selected provider.
+ */
+function updateCloudProviderNotes(providerKey) {
+    const provider = Config.CLOUD_PROVIDERS[providerKey];
+    if (!provider) return;
+    const notesEl = document.getElementById('cloudProviderNotes');
+    const signupEl = document.getElementById('cloudSignupLink');
+    if (notesEl) {
+        notesEl.textContent = `${provider.notes} (${provider.rateLimit})`;
+    }
+    if (signupEl) {
+        signupEl.href = provider.signupUrl;
+        signupEl.textContent = `Get a free key from ${new URL(provider.signupUrl).hostname} →`;
+    }
+}
+
+/**
+ * Phase 0: Run a connection check appropriate to the current backend.
+ * For local: pings /health. For cloud: makes a tiny test completion request.
+ */
+async function runConnectionCheck() {
+    const statusElement = document.getElementById('localAIStatus');
+    if (!statusElement) return;
+
+    const backend = Config.getActiveBackendConfig();
+
+    if (backend.isCloud) {
+        const apiKey = Config.getCloudApiKey();
+        if (!apiKey) {
+            statusElement.textContent = `⚠️ No API key set. Paste your free key above and click Save.`;
+            statusElement.className = 'status-message warning';
+            clearStatusInfoBlocks(statusElement);
+            return;
+        }
+        statusElement.textContent = `Testing ${backend.providerName}...`;
+        statusElement.className = 'status-message checking';
+
+        try {
+            const { localAI } = await import('./localAI.js?cb=014');
+            // Minimal completion to verify auth + reachability
+            const response = await localAI.makeRequest(
+                [{ role: 'user', content: 'Reply with just the word OK.' }],
+                { max_tokens: 5, temperature: 0 }
+            );
+            if (response && response.length > 0) {
+                statusElement.textContent = `✅ Cloud AI connected — ${backend.providerName}`;
+                statusElement.className = 'status-message healthy';
+                renderInfoBlock(statusElement, 'server-info', `
+                    <h4>Active Cloud Provider:</h4>
+                    <ul>
+                        <li><strong>Provider:</strong> ${backend.providerName}</li>
+                        <li><strong>Model:</strong> ${backend.modelName}</li>
+                        <li><strong>Context Window:</strong> ${backend.contextWindow.toLocaleString()} tokens</li>
+                    </ul>
+                `);
+            } else {
+                throw new Error('Empty response');
+            }
+        } catch (error) {
+            statusElement.textContent = `❌ Cloud AI test failed.`;
+            statusElement.className = 'status-message error';
+            renderInfoBlock(statusElement, 'error-info', `
+                <h4>Troubleshooting:</h4>
+                <ul>
+                    <li>Check that your API key is valid and active.</li>
+                    <li>Verify your provider has not exceeded its daily rate limit.</li>
+                    <li>Error: ${error.message}</li>
+                </ul>
+            `);
+        }
+        return;
+    }
+
+    // Local mode: existing health-check flow
     statusElement.textContent = 'Checking local AI server...';
     statusElement.className = 'status-message checking';
-    
-    UI.showScreen('localAIScreen');
-    
-    // Backend-aware status panel: pull live values from getActiveBackendConfig
-    // so the UI reflects whichever LLM_BACKEND is selected in config.js.
-    const backend = Config.getActiveBackendConfig();
     const backendName = Config.LLM_BACKEND;
     const launchHint = backendName === 'llama-cpp'
         ? 'python start_llama_server.py'
@@ -533,10 +660,7 @@ async function showLocalAIStatus() {
 
         statusElement.textContent = `✅ Local AI Server is running and healthy! ${backend.modelName} ready.`;
         statusElement.className = 'status-message healthy';
-
-        const serverInfo = document.createElement('div');
-        serverInfo.className = 'server-info';
-        serverInfo.innerHTML = `
+        renderInfoBlock(statusElement, 'server-info', `
             <h4>Server Details:</h4>
             <ul>
                 <li><strong>Backend:</strong> ${backendName}</li>
@@ -544,31 +668,97 @@ async function showLocalAIStatus() {
                 <li><strong>Context Window:</strong> ${backend.contextWindow.toLocaleString()} tokens</li>
                 <li><strong>Server URL:</strong> ${backend.url}</li>
             </ul>
-        `;
-
-        const existingInfo = statusElement.parentNode.querySelector('.server-info');
-        if (existingInfo) existingInfo.remove();
-        statusElement.parentNode.appendChild(serverInfo);
-
+        `);
     } catch (error) {
         statusElement.textContent = `❌ Local AI Server not available at ${backend.url}.`;
         statusElement.className = 'status-message error';
-
-        const errorInfo = document.createElement('div');
-        errorInfo.className = 'error-info';
-        errorInfo.innerHTML = `
+        renderInfoBlock(statusElement, 'error-info', `
             <h4>Troubleshooting:</h4>
             <ul>
                 <li>Start the server with <code>${launchHint}</code> in a separate terminal.</li>
                 <li>Wait for model load to finish (10-60s depending on model size).</li>
                 <li>Verify the URL is reachable: <code>${backend.url}/health</code></li>
+                <li>Or switch to Cloud mode above to skip local setup entirely.</li>
                 <li>Error: ${error.message}</li>
             </ul>
-        `;
+        `);
+    }
+}
 
-        const existingInfo = statusElement.parentNode.querySelector('.error-info, .server-info');
-        if (existingInfo) existingInfo.remove();
-        statusElement.parentNode.appendChild(errorInfo);
+function clearStatusInfoBlocks(statusElement) {
+    const existing = statusElement.parentNode.querySelectorAll('.error-info, .server-info');
+    existing.forEach(el => el.remove());
+}
+
+function renderInfoBlock(statusElement, className, html) {
+    clearStatusInfoBlocks(statusElement);
+    const block = document.createElement('div');
+    block.className = className;
+    block.innerHTML = html;
+    statusElement.parentNode.appendChild(block);
+}
+
+/**
+ * Phase 0: Wire up cloud-mode event handlers. Called from
+ * setupEventListeners() once on app start.
+ */
+function setupCloudBackendListeners() {
+    const localRadio = document.getElementById('backendModeLocal');
+    const cloudRadio = document.getElementById('backendModeCloud');
+    const providerSelect = document.getElementById('cloudProviderSelect');
+    const apiKeyInput = document.getElementById('cloudApiKeyInput');
+    const saveBtn = document.getElementById('cloudApiKeySaveBtn');
+
+    if (localRadio) {
+        localRadio.addEventListener('change', async () => {
+            if (!localRadio.checked) return;
+            const { localAI } = await import('./localAI.js?cb=014');
+            localAI.setLocalBackend();
+            // Persist + reload so config.js picks up the new backend selection.
+            // localStorage was already set inside setLocalBackend.
+            window.location.reload();
+        });
+    }
+    if (cloudRadio) {
+        cloudRadio.addEventListener('change', async () => {
+            if (!cloudRadio.checked) return;
+            // Just persist the choice and re-render — actual provider/key
+            // setup is done via the visible cloud section. No reload yet
+            // so the user can still see the local error context.
+            try { localStorage.setItem('adv.llmBackend', 'cloud'); } catch (_) {}
+            const cloudSection = document.getElementById('cloudConfigSection');
+            const localSection = document.getElementById('localConfigSection');
+            if (cloudSection) cloudSection.classList.remove('hidden');
+            if (localSection) localSection.classList.add('hidden');
+            updateCloudProviderNotes(providerSelect ? providerSelect.value : Config.DEFAULT_CLOUD_PROVIDER);
+        });
+    }
+    if (providerSelect) {
+        providerSelect.addEventListener('change', () => {
+            updateCloudProviderNotes(providerSelect.value);
+        });
+    }
+    if (saveBtn) {
+        saveBtn.addEventListener('click', async () => {
+            const key = (apiKeyInput && apiKeyInput.value) ? apiKeyInput.value.trim() : '';
+            const providerKey = providerSelect ? providerSelect.value : Config.DEFAULT_CLOUD_PROVIDER;
+
+            if (!key) {
+                alert('Please paste your API key first.');
+                return;
+            }
+
+            try { localStorage.setItem('adv.llmBackend', 'cloud'); } catch (_) {}
+
+            const { localAI } = await import('./localAI.js?cb=014');
+            localAI.setCloudProvider(providerKey);
+            localAI.setApiKey(key);
+
+            // Reload so all modules pick up the new backend cleanly. We
+            // tried hot-reloading and it gets fragile fast — full reload
+            // is the safe path.
+            window.location.reload();
+        });
     }
 }
 

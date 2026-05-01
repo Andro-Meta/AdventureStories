@@ -2,7 +2,7 @@
 // Manages game turns, processing effects, checking conditions, and selecting the next player.
 
 // --- Static Imports ---
-import { gameState, getCurrentPlayer, syncTurnStates, canCurrentPlayerAct } from './state.js?cb=014';
+import { gameState, getCurrentPlayer, syncTurnStates, canCurrentPlayerAct, repairPlayerIndex } from './state.js?cb=014';
 import * as Config from './config.js?cb=014';
 import * as UI from './ui.js?cb=014';
 import * as Combat from './combat.js?cb=014';
@@ -19,7 +19,13 @@ import { handlePartyWipe, handleCombatVictory } from './resolution.js?cb=014';
 export async function advanceTurn() {
     const log = window.displayVisualError || console.log; // Use logger
     log(`--- Advancing Turn (End of Turn ${gameState.turn}) ---`);
-    
+
+    // Phase 1.5: explicit recovery point — getCurrentPlayer is now pure
+    // and never mutates currentPlayerIndex on its own. Run repair at the
+    // turn boundary so any out-of-range or null-entry index gets clamped
+    // before downstream logic reads the player.
+    repairPlayerIndex();
+
     // Synchronize turn states to prevent conflicts
     const turnMode = syncTurnStates();
     if (turnMode === 'combat') {

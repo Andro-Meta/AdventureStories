@@ -15,7 +15,23 @@
 //                              MCP support, much faster on consumer GPUs.
 //                       Cons: requires user to install llama.cpp + download a GGUF model.
 //                       See OVERHAUL_PLAN.md for setup steps.
-export const LLM_BACKEND = 'llama-cpp'; // 'minicpm-python' | 'llama-cpp'
+// 'minicpm-python' | 'llama-cpp' | 'cloud'
+// 'cloud' = user-configured free OpenAI-compatible online provider (Phase 0).
+//   The active cloud provider is selected via localStorage key 'adv.cloudProvider'
+//   (one of the keys in CLOUD_PROVIDERS) and the API key via 'adv.apiKey'.
+//   Default backend remains llama-cpp; users opt into cloud via the settings UI,
+//   which writes localStorage('adv.llmBackend') to 'cloud' to persist their choice.
+export const LLM_BACKEND = (() => {
+    try {
+        if (typeof window !== 'undefined') {
+            const stored = window.localStorage.getItem('adv.llmBackend');
+            if (stored === 'cloud' || stored === 'llama-cpp' || stored === 'minicpm-python') {
+                return stored;
+            }
+        }
+    } catch (_) { /* fall through to default */ }
+    return 'llama-cpp';
+})();
 
 export const LOCAL_AI_CONFIG = {
     MODEL_NAME: 'MiniCPM-2B-128k',
@@ -90,31 +106,129 @@ function resolveBackendUrl(defaultUrl) {
     return defaultUrl;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 0: Cloud AI providers
+//
+// User-configured optional cloud backends. No keys are hardcoded — users
+// paste their own free API key into the settings UI, which is persisted in
+// localStorage as 'adv.apiKey' (visible to JS, but acceptable for a
+// client-side game where the user owns the key and chooses to use it).
+//
+// All three providers are OpenAI-compatible /v1/chat/completions, so the
+// existing localAI.js calling code is reused; only the base URL, model,
+// and Authorization header differ. Phase 0 docs (IMPLEMENTATION_PLAN.md)
+// recommend OpenRouter Gemma 4 31B for users who want to stick with Gemma.
+// ─────────────────────────────────────────────────────────────────────────────
+export const CLOUD_PROVIDERS = {
+    openrouter: {
+        name: 'OpenRouter (Gemma 4 31B — Free)',
+        baseUrl: 'https://openrouter.ai/api/v1',
+        model: 'google/gemma-4-31b-it:free',
+        signupUrl: 'https://openrouter.ai',
+        contextWindow: 131072,
+        rateLimit: '20 RPM, 200 requests/day',
+        notes: 'Recommended. Actual Gemma 4, free tier, no credit card. Best when local AI isn\'t set up.'
+    },
+    openrouter_gemma3: {
+        name: 'OpenRouter (Gemma 3 27B — Free)',
+        baseUrl: 'https://openrouter.ai/api/v1',
+        model: 'google/gemma-3-27b-it:free',
+        signupUrl: 'https://openrouter.ai',
+        contextWindow: 131072,
+        rateLimit: '20 RPM, 200 requests/day',
+        notes: 'Alternative Gemma model — slightly older but proven for storytelling.'
+    },
+    groq: {
+        name: 'Groq (Llama 3.3 70B — Free, fastest)',
+        baseUrl: 'https://api.groq.com/openai/v1',
+        model: 'llama-3.3-70b-versatile',
+        signupUrl: 'https://console.groq.com',
+        contextWindow: 128000,
+        rateLimit: '30 RPM, 100K tokens/day',
+        notes: 'Not Gemma but extremely fast (~315 tok/s) and higher daily limits.'
+    },
+    googleai: {
+        name: 'Google AI Studio (Gemini Flash Lite — Free)',
+        baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+        model: 'gemini-2.5-flash-lite',
+        signupUrl: 'https://aistudio.google.com',
+        contextWindow: 1000000,
+        rateLimit: '15 RPM, 1000 requests/day',
+        notes: 'Most generous daily limit. Quality exceeds Gemma 3 4B.'
+    }
+};
+
+/**
+ * Default cloud provider when LLM_BACKEND === 'cloud' but no specific
+ * provider has been selected. Users override via localStorage('adv.cloudProvider').
+ */
+export const DEFAULT_CLOUD_PROVIDER = 'openrouter';
+
+/**
+ * Resolve the active cloud provider config from localStorage selection,
+ * falling back to DEFAULT_CLOUD_PROVIDER.
+ */
+function resolveCloudProvider() {
+    try {
+        if (typeof window !== 'undefined') {
+            const key = window.localStorage.getItem('adv.cloudProvider');
+            if (key && CLOUD_PROVIDERS[key]) return CLOUD_PROVIDERS[key];
+        }
+    } catch (_) { /* fall through */ }
+    return CLOUD_PROVIDERS[DEFAULT_CLOUD_PROVIDER];
+}
+
+/**
+ * Read the user's saved API key from localStorage. Returns null if unset.
+ * Cloud requests must include this as `Authorization: Bearer <key>`.
+ */
+export function getCloudApiKey() {
+    try {
+        if (typeof window !== 'undefined') {
+            return window.localStorage.getItem('adv.apiKey') || null;
+        }
+    } catch (_) { /* fall through */ }
+    return null;
+}
+
 /**
  * Returns the active backend's URL + param defaults.
  * Used by localAI.js so a single config flag swaps the entire stack.
  */
 export function getActiveBackendConfig() {
+    if (LLM_BACKEND === 'cloud') {
+        const provider = resolveCloudProvider();
+        return {
+            url: provider.baseUrl,
+            modelName: provider.model,
+            contextWindow: provider.contextWindow,
+            defaultParams: {
+                max_tokens: 2048,
+                temperature: 0.7,
+                top_p: 0.95
+                // top_k intentionally omitted — not supported by most cloud APIs
+            },
+            isCloud: true,
+            providerName: provider.name
+        };
+    }
     if (LLM_BACKEND === 'llama-cpp') {
         return {
             url: resolveBackendUrl(LLAMA_CPP_CONFIG.DEFAULT_URL),
             modelName: LLAMA_CPP_CONFIG.MODEL_NAME,
             contextWindow: LLAMA_CPP_CONFIG.CONTEXT_WINDOW,
-            defaultParams: LLAMA_CPP_CONFIG.DEFAULT_PARAMS
+            defaultParams: LLAMA_CPP_CONFIG.DEFAULT_PARAMS,
+            isCloud: false
         };
     }
     return {
         url: resolveBackendUrl(LOCAL_AI_CONFIG.DEFAULT_URL),
         modelName: LOCAL_AI_CONFIG.MODEL_NAME,
         contextWindow: LOCAL_AI_CONFIG.CONTEXT_WINDOW,
-        defaultParams: LOCAL_AI_CONFIG.DEFAULT_PARAMS
+        defaultParams: LOCAL_AI_CONFIG.DEFAULT_PARAMS,
+        isCloud: false
     };
 }
-
-// REMOVED: OpenRouter, AI Studio, and external API configurations
-// The system now operates exclusively with local AI
-
-// REMOVED: External API configuration - system now uses local AI exclusively
 
 // --- Game Balance & Rules ---
 export const INITIAL_HP = 100;

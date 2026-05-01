@@ -591,38 +591,71 @@ export function createNewPlayer(name, age) {
 }
 
 /**
- * Gets the player object for the current turn. Includes basic validation.
- * Moved from turnManager.js to avoid circular dependency.
+ * Phase 1.5: PURE getter for the current player. Previously this method
+ * silently mutated gameState.currentPlayerIndex when it found an invalid
+ * value — a side effect inside what reads should never have. Tests and
+ * callers that expected calling getCurrentPlayer() twice in a row to be
+ * equivalent could see the index change between calls, which masked
+ * turn-order bugs in multiplayer.
+ *
+ * Rules now:
+ *   - getCurrentPlayer() is a pure read — no mutation.
+ *   - Out-of-bounds index returns the player at index 0 (or null).
+ *   - Null entries return the next valid player, but the index is NOT changed.
+ *   - Call repairPlayerIndex() explicitly at turn boundaries (turnManager)
+ *     to actually fix a stale or invalid currentPlayerIndex.
  */
 export function getCurrentPlayer() {
     const log = window.displayVisualError || console.log;
     if (!gameState.players || gameState.players.length === 0) {
-        log("getCurrentPlayer: No players array exists.");
         return null;
     }
     const index = gameState.currentPlayerIndex;
     if (index < 0 || index >= gameState.players.length) {
-        log(`getCurrentPlayer: Invalid index ${index} for player count ${gameState.players.length}. Resetting to 0.`);
-        gameState.currentPlayerIndex = 0; // Attempt recovery
+        log(`getCurrentPlayer: index ${index} out of range (count=${gameState.players.length}). Returning players[0] without mutation; call repairPlayerIndex() to actually fix.`);
         return gameState.players[0] || null;
     }
     const player = gameState.players[index];
-    if (!player) {
-        log(`getCurrentPlayer: Player object at index ${index} is null or undefined.`);
-        // Try to find the next valid player if current is invalid
-        for(let i=1; i < gameState.players.length; i++) {
-            const nextIndex = (index + i) % gameState.players.length;
-            if(gameState.players[nextIndex]) {
-                log(`Recovered to player index ${nextIndex}.`);
+    if (player) return player;
+
+    // Find a valid neighbor for the read, but DO NOT mutate the index.
+    log(`getCurrentPlayer: players[${index}] is null/undefined. Returning next valid player without mutating index.`);
+    for (let i = 1; i < gameState.players.length; i++) {
+        const nextIndex = (index + i) % gameState.players.length;
+        if (gameState.players[nextIndex]) return gameState.players[nextIndex];
+    }
+    log(`CRITICAL: No valid player objects found in the players array.`);
+    return null;
+}
+
+/**
+ * Phase 1.5: explicit recovery path — call this at turn boundaries
+ * (turnManager / advanceTurn) to fix a stale currentPlayerIndex. Safe to
+ * call when the index is already valid (no-op in that case).
+ *
+ * Returns true if an index repair was performed, false otherwise.
+ */
+export function repairPlayerIndex() {
+    if (!gameState.players || gameState.players.length === 0) return false;
+    const log = window.displayVisualError || console.log;
+    const original = gameState.currentPlayerIndex;
+
+    if (original < 0 || original >= gameState.players.length) {
+        log(`repairPlayerIndex: clamping ${original} → 0 (count=${gameState.players.length})`);
+        gameState.currentPlayerIndex = 0;
+        return true;
+    }
+    if (!gameState.players[original]) {
+        for (let i = 1; i < gameState.players.length; i++) {
+            const nextIndex = (original + i) % gameState.players.length;
+            if (gameState.players[nextIndex]) {
+                log(`repairPlayerIndex: ${original} (null) → ${nextIndex}`);
                 gameState.currentPlayerIndex = nextIndex;
-                return gameState.players[nextIndex];
+                return true;
             }
         }
-        // If no valid player found at all
-        log(`CRITICAL: No valid player objects found in the players array.`);
-        return null;
     }
-    return player;
+    return false;
 }
 
 /**

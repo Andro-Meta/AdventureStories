@@ -410,6 +410,16 @@ ${examples}`;
         // Store the narrative in game state for context
         gameState.currentNarrative = cleanNarrative;
 
+        // Phase 2: jail escape auto-complete safety net. If the narrator
+        // describes the escape without firing the jail_escaped milestone,
+        // detect it heuristically so the player isn't stuck in the cell
+        // metadata while the prose says they're free. No-op if not imprisoned.
+        try {
+            if (gameState.imprisoned && typeof window !== 'undefined' && window.__jailSystem?.tryAutoCompleteEscape) {
+                window.__jailSystem.tryAutoCompleteEscape();
+            }
+        } catch (_) { /* don't break narrative update on jail-system errors */ }
+
         // Update UI with narrative + any diff-applied state changes immediately
         UI.updateNarrative(gameState.currentNarrative);
         UI.renderPlayerCards();
@@ -1052,10 +1062,102 @@ export async function handleCommand(commandString) {
  * **REVISED: Enhanced choice instructions and added checklist.**
  * @returns {string} The generated system prompt.
  */
+/**
+ * Phase 3.2: Build a compact, canonical "GAME STATE" block to inject at
+ * the very top of the system prompt. The narrator sees this BEFORE any
+ * narrative history, so factual contradictions (NPCs reappearing after
+ * death, resolved quests still mentioned, items the player no longer
+ * has) become much rarer.
+ *
+ * Capped: 8 NPCs, 5 active quests, 12 story flags. Total cost ~250-450
+ * tokens — well worth it for coherence on a 4B model.
+ */
+function buildCanonicalStateBlock() {
+    const p = getCurrentPlayer();
+    if (!p) return '';
+
+    const turn = gameState.turn || 1;
+    const theme = gameState.adventureTheme || 'unknown';
+    const imprisonedTag = gameState.imprisoned ? ' | IMPRISONED' : (gameState.isGoalComplete ? ' | GOD MODE' : '');
+
+    const playerLine = `${p.name}, HP ${p.hp}/${p.maxHp}, Coins ${p.coins ?? 0}`;
+    const partyLine = (gameState.players || [])
+        .filter(pl => pl && pl !== p)
+        .slice(0, 3)
+        .map(pl => `${pl.name}:HP${pl.hp}/${pl.maxHp}${pl.isDowned ? '(downed)' : ''}`)
+        .join(', ');
+
+    const equipParts = [];
+    const equip = p.equipment || {};
+    if (equip.weapon) {
+        const w = (p.inventory || []).find(it => it && it.id === equip.weapon);
+        if (w?.name) equipParts.push(`weapon:${w.name}`);
+    }
+    if (equip.armor) {
+        const a = (p.inventory || []).find(it => it && it.id === equip.armor);
+        if (a?.name) equipParts.push(`armor:${a.name}`);
+    }
+    const equipLine = equipParts.length ? equipParts.join(', ') : 'none';
+
+    // NPCs from entityMemory — most recently seen first, capped.
+    const npcs = Object.entries(gameState.entityMemory?.npcs || {})
+        .sort(([, a], [, b]) => (b.lastSeenTurn || 0) - (a.lastSeenTurn || 0))
+        .slice(0, 8)
+        .map(([name]) => name)
+        .join(', ') || 'none recorded';
+
+    // Active quests — main quest stage + side quests + jail if active.
+    const activeQuests = [];
+    if (gameState.imprisoned) activeQuests.push('jail_escape');
+    if (!gameState.isGoalComplete && gameState.adventureGoal) {
+        const pct = gameState.questProgress?.completionPercentage ?? 0;
+        activeQuests.push(`main(${pct}%)`);
+    }
+    const sideActive = (gameState.questProgress?.sideQuests || [])
+        .filter(q => !q.completed)
+        .slice(0, 4)
+        .map(q => q.name)
+        .join(', ');
+    if (sideActive) activeQuests.push(`side:[${sideActive}]`);
+
+    // Story flags — only true ones, capped at 12.
+    const flags = Object.entries(gameState.storyFlags || {})
+        .filter(([, v]) => v === true)
+        .slice(0, 12)
+        .map(([k]) => k)
+        .join(', ') || 'none';
+
+    // Recent milestones for narrative consistency.
+    const recentMilestones = (gameState.questProgress?.milestones || [])
+        .slice(-3)
+        .map(m => m.name)
+        .join(' → ') || 'none yet';
+
+    const location = gameState.currentLocation?.name || 'unknown';
+
+    return `=== GAME STATE — Turn ${turn} | ${theme}${imprisonedTag} ===
+Location: ${location}
+Player: ${playerLine}
+Equipped: ${equipLine}${partyLine ? `
+Party: ${partyLine}` : ''}
+Active Quests: ${activeQuests.join(', ') || 'none'}
+NPCs (most recent): ${npcs}
+Story Flags: ${flags}
+Recent Milestones: ${recentMilestones}
+=== END STATE ===
+
+`;
+}
+
 export function generateSystemPrompt() {
     const log = window.displayVisualError || console.log;
     const currentPlayer = getCurrentPlayer();
     const playerAge = currentPlayer?.age || 25;
+
+    // Phase 3.2: build the canonical state block FIRST so it's the first
+    // content the narrator sees after the role directive. This is appended
+    // to the prompt at the bottom of this function.
+    const canonicalStateBlock = buildCanonicalStateBlock();
 
     // Age-appropriate guidelines (static import; this function must remain
     // sync because pruneMessageHistory and several other call sites consume
@@ -1426,10 +1528,16 @@ Equipment: Weapon: ${weaponName}, Armor: ${armorName}`;
 
     // Phase 3 main-quest stage hint — tells the narrator which act we're in
     // so the milestone graph progresses, and switches to creative-mode
-    // framing once /isGoalComplete is true (god mode unlocked).
+    // framing once /isGoalComplete is true (god mode unlocked). This
+    // function also returns the jail-escape addon when imprisoned.
     prompt += buildQuestStageHint(gameState);
 
-    return prompt;
+    // Phase 3.2: prepend the canonical entity state block. Done here at
+    // return time (rather than building the prompt around it) so the
+    // existing 1500+ lines of system-prompt construction don't have to be
+    // touched. The block is short and lives at the very top of the prompt
+    // — the first thing the narrator sees after the role directive.
+    return canonicalStateBlock + prompt;
 }
 
 /**

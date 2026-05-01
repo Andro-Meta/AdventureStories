@@ -5,6 +5,9 @@
 import { gameState } from './state.js?cb=014';
 import { generateId } from './utils.js?cb=014';
 import * as UI from './ui.js?cb=014';
+// Phase 4: god mode now actually calls the AI instead of returning canned
+// flavor text. Dynamic-import in the methods to avoid a top-level cycle
+// (aiHandler imports state which imports godMode lazily during init).
 
 /**
  * God Mode Manager - Handles post-game creative freedom
@@ -345,26 +348,52 @@ export class GodModeManager {
     }
 
     /**
-     * Generate AI response with god mode context
-     * @param {string} choice - Custom choice
-     * @param {object} analysis - Choice analysis
-     * @returns {Promise<string>} AI response
+     * Phase 4: Generate the actual AI narrative response to a god-mode
+     * declaration. The choice is treated as a player input, fed through
+     * the standard makeAICallForSystemAction pipeline so the existing
+     * diff-op engine, narrative storage, and arc memory all engage. The
+     * god-mode-specific framing comes from buildQuestStageHint(gameState)
+     * which already returns the GOD MODE block when /isGoalComplete is true.
+     *
+     * @param {string} choice - Custom god-mode declaration from the player
+     * @param {object} analysis - Result of analyzeCustomChoice (commandType, etc.)
+     * @returns {Promise<string>} The narrator's response prose
      */
     async generateGodModeResponse(choice, analysis) {
-        // For now, return a creative response acknowledging the god mode choice
-        // In a full implementation, this would use the AI system with special god mode prompts
-        
-        const responses = [
-            `With your newfound divine power, you ${choice.toLowerCase()}. Reality bends to your will as the world reshapes itself according to your desires.`,
-            
-            `Your godlike abilities manifest as you ${choice.toLowerCase()}. The very fabric of existence responds to your command, creating new possibilities.`,
-            
-            `Drawing upon unlimited creative force, you ${choice.toLowerCase()}. The adventure transforms in ways previously unimaginable.`,
-            
-            `With omnipotent control over this realm, you ${choice.toLowerCase()}. The story becomes whatever you envision it to be.`
-        ];
-        
-        return responses[Math.floor(Math.random() * responses.length)];
+        const log = window.displayVisualError || console.log;
+        const commandType = analysis?.commandType || 'normal';
+
+        try {
+            // Build a system action prompt that frames the player input as a
+            // god-mode declaration. The existing aiHandler / engine path
+            // applies any diff ops the narrator emits — this is how items,
+            // NPCs, world changes, and stat modifications actually take
+            // effect. Without this hook, god mode was pure flavor text.
+            const promptByType = {
+                world:     `[God Mode — World Manipulation]\nThe player declares: "${choice}"\nApply this change to the world. Emit diff ops for any concrete state changes (location, items, NPCs, enemies). Then narrate the change vividly.`,
+                narrative: `[God Mode — Narrative Override]\nThe player declares: "${choice}"\nReshape the story to honor this declaration. Emit diff ops for any state changes. Narrate the new direction.`,
+                character: `[God Mode — Character Modification]\nThe player declares: "${choice}"\nApply the change to the player character. Emit diff ops for stat / inventory / spell / level changes. Narrate how the player feels the change manifest.`,
+                normal:    `[God Mode — Free Action]\nThe player declares: "${choice}"\nHonor this declaration as authorial authority. Emit any diff ops needed to make the change real. Narrate the result.`
+            };
+            const prompt = promptByType[commandType] || promptByType.normal;
+
+            // Lazy import to dodge any module-load ordering issues with
+            // aiHandler ↔ state ↔ godMode.
+            const aiHandler = await import('./aiHandler.js?cb=014');
+            const result = await aiHandler.makeAICallForSystemAction(prompt, false);
+
+            // makeAICallForSystemAction returns { narrative, choices } and
+            // also pushes the narrative to the UI internally — return the
+            // narrative so the caller can include it in its own response.
+            return result?.narrative
+                || `Your declaration ripples outward — "${choice}" — and the world reshapes to match.`;
+
+        } catch (err) {
+            log(`GodMode: AI call failed (${err.message}); returning fallback prose.`);
+            // Graceful fallback: still acknowledge the god-mode action even
+            // if the AI is unreachable.
+            return `Your divine will reaches outward to "${choice}", though the response of the world is muted today. (AI backend error — try again or check the Local AI Status screen.)`;
+        }
     }
 
     /**
@@ -476,19 +505,28 @@ export class GodModeManager {
      * Helper methods for special commands (simplified implementations)
      */
     async processWorldCommand(analysis) {
-        this.creativeStats.set('world_changes_made', 
+        // Phase 4: route through generateGodModeResponse with the explicit
+        // 'world' command type so the AI prompt is tailored and the diff
+        // engine actually applies world-state changes (location, NPCs,
+        // enemies). Stat tracking is preserved.
+        const response = await this.generateGodModeResponse(analysis.originalText, { ...analysis, commandType: 'world' });
+        this.creativeStats.set('world_changes_made',
             (this.creativeStats.get('world_changes_made') || 0) + 1);
-        return await this.generateGodModeResponse(analysis.originalText, analysis);
+        return { success: true, response, isGodMode: true, commandType: 'world' };
     }
-
     async processNarrativeCommand(analysis) {
-        this.creativeStats.set('narrative_rewrites', 
-            (this.creativeStats.get('narrative_rewrites') || 0) + 1);
-        return await this.generateGodModeResponse(analysis.originalText, analysis);
+        // Phase 4: explicit narrative-override AI prompt.
+        const response = await this.generateGodModeResponse(analysis.originalText, { ...analysis, commandType: 'narrative' });
+        this.creativeStats.set('narrative_overrides_made',
+            (this.creativeStats.get('narrative_overrides_made') || 0) + 1);
+        return { success: true, response, isGodMode: true, commandType: 'narrative' };
     }
-
     async processCharacterCommand(analysis) {
-        return await this.generateGodModeResponse(analysis.originalText, analysis);
+        // Phase 4: explicit character-modification AI prompt.
+        const response = await this.generateGodModeResponse(analysis.originalText, { ...analysis, commandType: 'character' });
+        this.creativeStats.set('character_modifications_made',
+            (this.creativeStats.get('character_modifications_made') || 0) + 1);
+        return { success: true, response, isGodMode: true, commandType: 'character' };
     }
 
     /**

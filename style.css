@@ -2880,3 +2880,94 @@ footer { margin-top: 2rem; text-align: center; }
         padding-right: env(safe-area-inset-right);
     }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Phase 0: Cloud AI configuration UI
+ * ───────────────────────────────────────────────────────────────────────── */
+.backend-mode-section {
+    margin: 1rem 0;
+    padding: 0.85rem;
+    background: rgba(255,255,255,0.03);
+    border-radius: 8px;
+}
+.backend-mode-section h3 {
+    margin-top: 0;
+    margin-bottom: 0.6rem;
+    font-size: 1rem;
+}
+.backend-mode-label {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin: 0.4rem 0;
+    padding: 0.5rem 0.7rem;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: background 0.15s;
+}
+.backend-mode-label:hover {
+    background: rgba(255,255,255,0.05);
+}
+.backend-mode-label input[type="radio"] {
+    margin: 0;
+    accent-color: #4a9eff;
+}
+.cloud-config {
+    margin: 1rem 0;
+    padding: 0.85rem;
+    background: rgba(74,158,255,0.05);
+    border: 1px solid rgba(74,158,255,0.2);
+    border-radius: 8px;
+}
+.cloud-config h3 {
+    margin-top: 0.7rem;
+    margin-bottom: 0.5rem;
+    font-size: 0.95rem;
+}
+.cloud-provider-select {
+    width: 100%;
+    padding: 0.55rem;
+    background: rgba(0,0,0,0.3);
+    color: inherit;
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 6px;
+    font-size: 0.9rem;
+}
+.cloud-provider-notes {
+    margin: 0.5rem 0 0.9rem 0;
+    font-size: 0.85rem;
+    color: rgba(255,255,255,0.65);
+    font-style: italic;
+}
+.api-key-row {
+    display: flex;
+    gap: 0.5rem;
+    margin: 0.4rem 0;
+}
+.api-key-input {
+    flex: 1;
+    padding: 0.55rem;
+    background: rgba(0,0,0,0.3);
+    color: inherit;
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 6px;
+    font-family: monospace;
+    font-size: 0.85rem;
+}
+.api-key-hint {
+    font-size: 0.85rem;
+    color: rgba(255,255,255,0.7);
+    margin: 0.5rem 0 0.3rem 0;
+}
+.api-key-hint a {
+    color: #4a9eff;
+    text-decoration: underline;
+}
+.api-key-security-note {
+    font-size: 0.75rem;
+    color: rgba(255,255,255,0.5);
+    margin: 0.3rem 0 0.5rem 0;
+}
+.status-message.warning {
+    color: #ffaa44;
+}

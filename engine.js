@@ -19,6 +19,60 @@
 
 import { gameState, recordPlayerChoice, recordStoryBeat, recordWorldStateChange } from './state.js?cb=014';
 import * as Combat from './combat.js?cb=014';
+import * as Config from './config.js?cb=014';
+
+/**
+ * Phase 1.2: Look up a status effect from Config.STATUS_EFFECTS by name
+ * (case-insensitive). The narrator typically writes "Poison" or "Stun"
+ * without filling in defaultData / defaultDuration — without this lookup
+ * those effects are mechanically hollow (no damage-per-turn, no disable
+ * flag), so combat ticks did nothing.
+ *
+ * The catalog key in config.js is upper-cased ('POISON', 'STUN'); the
+ * value's `name` field has the user-visible form. We try both.
+ */
+function lookupStatusEffectCatalog(name) {
+    if (!name || typeof name !== 'string') return null;
+    const catalog = Config.STATUS_EFFECTS || {};
+    const upper = name.toUpperCase();
+    if (catalog[upper]) return catalog[upper];
+    // Fall back to a name-match search (handles "Burn" vs "BURN" mismatch
+    // when the LLM is creative with capitalization).
+    for (const entry of Object.values(catalog)) {
+        if (entry && typeof entry.name === 'string'
+            && entry.name.toLowerCase() === name.toLowerCase()) {
+            return entry;
+        }
+    }
+    return null;
+}
+
+/**
+ * Phase 1.2: Build a fully-resolved status effect object from a narrator-
+ * supplied value, merging in catalog defaults for duration and tick data.
+ * The narrator's explicit fields always take precedence over the catalog.
+ */
+function buildStatusEffectFromValue(value) {
+    const catalogEntry = lookupStatusEffectCatalog(value.name);
+    const duration = typeof value.duration === 'number'
+        ? value.duration
+        : (catalogEntry?.defaultDuration ?? 3);
+    const tickData = value.effectTickData
+        || value.defaultData
+        || catalogEntry?.defaultData
+        || {};
+    return {
+        id: value.id || `eff_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        name: catalogEntry?.name || value.name,
+        type: catalogEntry?.type || value.type || 'debuff',
+        icon: catalogEntry?.icon || value.icon || '',
+        duration,
+        effectTickData: tickData,
+        source: value.source || 'narration',
+        canStack: catalogEntry?.canStack ?? value.canStack ?? false,
+        resistanceType: catalogEntry?.resistanceType || value.resistanceType
+    };
+}
 
 // ---- Path allowlist ---------------------------------------------------------
 // Each entry maps a regex over the path to a handler {op, validator}.
@@ -151,14 +205,12 @@ const PATHS = [
             const idx = Number(m[1]);
             const player = gs.players[idx];
             player.statusEffects = player.statusEffects || [];
-            player.statusEffects.push({
-                id: value.id || `eff_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-                name: value.name,
-                duration: typeof value.duration === 'number' ? value.duration : 3,
-                effectTickData: value.effectTickData || {},
-                source: value.source || 'narration'
-            });
-            return `${player.name} status: +${value.name}`;
+            // Phase 1.2: resolve catalog defaults (duration + tick data)
+            // so named effects like "Poison" actually do damage-per-turn
+            // even when the narrator only supplies the name.
+            const effect = buildStatusEffectFromValue(value);
+            player.statusEffects.push(effect);
+            return `${player.name} status: +${effect.name}`;
         }
     },
 
@@ -437,21 +489,12 @@ const PATHS = [
             const idx = Number(m[1]);
             const enemy = gs.enemies[idx];
             enemy.statusEffects = enemy.statusEffects || [];
-            // Look up the catalog entry by name (case-insensitive) so the
-            // narrator can just say "Poison" and we pull defaultDuration +
-            // defaultData. Falls back to value-provided fields.
-            try {
-                const Config = window.Config || null;
-                // We don't have Config imported here; rely on value's own data.
-            } catch (_) {}
-            enemy.statusEffects.push({
-                id: value.id || `eff_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-                name: value.name,
-                duration: typeof value.duration === 'number' ? value.duration : 3,
-                effectTickData: value.effectTickData || value.defaultData || {},
-                source: value.source || 'narration'
-            });
-            return `${enemy.name} status: +${value.name}`;
+            // Phase 1.2: same catalog resolution as the player path —
+            // named effects pull defaultDuration + defaultData so combat
+            // tick logic actually applies the right damage / disable flags.
+            const effect = buildStatusEffectFromValue(value);
+            enemy.statusEffects.push(effect);
+            return `${enemy.name} status: +${effect.name}`;
         }
     },
 
@@ -483,8 +526,16 @@ const PATHS = [
     {
         regex: /^\/currentLocation$/,
         ops: ['replace'],
-        validate: (_m, value) => {
+        validate: (_m, value, gs) => {
             if (!value || typeof value !== 'object' || !value.name) return 'currentLocation must be an object with at least a name';
+            // Phase 2.6: reject location changes while imprisoned UNLESS the
+            // narrator is moving to/from a jail-typed location (which the
+            // jail system itself manages). The escape itself is handled by
+            // jailSystem.completeJailEscape, not by an arbitrary
+            // /currentLocation diff op.
+            if (gs.imprisoned && value.type !== 'jail') {
+                return 'cannot change location while imprisoned — complete the jail_escape quest first';
+            }
             return null;
         },
         apply: (_m, value, gs) => {
@@ -544,6 +595,15 @@ const PATHS = [
             };
             gs.questProgress.milestones.push(milestone);
             try { recordStoryBeat('milestone', value.name, 0.7); } catch (_) {}
+            // Phase 2: jail mini-quest hook. If a jail_* milestone fires
+            // while the party is imprisoned, advance the jailEscape state.
+            // jail_escaped triggers completeJailEscape() which restores
+            // items / gold / location and clears the imprisoned flag.
+            try {
+                if (gs.imprisoned && typeof window !== 'undefined' && window.__jailSystem?.tryApplyJailMilestone) {
+                    window.__jailSystem.tryApplyJailMilestone(value.name);
+                }
+            } catch (_) { /* don't let the hook break milestone application */ }
             return `milestone: ${value.name}`;
         }
     },

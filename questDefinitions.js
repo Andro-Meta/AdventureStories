@@ -120,11 +120,38 @@ export function determineCurrentAct(gameState) {
 }
 
 /**
+ * Phase 2: Active jail-escape mini-quest. When the party is imprisoned,
+ * this overrides the main quest stage hint — the player must complete the
+ * escape before the main quest resumes. The jailSystem module owns the
+ * full prompt addon; this is a thin pointer so questDefinitions stays the
+ * single dispatch for "what should the narrator focus on right now?".
+ */
+function buildJailEscapeHint() {
+    // Lazily fetch the jail system prompt so we don't create a circular
+    // import at module load (jailSystem imports state, this file is
+    // imported by aiHandler which also imports jailSystem).
+    try {
+        // Use a synchronous module reference — the jailSystem module is
+        // already loaded by the time the AI prompt is built.
+        if (typeof window !== 'undefined' && window.__jailSystem?.buildJailSystemPromptAddon) {
+            return window.__jailSystem.buildJailSystemPromptAddon();
+        }
+    } catch (_) { /* fall through */ }
+    // Fallback minimal hint if jail module hasn't registered itself yet.
+    return `\n\n=== JAIL ESCAPE (active) ===
+The party is imprisoned. They cannot leave the jail until they: (1) assess the situation, (2) find a weakness, and (3) execute the escape. Equipment was confiscated. Push them toward each objective and emit milestones jail_assessed → jail_weakness_found → jail_escaped as they progress.`;
+}
+
+/**
  * Build the quest-stage hint block to inject into the system prompt.
  * @param {object} gameState
  * @returns {string}
  */
 export function buildQuestStageHint(gameState) {
+    // Phase 2: jail mini-quest takes precedence over the main arc.
+    if (gameState.imprisoned) {
+        return buildJailEscapeHint();
+    }
     if (gameState.isGoalComplete) {
         return `\n\n=== GOD MODE (post-main-quest authorial authority) ===
 

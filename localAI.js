@@ -15,10 +15,16 @@ import * as Config from './config.js?cb=014';
 export class LocalAIClient {
     constructor() {
         // Tier 2: route to whichever backend config.LLM_BACKEND selects.
-        // Both backends serve OpenAI-compatible /v1/chat/completions.
+        // Local backends serve OpenAI-compatible /v1/chat/completions.
+        // Cloud backends (Phase 0) also speak the same shape but require
+        // an Authorization header and skip backend-specific params like
+        // cache_prompt and top_k.
         const backend = Config.getActiveBackendConfig();
         this.baseUrl = backend.url;
         this.backendDefaults = backend.defaultParams;
+        this.modelName = backend.modelName;
+        this.isCloud = backend.isCloud === true;
+        this.apiKey = Config.getCloudApiKey();
         this.isAvailable = false;
         this.isHealthy = false;
         this.modelInfo = null;
@@ -31,6 +37,65 @@ export class LocalAIClient {
 
         // Start health monitoring
         this.startHealthMonitoring();
+    }
+
+    /**
+     * Phase 0: update the API key at runtime when the user pastes one in
+     * the settings UI. Persisted to localStorage so it survives reload.
+     */
+    setApiKey(key) {
+        this.apiKey = key || null;
+        try {
+            if (typeof window !== 'undefined') {
+                if (key) {
+                    window.localStorage.setItem('adv.apiKey', key);
+                } else {
+                    window.localStorage.removeItem('adv.apiKey');
+                }
+            }
+        } catch (_) { /* localStorage unavailable — runtime-only key */ }
+        this.checkHealth();
+    }
+
+    /**
+     * Phase 0: switch to a cloud provider at runtime. Updates baseUrl,
+     * modelName, isCloud, persists the choice, and re-checks health.
+     */
+    setCloudProvider(providerKey) {
+        const provider = Config.CLOUD_PROVIDERS[providerKey];
+        if (!provider) {
+            console.warn(`Unknown cloud provider: ${providerKey}`);
+            return;
+        }
+        this.baseUrl = provider.baseUrl;
+        this.modelName = provider.model;
+        this.isCloud = true;
+        try {
+            if (typeof window !== 'undefined') {
+                window.localStorage.setItem('adv.cloudProvider', providerKey);
+                window.localStorage.setItem('adv.llmBackend', 'cloud');
+            }
+        } catch (_) { /* persistence best-effort */ }
+        this.checkHealth();
+    }
+
+    /**
+     * Phase 0: switch back to local AI from cloud. Reads the local
+     * default URL from config and clears the cloud flag.
+     */
+    setLocalBackend() {
+        try {
+            if (typeof window !== 'undefined') {
+                window.localStorage.setItem('adv.llmBackend', 'llama-cpp');
+            }
+        } catch (_) { /* persistence best-effort */ }
+        // Re-resolve config now that backend is local
+        const backend = Config.getActiveBackendConfig();
+        this.baseUrl = backend.url;
+        this.modelName = backend.modelName;
+        this.backendDefaults = backend.defaultParams;
+        this.isCloud = false;
+        this.checkHealth();
     }
     
     /**
@@ -45,6 +110,12 @@ export class LocalAIClient {
     loadConfiguration() {
         try {
             const backend = Config.getActiveBackendConfig();
+            // Cloud backends don't have a local config file or persistent
+            // localStorage URL — the URL is fixed by the provider preset.
+            // Skip the local-port reconciliation entirely.
+            if (backend.isCloud) {
+                return;
+            }
             const fallback = backend.url;
             const activePort = new URL(fallback).port;
 
@@ -131,10 +202,28 @@ export class LocalAIClient {
      * Check server health and availability
      */
     async checkHealth() {
+        // Cloud providers don't expose /health. Treat them as healthy iff
+        // the user has provided an API key — actual reachability is
+        // verified on first real request, with retries/timeout fallback.
+        if (this.isCloud) {
+            if (this.apiKey) {
+                this.isAvailable = true;
+                this.isHealthy = true;
+                this.modelInfo = { status: 'cloud', model: this.modelName };
+                if (this.requestQueue.length > 0) {
+                    this.processRequestQueue();
+                }
+                return this.modelInfo;
+            }
+            this.isAvailable = false;
+            this.isHealthy = false;
+            return null;
+        }
+
         try {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), Config.LOCAL_AI_CONFIG.CONNECTION_TIMEOUT);
-            
+
             const response = await fetch(`${this.baseUrl}/health`, {
                 method: 'GET',
                 signal: controller.signal,
@@ -142,9 +231,9 @@ export class LocalAIClient {
                     'Content-Type': 'application/json'
                 }
             });
-            
+
             clearTimeout(timeoutId);
-            
+
             if (response.ok) {
                 const health = await response.json();
                 this.isAvailable = true;
@@ -152,19 +241,19 @@ export class LocalAIClient {
                 // llama-server:           {status:"ok"}
                 this.isHealthy = health.status === 'healthy' || health.status === 'ok';
                 this.modelInfo = health;
-                
+
                 // Process queued requests if server is healthy
                 if (this.isHealthy && this.requestQueue.length > 0) {
                     this.processRequestQueue();
                 }
-                
+
                 return health;
             } else {
                 this.isAvailable = false;
                 this.isHealthy = false;
                 return null;
             }
-            
+
         } catch (error) {
             this.isAvailable = false;
             this.isHealthy = false;
@@ -186,15 +275,31 @@ export class LocalAIClient {
             max_tokens: options.max_tokens || defaults.max_tokens,
             temperature: options.temperature || defaults.temperature,
             top_p: options.top_p || defaults.top_p,
-            top_k: options.top_k || defaults.top_k,
-            stream: false,
+            stream: false
+        };
+
+        // Cloud APIs require the model name in the request body. Local
+        // llama-server uses whatever was loaded at startup, but accepts
+        // the field harmlessly. Always include it.
+        if (this.modelName) {
+            requestData.model = this.modelName;
+        }
+
+        if (this.isCloud) {
+            // Cloud APIs (OpenRouter, Groq, Google AI Studio) don't accept
+            // top_k or cache_prompt. Strip them so the request validates.
+            // Also strip Bearer-irrelevant fields.
+            // (cache_prompt and top_k are deliberately not added above.)
+        } else {
+            // Local backends (llama-server, MiniCPM Python) accept top_k.
+            requestData.top_k = options.top_k || defaults.top_k;
             // Phase 1-D: tell llama-server to keep its KV-cache prefix slot
             // warm. Branching choices share ~99% of the system prompt + arc
             // memory + entity memory across turns, so prefix reuse is the
             // single biggest free latency win on this stack. llama-server
             // ignores the field on backends that don't support it.
-            cache_prompt: true
-        };
+            requestData.cache_prompt = true;
+        }
 
         // Schema-constrained generation. Per llama.cpp's tools/server docs the
         // /v1/chat/completions endpoint accepts a bare `schema` directly on
@@ -209,10 +314,26 @@ export class LocalAIClient {
         // that don't enforce schemas at all (e.g. MiniCPM Python) ignore the
         // field entirely; the system prompt + tolerant extractor still work.
         if (options.jsonSchema) {
-            requestData.response_format = {
-                type: 'json_schema',
-                schema: stripUnsupportedSchemaConstraints(options.jsonSchema)
-            };
+            if (this.isCloud) {
+                // Cloud OpenAI-compatible APIs use the nested
+                // `json_schema: {name, schema, strict}` shape. Some
+                // (OpenRouter free models, Groq) silently ignore it; we
+                // include it anyway and rely on the tolerant extractor in
+                // parseJSONFromModelOutput as the safety net.
+                requestData.response_format = {
+                    type: 'json_schema',
+                    json_schema: {
+                        name: options.jsonSchemaName || 'response',
+                        schema: stripUnsupportedSchemaConstraints(options.jsonSchema),
+                        strict: false
+                    }
+                };
+            } else {
+                requestData.response_format = {
+                    type: 'json_schema',
+                    schema: stripUnsupportedSchemaConstraints(options.jsonSchema)
+                };
+            }
         } else if (options.jsonObject) {
             requestData.response_format = { type: 'json_object' };
         }
@@ -237,12 +358,34 @@ export class LocalAIClient {
         try {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), Config.LOCAL_AI_CONFIG.CONNECTION_TIMEOUT);
-            
-            const response = await fetch(`${this.baseUrl}/v1/chat/completions`, {
+
+            // Build headers — cloud providers require an Authorization
+            // bearer token; local servers don't (and would reject extra
+            // headers in CORS preflight on some llama-server builds).
+            const headers = { 'Content-Type': 'application/json' };
+            if (this.isCloud && this.apiKey) {
+                headers['Authorization'] = `Bearer ${this.apiKey}`;
+            }
+            // OpenRouter optionally accepts these for usage analytics — they
+            // don't affect routing but are recommended by their docs.
+            if (this.isCloud && this.baseUrl.includes('openrouter')) {
+                headers['HTTP-Referer'] = (typeof window !== 'undefined' && window.location)
+                    ? window.location.origin
+                    : 'https://adventure-stories.local';
+                headers['X-Title'] = 'Adventure Stories';
+            }
+
+            // Cloud providers don't expose /v1/chat/completions identically —
+            // base URLs are configured to include any provider-specific path
+            // prefix (e.g. Google AI's /openai/), and we always append
+            // /chat/completions. Local backends use /v1/chat/completions.
+            const endpoint = this.isCloud
+                ? `${this.baseUrl.replace(/\/$/, '')}/chat/completions`
+                : `${this.baseUrl}/v1/chat/completions`;
+
+            const response = await fetch(endpoint, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
+                headers,
                 body: JSON.stringify(requestData),
                 signal: controller.signal
             });

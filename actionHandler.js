@@ -1868,6 +1868,12 @@ export async function useInventoryItem(itemId) {
 export function equipInventoryItem(itemId, slot) {
      const log = window.displayVisualError || console.log; // Use logger
      log(`Attempting to equip item ${itemId} in slot ${slot}`);
+     // Phase 2.6: equipment is locked while imprisoned (gear was confiscated).
+     if (gameState.imprisoned) {
+         log(`Action blocked: Cannot equip while imprisoned.`);
+         UI.showPopup(`Your gear was confiscated. Find it during the escape.`, 'warning');
+         return;
+     }
      // Cannot equip if downed or loading
      if (gameState.isLoading || getCurrentPlayer()?.isDowned) {
            const reason = gameState.isLoading ? "Game is loading" : "Player is downed";
@@ -1920,6 +1926,12 @@ export function equipInventoryItem(itemId, slot) {
 export function unequipInventoryItem(slot) {
       const log = window.displayVisualError || console.log; // Use logger
       log(`Attempting to unequip item from slot ${slot}`);
+      // Phase 2.6: equipment frozen while imprisoned.
+      if (gameState.imprisoned) {
+          log(`Action blocked: Cannot unequip while imprisoned.`);
+          UI.showPopup(`Your gear was confiscated.`, 'warning');
+          return;
+      }
       // Cannot unequip if downed or loading
       if (gameState.isLoading || getCurrentPlayer()?.isDowned) {
            const reason = gameState.isLoading ? "Game is loading" : "Player is downed";
@@ -2037,11 +2049,17 @@ function dropInventoryItem(itemId) {
 /** Buys an item from the shop for the current player. Does not use a turn. */
 export function buyShopItem(itemData) {
      const log = window.displayVisualError || console.log; // Use logger
-     
+
      // Calculate reputation-modified price
      const modifiedPrice = calculateItemPrice(itemData);
      log(`Attempting to buy item: ${itemData?.name} (Base: ${itemData?.cost}, Modified: ${modifiedPrice})`);
-     
+
+     // Phase 2.6: no shopping in jail.
+     if (gameState.imprisoned) {
+         log(`Action blocked: Cannot shop while imprisoned.`);
+         UI.showPopup(`Not now — you're locked up.`, 'warning');
+         return;
+     }
       // Cannot shop if downed or loading
       if (gameState.isLoading || getCurrentPlayer()?.isDowned) {
           const reason = gameState.isLoading ? "Game is loading" : "Player is downed";

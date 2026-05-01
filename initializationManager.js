@@ -47,23 +47,41 @@ export class InitializationManager {
 
                 // Wire singleton subsystems onto gameState so consumers
                 // (actionHandler, ui) find them at the documented paths.
-                const { godModeManager } = await import('./godMode.js?cb=014');
-                gameState.godModeManager = godModeManager;
+                // Phase 1.3: each dynamic import is wrapped — if a module
+                // fails to load, the rest of init still proceeds and the
+                // dependent feature degrades gracefully (logs a warning,
+                // sets the manager to null so call sites can ?.-guard).
+                try {
+                    const { godModeManager } = await import('./godMode.js?cb=014');
+                    gameState.godModeManager = godModeManager || null;
+                } catch (e) {
+                    this.log(`InitManager: godMode load failed — feature disabled: ${e.message}`);
+                    gameState.godModeManager = null;
+                }
 
                 // Wire the quest progress manager and initialize it for the
                 // selected theme. Without this, every `gameState.questProgressManager`
                 // guard in aiHandler/godMode is permanently false — the
                 // "Beginning 0%" panel never updates and god mode never
                 // unlocks. Phase 0 audit P1 #6.
-                const { questProgressManager } = await import('./questProgress.js?cb=014');
-                gameState.questProgressManager = questProgressManager;
                 try {
-                    questProgressManager.initializeQuestProgress(
-                        gameState.adventureTheme || 'fantasy',
-                        gameState.adventureGoal || 'Discover the unfolding adventure.'
-                    );
+                    const { questProgressManager } = await import('./questProgress.js?cb=014');
+                    gameState.questProgressManager = questProgressManager || null;
+                    if (questProgressManager?.initializeQuestProgress) {
+                        try {
+                            questProgressManager.initializeQuestProgress(
+                                gameState.adventureTheme || 'fantasy',
+                                gameState.adventureGoal || 'Discover the unfolding adventure.'
+                            );
+                        } catch (e) {
+                            this.log(`InitManager: questProgressManager init warning: ${e.message}`);
+                        }
+                    } else {
+                        this.log(`InitManager: questProgressManager has no initializeQuestProgress() — quest panel will not update.`);
+                    }
                 } catch (e) {
-                    this.log(`InitManager: questProgressManager init warning: ${e.message}`);
+                    this.log(`InitManager: questProgress load failed — quests disabled this session: ${e.message}`);
+                    gameState.questProgressManager = null;
                 }
 
                 // Phase 3.5 follow-on: pick a random STORY HOOK for this run
@@ -73,11 +91,20 @@ export class InitializationManager {
                 // persisted on gameState so the initial-story prompt can
                 // anchor on it and saves preserve it across reloads.
                 try {
-                    const { pickStoryHook } = await import('./storyHooks.js?cb=014');
-                    gameState.storyHook = pickStoryHook(gameState.adventureTheme, gameState.customThemeDescription);
-                    this.log(`InitManager: storyHook picked — ${gameState.storyHook.archetype} for theme '${gameState.adventureTheme}'`);
+                    const storyHooksMod = await import('./storyHooks.js?cb=014');
+                    if (storyHooksMod?.pickStoryHook) {
+                        gameState.storyHook = storyHooksMod.pickStoryHook(
+                            gameState.adventureTheme,
+                            gameState.customThemeDescription
+                        );
+                        this.log(`InitManager: storyHook picked — ${gameState.storyHook?.archetype || 'unknown'} for theme '${gameState.adventureTheme}'`);
+                    } else {
+                        this.log(`InitManager: storyHooks module loaded but pickStoryHook missing — using default.`);
+                        gameState.storyHook = null;
+                    }
                 } catch (e) {
-                    this.log(`InitManager: storyHook pick warning: ${e.message}`);
+                    this.log(`InitManager: storyHook pick warning — game continues without hook: ${e.message}`);
+                    gameState.storyHook = null;
                 }
 
                 // SANITY CHECK: if theme isn't what the user picked, log loudly.

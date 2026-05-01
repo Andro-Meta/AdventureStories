@@ -197,13 +197,16 @@ export class EncounterSystem {
      */
     static generateCombatEncounter(location, turn) {
         const log = window.displayVisualError || console.log;
-        
-        // Check for boss encounter first
-        const bossChance = Bosses.getBossEncounterChance(turn, location);
-        if (Math.random() < bossChance) {
-            return this.generateBossEncounter(location, turn);
-        }
-        
+
+        // Phase 1.4: removed duplicate boss roll. Previously this method
+        // re-rolled `Math.random() < bossChance` even when called via
+        // generateEncounter's switch on encounterType === 'combat' — which
+        // already resolved that we are NOT having a boss this turn. The
+        // double roll could secretly downgrade a boss outcome from
+        // determineEncounterType into a normal fight (or vice versa for
+        // direct callers). Boss routing is now exclusively the job of
+        // determineEncounterType + the switch in generateEncounter.
+
         // Determine number of enemies (1-3 based on turn and location)
         let enemyCount = 1;
         if (turn > 5) enemyCount = getRandomInt(1, 2);
