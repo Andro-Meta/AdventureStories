@@ -96,6 +96,12 @@ const handleDOMContentLoaded = async () => {
 
             // Check if Continue button should be shown
             updateContinueButtonVisibility();
+            // Signal that JS initialization is complete and all event listeners are
+            // attached. Tests wait for this attribute so they don't click buttons
+            // before the click handlers are wired up (#mainMenuScreen starts as
+            // `active` in the raw HTML, which would otherwise satisfy the selector
+            // before JS has run).
+            document.body.dataset.jsReady = '1';
             displayVisualError("DOMContentLoaded: setup.initializeGame call completed.");
         } else {
             throw new Error("setup module or setup.initializeGame function not available.");

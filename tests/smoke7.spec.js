@@ -4,12 +4,12 @@
 // Covers:
 //   @themes      All 14 theme options preserve correctly through resetGameState / initManager
 //   @setup       Multi-player setup, second-game reset (initManager.reset() fix)
-//   @saveload    Save game → reload → continue restores state
+//   @saveload    Save game → reload → continue restores state (direct module calls, no AI)
 //   @integration Full game loop: combat, quests, god-mode (requires live AI on :8090)
 //
 // Usage:
-//   npm test                  — all fast tests (themes + setup + saveload)
-//   npm run test:themes       — theme sweep only
+//   npm test                  — fast tests (@saveload + one theme write check)
+//   npm run test:themes       — theme sweep (@integration, needs real AI)
 //   npm run test:integration  — full AI game loop tests (needs real AI server)
 //   npm run test:headed       — watch in browser
 
@@ -37,98 +37,36 @@ const ALL_THEMES = [
 ];
 
 // ---------------------------------------------------------------------------
-// Mock AI helpers
-// ---------------------------------------------------------------------------
-
-const MOCK_NARRATIVE = JSON.stringify({
-    narration: 'Your adventure begins. The world stretches out before you.',
-    diff: { ops: [] },
-});
-
-const MOCK_CHOICES = JSON.stringify({
-    choices: [
-        { type: 'Good',          text: 'Explore the area carefully' },
-        { type: 'Bad',           text: 'Rush forward without thinking' },
-        { type: 'Risky',         text: 'Take the dangerous path' },
-        { type: 'Silly',         text: 'Attempt a cartwheel' },
-        { type: 'Investigative', text: 'Examine your surroundings' },
-    ],
-});
-
-const MOCK_ARC_MEMORY = JSON.stringify({
-    summary: 'The adventure has just begun.',
-    newNpcs: [],
-    newLocations: [],
-    newItems: [],
-});
-
-function openAiCompletionBody(content) {
-    return JSON.stringify({
-        id: 'mock-completion',
-        object: 'chat.completion',
-        choices: [{ index: 0, message: { role: 'assistant', content }, finish_reason: 'stop' }],
-        usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
-    });
-}
-
-/** Route all calls to the AI backend (:8090) to fast mock responses. */
-async function mockAIRoutes(page) {
-    await page.route('**/health', route =>
-        route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-            body: '{"status":"ok","model":"mock"}',
-        })
-    );
-
-    await page.route('**/chat/completions', async route => {
-        let body = '';
-        try { body = route.request().postData() || ''; } catch { /* ignore */ }
-
-        let content;
-        if (body.includes('arc_memory') || body.includes('summary') || body.includes('newNpcs')) {
-            content = MOCK_ARC_MEMORY;
-        } else if (body.includes('choice') && body.includes('type')) {
-            content = MOCK_CHOICES;
-        } else {
-            content = MOCK_NARRATIVE;
-        }
-
-        await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-            body: openAiCompletionBody(content),
-        });
-    });
-}
-
-// ---------------------------------------------------------------------------
 // Navigation helpers (exact IDs / selectors from index.html)
 // ---------------------------------------------------------------------------
 
 /**
- * Open the game and wait for the main menu.
+ * Stub the health-check endpoint to return 200 OK immediately.
+ * Without this stub, initializeGame() hits /health with a 4-second timeout.
+ * If the server is slow or busy, that timeout fires, showPopup() renders an
+ * error banner over the main menu, and subsequent button clicks are blocked.
+ * Returning 200 lets checkLocalAIStatus() succeed fast with no error popup.
+ * This does NOT fake AI chat responses — real calls still go to the real server.
+ */
+async function stubHealthCheck(page) {
+    await page.route('**/health', route =>
+        route.fulfill({ status: 200, contentType: 'application/json', body: '{"status":"ok"}' })
+    );
+}
+
+/**
+ * Open the game and wait until JavaScript is fully initialized.
  *
- * IMPORTANT: always call mockAIRoutes(page) BEFORE this function, because
- * initializeGame() calls checkLocalAIStatus() (4-second timeout) on page
- * load. If the health endpoint is not mocked, the 4-second delay races with
- * the test and can cause showScreen('mainMenuScreen') inside initializeGame()
- * to fire AFTER the test has already clicked "New Adventure" and navigated
- * to playerCountScreen — hiding it again and breaking the test.
+ * #mainMenuScreen starts as class="screen active" in the raw HTML, so
+ * waiting for '#mainMenuScreen.active' would resolve immediately — before
+ * main.js imports its modules or setupEventListeners() wires up the button
+ * click handlers. We instead wait for the body[data-js-ready] attribute
+ * that main.js sets only after setupEventListeners() AND initializeGame()
+ * have both completed successfully.
  */
 async function gotoMainMenu(page) {
     await page.goto('/');
-    // Wait for all network requests to complete (networkidle = no pending
-    // requests for 500ms). This reliably signals that initializeGame() has
-    // finished its health check and called showScreen('mainMenuScreen').
-    //
-    // Simpler and more reliable than polling gameState.localAIStatus, which
-    // has a one-tick gap between being set and showScreen() executing — small
-    // enough to create a race where a fast test clicks "New Adventure" just
-    // before showScreen('mainMenuScreen') fires, which then hides the
-    // playerCountScreen we just navigated to.
-    await page.waitForLoadState('networkidle', { timeout: 15_000 });
-    await page.waitForSelector('#mainMenuScreen.active', { timeout: 5_000 });
+    await page.waitForSelector('body[data-js-ready]', { timeout: 30_000 });
 }
 
 /** Click "New Adventure" → wait for player count screen. */
@@ -140,11 +78,9 @@ async function clickNewGame(page) {
 /** Click the Solo / player count button → wait for adventure type screen. */
 async function selectPlayerCount(page, count = 1) {
     if (count > 1) {
-        // Buttons for 2-4 players are inside a <details class="experimental-multiplayer">
-        // that is closed by default — expand it first.
         const summary = page.locator('.experimental-multiplayer > summary');
         await summary.click();
-        await page.waitForTimeout(200); // let the details element open
+        await page.waitForTimeout(200);
     }
     await page.locator(`.playerCountBtn[data-count="${count}"]`).click();
     await page.waitForSelector('#adventureTypeScreen:not(.hidden)', { timeout: 10_000 });
@@ -167,7 +103,6 @@ async function selectTheme(page, themeValue, customText = '') {
 /** Fill age inputs (one per player) and click Next. */
 async function fillAges(page, count = 1, baseAge = 10) {
     const inputs = page.locator('#ageInputsContainer input[type="number"]');
-    // Age inputs are generated dynamically — wait for them
     await inputs.first().waitFor({ state: 'visible', timeout: 10_000 });
     for (let i = 0; i < count; i++) {
         await inputs.nth(i).fill(String(baseAge + i));
@@ -206,21 +141,20 @@ async function getThemeFromGameState(page) {
 
 // ---------------------------------------------------------------------------
 // SUITE: Theme selection
-// @themes — fast, no real AI needed (mocked)
+// @themes — one fast check; full theme sweep requires live AI (@integration)
 // ---------------------------------------------------------------------------
 
 test.describe('Theme selection @themes', () => {
+    test.slow(); // Gemma takes 35-50s per boot; triple timeout to 180s.
+
     // Quick sanity: proceedToAgeInput() writes the selected theme to gameState
-    // immediately, before any initialization runs.
+    // immediately, before any initialization or AI call runs.
     test('proceedToAgeInput writes selected theme to gameState', async ({ page }) => {
-        // Mock AI so initializeGame() health check returns instantly and doesn't
-        // race with our button clicks (see gotoMainMenu comment).
-        await mockAIRoutes(page);
+        await stubHealthCheck(page);
         await gotoMainMenu(page);
         await clickNewGame(page);
         await selectPlayerCount(page, 1);
 
-        // Pick a non-default theme
         await page.locator('#adventureTypeSelect').selectOption('pirate');
         await page.locator('#adventureTypeNextBtn').click();
         await page.waitForSelector('#ageInputScreen:not(.hidden)', { timeout: 10_000 });
@@ -229,21 +163,18 @@ test.describe('Theme selection @themes', () => {
         expect(theme).toBe('pirate');
     });
 
-    // Full sweep: each theme survives the entire initialization pipeline
-    // (including resetGameState inside the initManager CORE task).
+    // Full sweep: each theme survives the entire initialization pipeline.
+    // Requires a live AI server — the game screen only appears after the
+    // initial narrative is generated.
     for (const { value: themeValue, label, customText } of ALL_THEMES) {
-        test(`Theme preserved: ${label} (${themeValue}) @themes`, async ({ page }) => {
-            await mockAIRoutes(page);
+        test(`Theme preserved: ${label} (${themeValue}) @themes @integration`, async ({ page }) => {
             await gotoMainMenu(page);
             await runSetup(page, { theme: themeValue, customText, playerCount: 1 });
-
-            // Wait for the game screen — confirms initialization completed
-            await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 45_000 });
+            await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 90_000 });
 
             const finalTheme = await getThemeFromGameState(page);
             expect(finalTheme).toBe(themeValue);
 
-            // Custom theme: customThemeDescription must also be set
             if (themeValue === 'custom' && customText) {
                 const customDesc = await page.evaluate(async () => {
                     const { gameState } = await import('./state.js?cb=014');
@@ -257,15 +188,17 @@ test.describe('Theme selection @themes', () => {
 
 // ---------------------------------------------------------------------------
 // SUITE: Setup correctness
-// @setup — fast, uses mocked AI
+// @setup — all require live AI (game screen only appears after narrative)
+// @integration
 // ---------------------------------------------------------------------------
 
 test.describe('Setup flow @setup', () => {
+    test.slow(); // Gemma takes 35-50s per boot; triple timeout to 180s.
+
     test('Solo game: gameState has 1 player, correct name, HP at max, turn=1', async ({ page }) => {
-        await mockAIRoutes(page);
         await gotoMainMenu(page);
         await runSetup(page, { theme: 'pirate', playerCount: 1, names: ['Blackbeard'] });
-        await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 45_000 });
+        await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 90_000 });
 
         const state = await page.evaluate(async () => {
             const { gameState } = await import('./state.js?cb=014');
@@ -283,20 +216,18 @@ test.describe('Setup flow @setup', () => {
         expect(state.playerCount).toBe(1);
         expect(state.name).toBe('Blackbeard');
         expect(state.hp).toBe(state.maxHp);
-        // turn starts at 1; the initial story generation may advance it to 2
         expect(state.turn).toBeGreaterThanOrEqual(1);
         expect(state.theme).toBe('pirate');
     });
 
     test('3-player setup creates 3 players with correct names', async ({ page }) => {
-        await mockAIRoutes(page);
         await gotoMainMenu(page);
         await runSetup(page, {
             theme: 'space',
             playerCount: 3,
             names: ['Alice', 'Bob', 'Charlie'],
         });
-        await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 45_000 });
+        await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 90_000 });
 
         const [count, names] = await page.evaluate(async () => {
             const { gameState } = await import('./state.js?cb=014');
@@ -308,44 +239,33 @@ test.describe('Setup flow @setup', () => {
     });
 
     test('Second game in same session uses fresh state — initManager.reset() fix', async ({ page }) => {
-        // This test directly catches the bug where initManager.completedTasks
-        // was never cleared, causing all phases to be skipped silently on the
-        // second game start (wrong theme, wrong players, no story generated).
-        await mockAIRoutes(page);
         await gotoMainMenu(page);
-
-        // --- First game ---
         await runSetup(page, { theme: 'fantasy', playerCount: 1, names: ['FirstRun'] });
-        await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 45_000 });
+        await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 90_000 });
         expect(await getThemeFromGameState(page)).toBe('fantasy');
 
-        // Navigate back to main menu without a page reload (same JS session)
         await page.evaluate(async () => {
             const UI = await import('./ui.js?cb=014');
             UI.showScreen('mainMenuScreen');
         });
         await page.waitForSelector('#mainMenuScreen:not(.hidden), #mainMenuScreen.active', { timeout: 10_000 });
 
-        // --- Second game with a different theme ---
         await runSetup(page, { theme: 'dinosaur', playerCount: 1, names: ['SecondRun'] });
-        await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 45_000 });
+        await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 90_000 });
 
         const [theme, playerName] = await page.evaluate(async () => {
             const { gameState } = await import('./state.js?cb=014');
             return [gameState.adventureTheme, gameState.players[0]?.name];
         });
 
-        // Both must reflect the SECOND game — if initManager.reset() is missing,
-        // theme would still be 'fantasy' and player would still be 'FirstRun'.
         expect(theme).toBe('dinosaur');
         expect(playerName).toBe('SecondRun');
     });
 
     test('godModeManager is wired to gameState after init', async ({ page }) => {
-        await mockAIRoutes(page);
         await gotoMainMenu(page);
         await runSetup(page, { theme: 'fantasy', playerCount: 1 });
-        await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 45_000 });
+        await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 90_000 });
 
         const attached = await page.evaluate(async () => {
             const { gameState } = await import('./state.js?cb=014');
@@ -355,10 +275,9 @@ test.describe('Setup flow @setup', () => {
     });
 
     test('questProgressManager is wired to gameState after init', async ({ page }) => {
-        await mockAIRoutes(page);
         await gotoMainMenu(page);
         await runSetup(page, { theme: 'fantasy', playerCount: 1 });
-        await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 45_000 });
+        await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 90_000 });
 
         const attached = await page.evaluate(async () => {
             const { gameState } = await import('./state.js?cb=014');
@@ -370,43 +289,55 @@ test.describe('Setup flow @setup', () => {
 
 // ---------------------------------------------------------------------------
 // SUITE: Save / Load round-trip
-// @saveload — fast, uses mocked AI
+// @saveload — fast, no AI needed. Tests the persistence layer directly by
+// writing gameState via module imports rather than booting a full game.
 // ---------------------------------------------------------------------------
 
 test.describe('Save / Load round-trip @saveload', () => {
-    const TEST_SLOT = 'smoke7_saveload_roundtrip';
+    test.slow(); // page.reload + loadGame involves health-check round-trip; triple timeout to 180s.
 
     test('Save → page reload → loadGame restores theme and player name', async ({ page }) => {
-        await mockAIRoutes(page);
+        const SLOT = 'smoke7_saveload_roundtrip';
+        await stubHealthCheck(page);
         await gotoMainMenu(page);
-        await runSetup(page, { theme: 'steampunk', playerCount: 1, names: ['Cog'] });
-        await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 45_000 });
 
-        // Save via the saveLoad module directly (avoids UI popup timing issues)
+        // Write minimal game state directly — no AI call needed.
+        // currentChoices and messageHistory must be present so loadGame
+        // does not fall into the "no choices → regenerate via AI" branch.
         await page.evaluate(async (slot) => {
+            const { gameState } = await import('./state.js?cb=014');
+            gameState.adventureTheme = 'steampunk';
+            gameState.players = [{
+                name: 'Cog', hp: 100, maxHp: 100,
+                inventory: [], statusEffects: [], gold: 0,
+            }];
+            gameState.currentPlayerIndex = 0;
+            gameState.turn = 1;
+            gameState.currentChoices = [
+                { type: 'Good', text: 'Saved choice A' },
+                { type: 'Bad',  text: 'Saved choice B' },
+            ];
+            gameState.messageHistory = [
+                { role: 'assistant', content: 'The steampunk city hums with gears.' },
+            ];
             const { saveGameToLocalStorage } = await import('./saveLoad.js?cb=014');
             saveGameToLocalStorage(slot);
-        }, TEST_SLOT);
+        }, SLOT);
 
-        // Verify the slot exists in localStorage
         const slotExists = await page.evaluate((slot) => {
-            const key = 'advStorySave_' + slot;
-            return !!localStorage.getItem(key);
-        }, TEST_SLOT);
+            return !!localStorage.getItem('advStorySave_' + slot);
+        }, SLOT);
         expect(slotExists).toBe(true);
 
-        // Reload the page — new JS session, fresh module instances
+        await stubHealthCheck(page);
         await page.reload();
-        await mockAIRoutes(page);
-        await page.waitForSelector('#mainMenuScreen.active, #mainMenuScreen:not(.hidden)', { timeout: 15_000 });
+        await page.waitForSelector('body[data-js-ready]', { timeout: 30_000 });
 
-        // Load the game — loadGame() is async and updates gameState + UI
         await page.evaluate(async (slot) => {
             const { loadGame } = await import('./saveLoad.js?cb=014');
             await loadGame(slot);
-        }, TEST_SLOT);
+        }, SLOT);
 
-        // loadGame restores gameState directly via Object.assign
         const [theme, name] = await page.evaluate(async () => {
             const { gameState } = await import('./state.js?cb=014');
             return [gameState.adventureTheme, gameState.players[0]?.name];
@@ -417,27 +348,32 @@ test.describe('Save / Load round-trip @saveload', () => {
 
     test('Save preserves turn counter and player HP', async ({ page }) => {
         const SLOT = 'smoke7_state_persist';
-        await mockAIRoutes(page);
+        await stubHealthCheck(page);
         await gotoMainMenu(page);
-        await runSetup(page, { theme: 'haunted', playerCount: 1, names: ['Ghost'] });
-        await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 45_000 });
-
-        // Artificially advance turn and reduce HP to verify non-default values restore
-        await page.evaluate(async () => {
-            const { gameState } = await import('./state.js?cb=014');
-            gameState.turn = 7;
-            gameState.players[0].hp = 42;
-        });
 
         await page.evaluate(async (slot) => {
+            const { gameState } = await import('./state.js?cb=014');
+            gameState.adventureTheme = 'haunted';
+            gameState.players = [{
+                name: 'Ghost', hp: 42, maxHp: 100,
+                inventory: [], statusEffects: [], gold: 0,
+            }];
+            gameState.currentPlayerIndex = 0;
+            gameState.turn = 7;
+            gameState.currentChoices = [
+                { type: 'Good', text: 'Saved choice A' },
+                { type: 'Bad',  text: 'Saved choice B' },
+            ];
+            gameState.messageHistory = [
+                { role: 'assistant', content: 'Shadows gather in the haunted halls.' },
+            ];
             const { saveGameToLocalStorage } = await import('./saveLoad.js?cb=014');
             saveGameToLocalStorage(slot);
         }, SLOT);
 
+        await stubHealthCheck(page);
         await page.reload();
-        await mockAIRoutes(page);
-        await page.waitForLoadState('networkidle', { timeout: 15_000 });
-        await page.waitForSelector('#mainMenuScreen.active, #mainMenuScreen:not(.hidden)', { timeout: 15_000 });
+        await page.waitForSelector('body[data-js-ready]', { timeout: 30_000 });
 
         await page.evaluate(async (slot) => {
             const { loadGame } = await import('./saveLoad.js?cb=014');
@@ -459,43 +395,33 @@ test.describe('Save / Load round-trip @saveload', () => {
 // ---------------------------------------------------------------------------
 
 test.describe('Full game loop @integration', () => {
-    test.slow(); // Doubles the timeout for all tests in this describe block
+    test.slow();
 
     test('New game loads to game screen with choices rendered', async ({ page }) => {
-        // No AI mock — uses real server
         await gotoMainMenu(page);
         await runSetup(page, { theme: 'fantasy', playerCount: 1, names: ['Aria'] });
         await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 90_000 });
 
-        // Verify choices container has buttons (means story + choices generated)
         const choiceCount = await page.locator('#choicesContainer button').count();
         expect(choiceCount).toBeGreaterThan(0);
     });
 
     test('Cure item is not consumed when it has no effect', async ({ page }) => {
-        // Regression test for the actionHandler.js cure-item bug (fixed in PR #3):
-        // consumed = true was set unconditionally; now only set if effects were cured.
-        // Uses mock AI — this test verifies game mechanics, not the AI pipeline.
-        await mockAIRoutes(page);
+        // Regression test: consumed = true was set unconditionally; now only if effects were cured.
         await gotoMainMenu(page);
         await runSetup(page, { theme: 'fantasy', playerCount: 1 });
         await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 90_000 });
 
-        // Directly test the cure logic against a player with no status effects
         const result = await page.evaluate(async () => {
             const { gameState } = await import('./state.js?cb=014');
             const { useCureItem } = await import('./actionHandler.js?cb=014').catch(() => ({}));
             if (!useCureItem) return { skipped: true };
 
             const player = gameState.players[0];
-            // Ensure no status effects
             player.statusEffects = [];
             const cureItem = {
-                id: 'test_cure',
-                name: 'Antidote',
-                type: 'Consumable',
-                cures: ['Poison'],
-                quantity: 1,
+                id: 'test_cure', name: 'Antidote', type: 'Consumable',
+                cures: ['Poison'], quantity: 1,
             };
             player.inventory.push(cureItem);
             const inventoryBefore = player.inventory.length;
@@ -505,20 +431,15 @@ test.describe('Full game loop @integration', () => {
         });
 
         if (!result.skipped) {
-            // Item must NOT have been consumed (no Poison to cure)
             expect(result.consumed).toBe(false);
         }
     });
 
     test('Quest progress display updates after turns', async ({ page }) => {
-        // Uses mock AI — this test verifies UI wiring, not the AI pipeline.
-        await mockAIRoutes(page);
         await gotoMainMenu(page);
         await runSetup(page, { theme: 'fantasy', playerCount: 1 });
         await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 90_000 });
 
-        // questProgressManager must be wired (P1 fix) and the percentage display
-        // element must exist
         const questDisplayExists = await page.locator('#questPercentage').count();
         expect(questDisplayExists).toBeGreaterThan(0);
 
@@ -527,24 +448,19 @@ test.describe('Full game loop @integration', () => {
     });
 
     test('God mode becomes available after sufficient quest progress', async ({ page }) => {
-        // Uses mock AI — this test verifies manager wiring, not the AI pipeline.
-        await mockAIRoutes(page);
         await gotoMainMenu(page);
         await runSetup(page, { theme: 'fantasy', playerCount: 1 });
         await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 90_000 });
 
-        // Manually drive quest progress to 100% to trigger god mode unlock
         const godModeUnlocked = await page.evaluate(async () => {
             const { gameState } = await import('./state.js?cb=014');
             if (!gameState.questProgressManager) return { error: 'questProgressManager missing' };
             if (!gameState.godModeManager) return { error: 'godModeManager missing' };
 
-            // Force quest completion
             gameState.questProgressManager.progressPercent = 100;
             gameState.questProgressManager.currentPhaseIndex =
                 gameState.questProgressManager.questPhases?.length ?? 5;
 
-            // Trigger the unlock check
             try {
                 gameState.godModeManager.checkUnlockConditions();
                 return { unlocked: gameState.godModeManager.isUnlocked };
@@ -553,7 +469,6 @@ test.describe('Full game loop @integration', () => {
             }
         });
 
-        // Must not error; unlocked state depends on implementation
         expect(godModeUnlocked.error).toBeUndefined();
         expect(typeof godModeUnlocked.unlocked).toBe('boolean');
     });
