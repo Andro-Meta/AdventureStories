@@ -61,14 +61,19 @@ Describe the scene after the victorious battle, mentioning the state of the defe
             UI.updateNarrative(result.narrative);
             gameState.currentChoices = result.choices;
             UI.renderChoices(result.choices);
+            // Advance story turn now that combat is over (inCombat already false)
+            try {
+                const { advanceTurn } = await import('./turnManager.js?cb=014');
+                await advanceTurn();
+            } catch (e) { /* non-fatal — turn counter best-effort */ }
             return;
         }
     } catch (error) {
         console.log('Victory processing: Local AI orchestrator failed, using fallback:', error);
     }
 
-    // Fallback to standard processing
-    await makeAICallForSystemAction(victoryPrompt, true); // preventTurnAdvance = true
+    // Fallback to standard processing — inCombat is already false so advanceTurn will fire
+    await makeAICallForSystemAction(victoryPrompt, false);
     console.log("handleCombatVictory finished.");
     displayVisualError("handleCombatVictory finished.");
 }
