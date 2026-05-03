@@ -25,7 +25,7 @@ export const LLM_BACKEND = (() => {
     try {
         if (typeof window !== 'undefined') {
             const stored = window.localStorage.getItem('adv.llmBackend');
-            if (stored === 'cloud' || stored === 'llama-cpp' || stored === 'minicpm-python') {
+            if (stored === 'cloud' || stored === 'llama-cpp' || stored === 'minicpm-python' || stored === 'ollama') {
                 return stored;
             }
         }
@@ -50,6 +50,23 @@ export const LOCAL_AI_CONFIG = {
         temperature: 0.8,
         top_p: 0.8,
         top_k: 50
+    }
+};
+
+// Ollama config. Used when LLM_BACKEND === 'ollama'.
+// Ollama exposes OpenAI-compatible /v1/chat/completions so the same localAI.js
+// calling code works — only the health check path differs (/api/tags instead of /health).
+// Switch via: localStorage.setItem('adv.llmBackend', 'ollama') in the browser console.
+export const OLLAMA_CONFIG = {
+    MODEL_NAME: 'gemma3:27b',           // Best Gemma story model in typical Ollama installs
+    DEFAULT_URL: 'http://localhost:11434',
+    HEALTH_PATH: '/api/tags',           // Ollama lists models here; 200 = healthy
+    CONTEXT_WINDOW: 131072,
+    DEFAULT_PARAMS: {
+        max_tokens: 2048,
+        temperature: 0.7,
+        top_p: 0.95
+        // top_k omitted — Ollama's OpenAI endpoint ignores it
     }
 };
 
@@ -209,7 +226,18 @@ export function getActiveBackendConfig() {
                 // top_k intentionally omitted — not supported by most cloud APIs
             },
             isCloud: true,
+            healthPath: null, // Cloud providers skip local health checks
             providerName: provider.name
+        };
+    }
+    if (LLM_BACKEND === 'ollama') {
+        return {
+            url: resolveBackendUrl(OLLAMA_CONFIG.DEFAULT_URL),
+            modelName: OLLAMA_CONFIG.MODEL_NAME,
+            contextWindow: OLLAMA_CONFIG.CONTEXT_WINDOW,
+            defaultParams: OLLAMA_CONFIG.DEFAULT_PARAMS,
+            isCloud: false,
+            healthPath: OLLAMA_CONFIG.HEALTH_PATH  // /api/tags returns { models: [...] }
         };
     }
     if (LLM_BACKEND === 'llama-cpp') {
@@ -218,15 +246,18 @@ export function getActiveBackendConfig() {
             modelName: LLAMA_CPP_CONFIG.MODEL_NAME,
             contextWindow: LLAMA_CPP_CONFIG.CONTEXT_WINDOW,
             defaultParams: LLAMA_CPP_CONFIG.DEFAULT_PARAMS,
-            isCloud: false
+            isCloud: false,
+            healthPath: '/health'  // llama-server: { status: 'ok' }
         };
     }
+    // minicpm-python fallback
     return {
         url: resolveBackendUrl(LOCAL_AI_CONFIG.DEFAULT_URL),
         modelName: LOCAL_AI_CONFIG.MODEL_NAME,
         contextWindow: LOCAL_AI_CONFIG.CONTEXT_WINDOW,
         defaultParams: LOCAL_AI_CONFIG.DEFAULT_PARAMS,
-        isCloud: false
+        isCloud: false,
+        healthPath: '/health'
     };
 }
 
@@ -242,7 +273,7 @@ export const RESOURCE_REGEN_COMBAT = 2;      // Resource regenerated per turn in
 export const RESOURCE_REGEN_EXPLORATION = 5; // Resource regenerated per turn out of combat
 export const RESOURCE_PER_LEVEL = 5;         // Additional resource per character level
 export const DOWNED_TURNS_MAX = 3; // Turns until auto-revive after being downed
-export const MAX_PLAYERS = 4;
+export const MAX_PLAYERS = 5;
 export const MIN_AGE = 6;
 export const MAX_AGE = 99;
 export const MAX_NAME_LENGTH = 30;
@@ -821,7 +852,8 @@ export const ChoiceOutcomeConfig = {
 };
 
 // --- Local Storage ---
-export const SAVE_GAME_PREFIX = 'advStorySave_'; // Prefix for save game keys
+export const SAVE_GAME_PREFIX = 'AG-';           // Prefix for save game keys (spec: AG-<date-time-code>)
+export const SAVE_GAME_LEGACY_PREFIX = 'advStorySave_'; // Old prefix — used only for one-time migration
 
 // --- UI Settings ---
 export const POPUP_DURATION = 3000; // Default popup message duration (ms)

@@ -2,7 +2,7 @@
 // Dynamic AI-driven contextual spell/skill generation system
 // Matches the sophistication of dynamicItems.js with spell-specific intelligence
 
-import { gameState } from './state.js?cb=014';
+import { gameState, buildGameContextBlock } from './state.js?cb=014';
 import * as Config from './config.js?cb=014';
 import { generateId } from './utils.js?cb=014';
 import * as Spells from './spells.js?cb=014';
@@ -115,19 +115,18 @@ export class DynamicSpellRegistry {
             UI.showLoading(true, 'Generating dynamic spells...');
             
             // Use Gemma hyperthreading for better performance
-            let aiResponse;
-            if (gemmaHT && gemmaHT.isAvailable()) {
-                aiResponse = await gemmaHT.processWithHyperthreading(spellPrompt, 'spell_generation');
-            } else {
-                const AI = await import('./aiHandler.js?cb=014');
-                const response = await AI.makeAICallForSystemAction(spellPrompt, true);
-                aiResponse = response.narrative;
-            }
-            
-            if (!aiResponse || typeof aiResponse !== 'string' || aiResponse.trim().length === 0) {
+            // Use schema-constrained JSON — narrative pipeline returns story prose, not spell JSON
+            const API = await import('./api_new.js?cb=014');
+            const messages = [
+                { role: 'system', content: 'You are a game data generator. Return only valid JSON matching the requested schema. No prose.' },
+                { role: 'user', content: spellPrompt }
+            ];
+            const aiResponse = await API.getAIResponseJSON(messages, { type: 'object' }, { max_tokens: 400, temperature: 0.7 });
+
+            if (!aiResponse || typeof aiResponse !== 'object') {
                 throw new Error('Invalid or empty AI response');
             }
-            
+
             // Parse and validate the AI response
             const spellData = this.parseSpellAgentResponse(aiResponse, school, type, level, context);
             
@@ -170,7 +169,9 @@ export class DynamicSpellRegistry {
         const patterns = this.analyzeContextualPatterns(school, type, context);
         const playerPrefs = this.getPlayerPreferences(context.playerId);
         
-        return `${contextualPrompt}
+        const gameCtx = buildGameContextBlock();
+        return `${gameCtx}
+${contextualPrompt}
 
 REVOLUTIONARY CONTEXTUAL ANALYSIS:
 - Confidence Score: ${(contextualAnalysis.confidenceScore * 100).toFixed(0)}%
@@ -250,9 +251,12 @@ Respond with ONLY a JSON object:
      */
     parseSpellAgentResponse(aiResponse, school, type, level, context) {
         try {
+            if (aiResponse && typeof aiResponse === 'object') {
+                return this.validateAndSanitizeSpellData(aiResponse, school, type, level, context);
+            }
             // Clean the response
             let cleanResponse = aiResponse.trim();
-            
+
             // Extract JSON if wrapped in markdown or other text
             const jsonMatch = cleanResponse.match(/\{[\s\S]*\}/);
             if (jsonMatch) {
@@ -272,7 +276,7 @@ Respond with ONLY a JSON object:
         } catch (error) {
             const log = window.displayVisualError || console.log;
             log(`DynamicSpells: Parse error: ${error.message}`);
-            log(`DynamicSpells: Raw response: ${aiResponse.substring(0, 200)}...`);
+            log(`DynamicSpells: Raw response: ${JSON.stringify(aiResponse).substring(0, 200)}...`);
             return null;
         }
     }

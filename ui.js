@@ -647,7 +647,8 @@ export function updateGameHeader() {
     } catch (e) { log("Failed to get theme name for header", e); }
 
     if (elements.adventureTitle) elements.adventureTitle.textContent = sanitizeText(themeName);
-    if (elements.adventureGoal) elements.adventureGoal.textContent = sanitizeText(gameState.adventureGoal || 'Survive!');
+    const hasRealGoal = gameState.adventureGoal && gameState.adventureGoal !== 'Not set yet.';
+    if (elements.adventureGoal) elements.adventureGoal.textContent = sanitizeText(hasRealGoal ? gameState.adventureGoal : 'Setting your quest...');
     if (elements.turnCounter) elements.turnCounter.textContent = gameState.turn;
 
     // Update custom action visibility based on game state
@@ -1695,20 +1696,20 @@ export function updateQuestProgressUI() {
     
     try {
         const progress = gameState.questProgress;
-        
-        // Update progress bar and phase
+        const hasGoal = gameState.adventureGoal && gameState.adventureGoal !== 'Not set yet.';
+
+        // Suppress phase/percentage display until the AI has set a real goal.
         if (elements.questPhase) {
-            elements.questPhase.textContent = getPhaseDisplayName(progress.currentPhase);
+            elements.questPhase.textContent = hasGoal ? getPhaseDisplayName(progress.currentPhase) : 'Awaiting quest...';
         }
-        
+
         if (elements.questPercentage) {
-            elements.questPercentage.textContent = `${progress.completionPercentage}%`;
+            elements.questPercentage.textContent = hasGoal ? `${progress.completionPercentage}%` : '';
         }
-        
+
         if (elements.questProgressBar) {
-            elements.questProgressBar.style.width = `${progress.completionPercentage}%`;
-            // Update progress bar color based on phase
-            elements.questProgressBar.className = `progress-fill ${progress.currentPhase}`;
+            elements.questProgressBar.style.width = hasGoal ? `${progress.completionPercentage}%` : '0%';
+            elements.questProgressBar.className = `progress-fill ${hasGoal ? progress.currentPhase : 'beginning'}`;
         }
         
         // Update objectives list

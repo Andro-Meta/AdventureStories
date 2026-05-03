@@ -41,21 +41,29 @@ const ALL_THEMES = [
 // ---------------------------------------------------------------------------
 
 /**
- * Stub the health-check endpoint to return 200 OK immediately.
- * Without this stub, initializeGame() hits /health with a 4-second timeout.
- * If the server is slow or busy, that timeout fires, showPopup() renders an
- * error banner over the main menu, and subsequent button clicks are blocked.
- * Returning 200 lets checkLocalAIStatus() succeed fast with no error popup.
- * This does NOT fake AI chat responses — real calls still go to the real server.
+ * Stub the health-check endpoints to return 200 OK immediately.
+ * Stubs BOTH /health (llama-server) and /api/tags (Ollama) so the test works
+ * regardless of which backend is active. This does NOT fake AI chat responses
+ * — real calls still reach the real server (or fail gracefully in fast tests
+ * that don't make AI calls at all).
  */
 async function stubHealthCheck(page) {
     await page.route('**/health', route =>
         route.fulfill({ status: 200, contentType: 'application/json', body: '{"status":"ok"}' })
     );
+    // Ollama health check endpoint — returns a models list
+    await page.route('**/api/tags', route =>
+        route.fulfill({ status: 200, contentType: 'application/json', body: '{"models":[{"name":"test-model:latest"}]}' })
+    );
 }
 
 /**
  * Open the game and wait until JavaScript is fully initialized.
+ *
+ * Sets the backend to 'ollama' before the page loads so integration tests
+ * use the Ollama instance running on port 11434 rather than the llama-server
+ * binary (which may not be running). Ollama exposes an OpenAI-compatible
+ * /v1/chat/completions endpoint — no other code changes needed.
  *
  * #mainMenuScreen starts as class="screen active" in the raw HTML, so
  * waiting for '#mainMenuScreen.active' would resolve immediately — before
@@ -65,6 +73,11 @@ async function stubHealthCheck(page) {
  * have both completed successfully.
  */
 async function gotoMainMenu(page) {
+    // Point config.LLM_BACKEND at Ollama (port 11434, OpenAI-compatible API).
+    // This runs before any script so config.js picks it up on first import.
+    await page.addInitScript(() => {
+        try { localStorage.setItem('adv.llmBackend', 'ollama'); } catch (_) {}
+    });
     await page.goto('/');
     await page.waitForSelector('body[data-js-ready]', { timeout: 30_000 });
 }
@@ -145,7 +158,7 @@ async function getThemeFromGameState(page) {
 // ---------------------------------------------------------------------------
 
 test.describe('Theme selection @themes', () => {
-    test.slow(); // Gemma takes 35-50s per boot; triple timeout to 180s.
+    test.setTimeout(300_000); // generateInitialStory task allows up to 120s; 5 min per test gives full margin.
 
     // Quick sanity: proceedToAgeInput() writes the selected theme to gameState
     // immediately, before any initialization or AI call runs.
@@ -170,7 +183,7 @@ test.describe('Theme selection @themes', () => {
         test(`Theme preserved: ${label} (${themeValue}) @themes @integration`, async ({ page }) => {
             await gotoMainMenu(page);
             await runSetup(page, { theme: themeValue, customText, playerCount: 1 });
-            await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 90_000 });
+            await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 250_000 });
 
             const finalTheme = await getThemeFromGameState(page);
             expect(finalTheme).toBe(themeValue);
@@ -193,12 +206,12 @@ test.describe('Theme selection @themes', () => {
 // ---------------------------------------------------------------------------
 
 test.describe('Setup flow @setup', () => {
-    test.slow(); // Gemma takes 35-50s per boot; triple timeout to 180s.
+    test.setTimeout(300_000); // generateInitialStory task allows up to 120s; 5 min per test gives full margin.
 
     test('Solo game: gameState has 1 player, correct name, HP at max, turn=1', async ({ page }) => {
         await gotoMainMenu(page);
         await runSetup(page, { theme: 'pirate', playerCount: 1, names: ['Blackbeard'] });
-        await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 90_000 });
+        await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 250_000 });
 
         const state = await page.evaluate(async () => {
             const { gameState } = await import('./state.js?cb=014');
@@ -227,7 +240,7 @@ test.describe('Setup flow @setup', () => {
             playerCount: 3,
             names: ['Alice', 'Bob', 'Charlie'],
         });
-        await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 90_000 });
+        await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 250_000 });
 
         const [count, names] = await page.evaluate(async () => {
             const { gameState } = await import('./state.js?cb=014');
@@ -241,7 +254,7 @@ test.describe('Setup flow @setup', () => {
     test('Second game in same session uses fresh state — initManager.reset() fix', async ({ page }) => {
         await gotoMainMenu(page);
         await runSetup(page, { theme: 'fantasy', playerCount: 1, names: ['FirstRun'] });
-        await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 90_000 });
+        await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 250_000 });
         expect(await getThemeFromGameState(page)).toBe('fantasy');
 
         await page.evaluate(async () => {
@@ -251,7 +264,7 @@ test.describe('Setup flow @setup', () => {
         await page.waitForSelector('#mainMenuScreen:not(.hidden), #mainMenuScreen.active', { timeout: 10_000 });
 
         await runSetup(page, { theme: 'dinosaur', playerCount: 1, names: ['SecondRun'] });
-        await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 90_000 });
+        await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 250_000 });
 
         const [theme, playerName] = await page.evaluate(async () => {
             const { gameState } = await import('./state.js?cb=014');
@@ -265,7 +278,7 @@ test.describe('Setup flow @setup', () => {
     test('godModeManager is wired to gameState after init', async ({ page }) => {
         await gotoMainMenu(page);
         await runSetup(page, { theme: 'fantasy', playerCount: 1 });
-        await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 90_000 });
+        await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 250_000 });
 
         const attached = await page.evaluate(async () => {
             const { gameState } = await import('./state.js?cb=014');
@@ -277,7 +290,7 @@ test.describe('Setup flow @setup', () => {
     test('questProgressManager is wired to gameState after init', async ({ page }) => {
         await gotoMainMenu(page);
         await runSetup(page, { theme: 'fantasy', playerCount: 1 });
-        await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 90_000 });
+        await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 250_000 });
 
         const attached = await page.evaluate(async () => {
             const { gameState } = await import('./state.js?cb=014');
@@ -294,7 +307,7 @@ test.describe('Setup flow @setup', () => {
 // ---------------------------------------------------------------------------
 
 test.describe('Save / Load round-trip @saveload', () => {
-    test.slow(); // page.reload + loadGame involves health-check round-trip; triple timeout to 180s.
+    test.slow(); // page.reload + loadGame involves health-check round-trip.
 
     test('Save → page reload → loadGame restores theme and player name', async ({ page }) => {
         const SLOT = 'smoke7_saveload_roundtrip';
@@ -324,8 +337,9 @@ test.describe('Save / Load round-trip @saveload', () => {
             saveGameToLocalStorage(slot);
         }, SLOT);
 
-        const slotExists = await page.evaluate((slot) => {
-            return !!localStorage.getItem('advStorySave_' + slot);
+        const slotExists = await page.evaluate(async (slot) => {
+            const { SAVE_GAME_PREFIX } = await import('./config.js?cb=014');
+            return !!localStorage.getItem(SAVE_GAME_PREFIX + slot);
         }, SLOT);
         expect(slotExists).toBe(true);
 
@@ -395,12 +409,12 @@ test.describe('Save / Load round-trip @saveload', () => {
 // ---------------------------------------------------------------------------
 
 test.describe('Full game loop @integration', () => {
-    test.slow();
+    test.setTimeout(300_000); // generateInitialStory task allows up to 120s; 5 min per test gives full margin.
 
     test('New game loads to game screen with choices rendered', async ({ page }) => {
         await gotoMainMenu(page);
         await runSetup(page, { theme: 'fantasy', playerCount: 1, names: ['Aria'] });
-        await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 90_000 });
+        await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 250_000 });
 
         const choiceCount = await page.locator('#choicesContainer button').count();
         expect(choiceCount).toBeGreaterThan(0);
@@ -410,7 +424,7 @@ test.describe('Full game loop @integration', () => {
         // Regression test: consumed = true was set unconditionally; now only if effects were cured.
         await gotoMainMenu(page);
         await runSetup(page, { theme: 'fantasy', playerCount: 1 });
-        await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 90_000 });
+        await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 250_000 });
 
         const result = await page.evaluate(async () => {
             const { gameState } = await import('./state.js?cb=014');
@@ -438,7 +452,7 @@ test.describe('Full game loop @integration', () => {
     test('Quest progress display updates after turns', async ({ page }) => {
         await gotoMainMenu(page);
         await runSetup(page, { theme: 'fantasy', playerCount: 1 });
-        await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 90_000 });
+        await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 250_000 });
 
         const questDisplayExists = await page.locator('#questPercentage').count();
         expect(questDisplayExists).toBeGreaterThan(0);
@@ -450,7 +464,7 @@ test.describe('Full game loop @integration', () => {
     test('God mode becomes available after sufficient quest progress', async ({ page }) => {
         await gotoMainMenu(page);
         await runSetup(page, { theme: 'fantasy', playerCount: 1 });
-        await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 90_000 });
+        await page.waitForSelector('#gameScreen:not(.hidden)', { timeout: 250_000 });
 
         const godModeUnlocked = await page.evaluate(async () => {
             const { gameState } = await import('./state.js?cb=014');

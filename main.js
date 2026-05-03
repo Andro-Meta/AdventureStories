@@ -501,11 +501,14 @@ function updateContinueButtonVisibility() {
     if (!continueBtn) return;
     
     try {
-        // Check if any saves exist
+        // Check if any saves exist under the current prefix (AG-) or the legacy
+        // prefix (advStorySave_) in case migration hasn't run yet on first load.
+        const savePrefix = (Config && Config.SAVE_GAME_PREFIX) ? Config.SAVE_GAME_PREFIX : 'AG-';
+        const legacyPrefix = 'advStorySave_';
         let hasSaves = false;
         for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
-            if (key && key.startsWith('advStorySave_')) {
+            if (key && (key.startsWith(savePrefix) || key.startsWith(legacyPrefix))) {
                 hasSaves = true;
                 break;
             }

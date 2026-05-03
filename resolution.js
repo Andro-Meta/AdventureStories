@@ -200,46 +200,51 @@ Then provide three concrete choices that begin the escape attempt: assess the ce
  * Applies rewards after the main goal is completed. Called by aiHandler when [Goal:Complete] command is processed.
  */
 export function handleGoalCompletionRewards() {
-    // Implementation handles goal completion rewards properly
-    // Needs gameState, Config, UI, Items, Combat, generateId, getRandomElement
-    console.log("Goal Complete! Applying rewards.");
-    displayVisualError("Goal Complete! Applying rewards."); // Visual log
+    const log = window.displayVisualError || console.log;
+    log("Goal Complete! Applying rewards.");
+
     if (!gameState.isGoalComplete) {
-         console.warn("handleGoalCompletionRewards called but goal is not marked complete in state yet. This might be called too early.");
-         displayVisualError("Warning: handleGoalCompletionRewards called but goal is not marked complete in state.");
+        log("Warning: handleGoalCompletionRewards called before isGoalComplete was set.");
     }
 
-    const coinReward = Config.DefaultItemCosts[Config.Tiers.SPECIAL] || 350;
-    UI.showPopup(`Goal Complete! +${coinReward} Coins per player!`, 'legendary', 5000);
+    // Spec: 1000 coins + a legendary weapon per player.
+    const COIN_REWARD = 1000;
+
+    // Announce the victory first with a dramatic popup.
+    UI.showPopup('🏆 Quest Complete! The adventure is won!', 'legendary', 6000);
 
     gameState.players.forEach(player => {
-         if (!player) return;
+        if (!player) return;
 
-         player.coins = (player.coins || 0) + coinReward;
+        // --- 1000 coins ---
+        player.coins = (player.coins || 0) + COIN_REWARD;
+        UI.showPopup(`${player.name} received ${COIN_REWARD} coins!`, 'coins', 4000);
 
-        let rewardTier = Config.Tiers.HIGH;
-         const tierRoll = Math.random();
-         if (tierRoll > 0.7) rewardTier = Config.Tiers.SPECIAL;
+        // --- Legendary weapon ---
+        // Always generate a Legendary-tier Weapon so the reward matches the spec.
+        const legendaryWeapon = Items.generateThemedItem(
+            gameState.adventureTheme,
+            Config.Tiers.LEGENDARY,
+            'Weapon'
+        );
 
-        displayVisualError(`Generating ${rewardTier} reward item for ${player.name}`);
-        const itemType = getRandomElement(['Weapon', 'Armor']); // Give one good piece of gear
-        const rewardItem = Items.generateThemedItem(gameState.adventureTheme, rewardTier, itemType);
-
-        if (rewardItem) {
-             console.log(`Generated reward: ${rewardItem.name}`);
-             displayVisualError(` -> ${player.name} received reward: ${rewardItem.name}`);
-             if (!rewardItem.id) rewardItem.id = generateId('item');
-             player.inventory.push(rewardItem);
-             UI.showPopup(`${player.name} received reward: ${rewardItem.name}!`, 'item');
+        if (legendaryWeapon) {
+            if (!legendaryWeapon.id) legendaryWeapon.id = generateId('item');
+            // Mark it as a quest reward so the UI can call it out specially.
+            legendaryWeapon.questReward = true;
+            player.inventory.push(legendaryWeapon);
+            log(`${player.name} received legendary weapon: ${legendaryWeapon.name}`);
+            UI.showPopup(`${player.name} obtained: ${legendaryWeapon.name}!`, 'legendary', 5000);
         } else {
-             console.warn(`Failed to generate ${rewardTier} ${itemType} reward for ${player.name}.`);
-             displayVisualError(`Warning: Failed to generate ${rewardTier} ${itemType} reward for ${player.name}.`);
+            // Fallback: give a large coin bonus if item generation fails.
+            log(`Warning: Could not generate legendary weapon for ${player.name}. Giving bonus coins instead.`);
+            player.coins += 500;
+            UI.showPopup(`${player.name} receives a bonus 500 coins (legendary item unavailable).`, 'coins', 4000);
         }
     });
 
     if (gameState.currentScreen === 'inventoryScreen') UI.renderInventory();
     UI.renderPlayerCards();
     UI.updateContextHeaders();
-    console.log("handleGoalCompletionRewards finished.");
-    displayVisualError("handleGoalCompletionRewards finished.");
+    log("handleGoalCompletionRewards finished.");
 }

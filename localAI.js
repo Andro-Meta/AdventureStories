@@ -224,7 +224,10 @@ export class LocalAIClient {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), Config.LOCAL_AI_CONFIG.CONNECTION_TIMEOUT);
 
-            const response = await fetch(`${this.baseUrl}/health`, {
+            // Use backend-specific health path (Ollama uses /api/tags, llama-server uses /health)
+            const backendCfg = Config.getActiveBackendConfig();
+            const healthPath = backendCfg.healthPath || '/health';
+            const response = await fetch(`${this.baseUrl}${healthPath}`, {
                 method: 'GET',
                 signal: controller.signal,
                 headers: {
@@ -239,7 +242,9 @@ export class LocalAIClient {
                 this.isAvailable = true;
                 // MiniCPM Python server: {status:"healthy", model_loaded:true}
                 // llama-server:           {status:"ok"}
-                this.isHealthy = health.status === 'healthy' || health.status === 'ok';
+                // Ollama /api/tags:       {models:[...]}
+                this.isHealthy = health.status === 'healthy' || health.status === 'ok'
+                              || health.model_loaded === true || Array.isArray(health.models);
                 this.modelInfo = health;
 
                 // Process queued requests if server is healthy

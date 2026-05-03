@@ -600,11 +600,11 @@ Narrate the outcome of this action and provide appropriate choices for what happ
         } catch (e) {
             log(`Exploration AI call failed: ${e?.message || e}`);
         }
-        if (aiResponse?.choices && Array.isArray(aiResponse.choices) && aiResponse.choices.length > 0) {
-            UI.renderChoices(aiResponse.choices);
-        } else {
-            // Fallback exploration choices so the UI never hangs.
-            log('Rendered fallback exploration choices.');
+        // makeAICallForSystemAction already rendered choices via processAIResponse.
+        // Only render here if aiResponse is null (90s timeout fired) to guarantee
+        // the UI never hangs.
+        if (!aiResponse?.choices || !Array.isArray(aiResponse.choices) || aiResponse.choices.length === 0) {
+            log('Rendered fallback exploration choices (timeout or null response).');
             UI.renderChoices([
                 { type: 'Good',          text: 'Take stock and plan your next step.' },
                 { type: 'Bad',           text: 'Push forward without a plan.' },

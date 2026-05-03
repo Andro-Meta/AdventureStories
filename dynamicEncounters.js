@@ -2,7 +2,7 @@
 // Revolutionary Dynamic Encounter System with Theme Intelligence
 // Generates NPCs, Puzzles, Anomalies, and Boss Battles with infinite theme adaptation
 
-import { gameState } from './state.js?cb=014';
+import { gameState, buildGameContextBlock } from './state.js?cb=014';
 import * as Config from './config.js?cb=014';
 import * as ThemeIntelligence from './themeIntelligence.js?cb=014';
 import * as AdaptiveAbilities from './adaptiveAbilities.js?cb=014';
@@ -393,11 +393,12 @@ export class DynamicEncounterRegistry {
     // AI Generation Methods
     async callEncounterAgent(prompt, generationType) {
         try {
-            // (Removed dead `apiProvider === 'aistudio'` Gemma-hyperthreading
-            // branch. Local backend handles all generation now.)
-            const AI = await import('./aiHandler.js?cb=014');
-            const response = await AI.makeAICallForSystemAction(prompt, true);
-            return response.narrative;
+            const API = await import('./api_new.js?cb=014');
+            const messages = [
+                { role: 'system', content: 'You are a game data generator. Return only valid JSON matching the requested schema. No prose.' },
+                { role: 'user', content: prompt }
+            ];
+            return await API.getAIResponseJSON(messages, { type: 'object' }, { max_tokens: 600, temperature: 0.7 });
         } catch (error) {
             throw new Error(`Encounter agent failed: ${error.message}`);
         }
@@ -536,8 +537,9 @@ export class DynamicEncounterRegistry {
     // Prompt Building Methods
     buildNPCGenerationPrompt(context, patterns) {
         const adaptation = AdaptiveAbilities.getCurrentThemeAdaptation();
-        
-        return `Create a contextually perfect NPC for a ${context.theme} adventure.
+        const gameCtx = buildGameContextBlock();
+        return `${gameCtx}
+Create a contextually perfect NPC for a ${context.theme} adventure.
 
 LOCATION CONTEXT:
 - Setting: ${context.location?.name || 'Unknown'}
@@ -582,7 +584,9 @@ Create an NPC that is PERFECTLY thematic and story-relevant. Respond with ONLY a
     }
 
     buildPuzzleGenerationPrompt(context, patterns) {
-        return `Create a contextually perfect puzzle for a ${context.theme} adventure.
+        const gameCtx = buildGameContextBlock();
+        return `${gameCtx}
+Create a contextually perfect puzzle for a ${context.theme} adventure.
 
 LOCATION CONTEXT:
 - Setting: ${context.location?.name || 'Unknown'}
@@ -619,7 +623,9 @@ Create a puzzle that is PERFECTLY thematic and story-integrated. Respond with ON
     }
 
     buildAnomalyGenerationPrompt(context, patterns) {
-        return `Create a contextually perfect anomaly for a ${context.theme} adventure.
+        const gameCtx = buildGameContextBlock();
+        return `${gameCtx}
+Create a contextually perfect anomaly for a ${context.theme} adventure.
 
 LOCATION CONTEXT:
 - Setting: ${context.location?.name || 'Unknown'}
@@ -654,7 +660,9 @@ Create an anomaly that is PERFECTLY thematic and story-relevant. Respond with ON
     }
 
     buildBossGenerationPrompt(context) {
-        return `Create a contextually perfect boss for a ${context.theme} adventure.
+        const gameCtx = buildGameContextBlock();
+        return `${gameCtx}
+Create a contextually perfect boss for a ${context.theme} adventure.
 
 BOSS CONTEXT:
 - Power Level: ${context.powerLevel}
@@ -773,6 +781,7 @@ Create a boss that is PERFECTLY thematic and story-climactic. Respond with ONLY 
     // Response Parsing Methods (simplified for brevity)
     parseNPCResponse(response, context, patterns) {
         try {
+            if (response && typeof response === 'object') return response;
             const cleanResponse = response.trim().replace(/```json\n?|\n?```/g, '');
             return JSON.parse(cleanResponse);
         } catch (error) {
@@ -782,6 +791,7 @@ Create a boss that is PERFECTLY thematic and story-climactic. Respond with ONLY 
 
     parsePuzzleResponse(response, context, patterns) {
         try {
+            if (response && typeof response === 'object') return response;
             const cleanResponse = response.trim().replace(/```json\n?|\n?```/g, '');
             return JSON.parse(cleanResponse);
         } catch (error) {
@@ -791,6 +801,7 @@ Create a boss that is PERFECTLY thematic and story-climactic. Respond with ONLY 
 
     parseAnomalyResponse(response, context, patterns) {
         try {
+            if (response && typeof response === 'object') return response;
             const cleanResponse = response.trim().replace(/```json\n?|\n?```/g, '');
             return JSON.parse(cleanResponse);
         } catch (error) {
@@ -800,6 +811,7 @@ Create a boss that is PERFECTLY thematic and story-climactic. Respond with ONLY 
 
     parseBossResponse(response, context) {
         try {
+            if (response && typeof response === 'object') return response;
             const cleanResponse = response.trim().replace(/```json\n?|\n?```/g, '');
             return JSON.parse(cleanResponse);
         } catch (error) {

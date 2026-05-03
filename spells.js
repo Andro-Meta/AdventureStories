@@ -2,7 +2,7 @@
 // Core Magic & Spell System for Adventure Stories
 // Phase 3: Magic System Implementation
 
-import { gameState } from './state.js?cb=014';
+import { gameState, buildGameContextBlock } from './state.js?cb=014';
 import * as Config from './config.js?cb=014';
 import * as UI from './ui.js?cb=014';
 import * as AdaptiveAbilities from './adaptiveAbilities.js?cb=014';
@@ -558,19 +558,47 @@ export async function learnFromSpellCasting(player, spell, wasSuccessful, wasRel
  */
 async function generateBatchSpells(spellRequests, player, batchType) {
     const log = window.displayVisualError || console.log;
-    
+
     try {
         // Build batch spell prompt
         const batchPrompt = buildBatchSpellPrompt(spellRequests, player, batchType);
-        
-        // (Removed dead `apiProvider === 'aistudio'` Gemma branch.)
-        // Single AI call for the whole batch, via the standard handler.
-        const aiHandler = await import('./aiHandler.js?cb=014');
-        const aiResponse = await aiHandler.makeAICallForSystemAction(batchPrompt, true);
-        const response = aiResponse.narrative;
-        
+
+        // Use schema-constrained JSON call so llama.cpp guarantees valid JSON output.
+        // The narrative pipeline (makeAICallForSystemAction) wraps the prompt in a
+        // story narrator context and returns prose text — wrong for structured data.
+        const API = await import('./api_new.js?cb=014');
+        const messages = [
+            { role: 'system', content: 'You are a game data generator. Return only valid JSON matching the requested schema. No prose.' },
+            { role: 'user', content: batchPrompt }
+        ];
+        const spellSchema = {
+            type: 'object',
+            properties: {
+                spells: {
+                    type: 'array',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            name: { type: 'string' },
+                            school: { type: 'string' },
+                            type: { type: 'string' },
+                            level: { type: 'integer' },
+                            mpCost: { type: 'integer' },
+                            effect: { type: 'string' },
+                            damage: { type: 'integer' },
+                            healing: { type: 'integer' }
+                        },
+                        required: ['name', 'school', 'type', 'level', 'mpCost', 'effect']
+                    }
+                }
+            },
+            required: ['spells']
+        };
+        const result = await API.getAIResponseJSON(messages, spellSchema, { max_tokens: 800, temperature: 0.7 });
+        const spellsArray = result.spells || result;
+
         // Parse batch response into individual spells
-        const spells = parseBatchSpellResponse(response, spellRequests, player);
+        const spells = parseBatchSpellResponse(spellsArray, spellRequests, player);
         
         log(`Spells: Generated ${spells.length}/${spellRequests.length} spells in batch`);
         return spells;
@@ -589,19 +617,23 @@ async function generateBatchSpells(spellRequests, player, batchType) {
 function buildBatchSpellPrompt(spellRequests, player, batchType) {
     const theme = gameState.adventureTheme;
     const themeDesc = theme === 'custom' ? gameState.customThemeDescription : theme;
-    
-    const spellSpecs = spellRequests.map((req, i) => 
+
+    const spellSpecs = spellRequests.map((req, i) =>
         `${i + 1}. ${req.type} ability for ${req.situation} (Level ${req.level})`
     ).join('\n');
-    
-    return `Generate ${spellRequests.length} ${themeDesc}-themed abilities for ${batchType}:
+
+    const gameCtx = buildGameContextBlock();
+
+    return `${gameCtx}
+Generate ${spellRequests.length} ${themeDesc}-themed abilities for ${batchType}:
 
 ${spellSpecs}
 
 Requirements:
-- Theme: ${themeDesc} (adapt magic/abilities to fit theme - e.g., tech skills for cyberpunk, survival skills for post-apocalyptic)
+- Theme: ${themeDesc} (adapt magic/abilities to fit theme)
 - Player: ${player.name}
-- Context: Character creation/starting abilities
+- Context: ${batchType}
+- Do NOT duplicate any abilities already in "Known Spells/Abilities" above
 - Format each ability as JSON with: name, school, type, level, mpCost, effect, damage?, healing?
 
 Return as JSON array: [{"name":"...", "school":"...", "type":"...", "level":..., "mpCost":..., "effect":"...", "damage":..., "healing":...}, ...]

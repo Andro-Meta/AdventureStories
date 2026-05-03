@@ -20,6 +20,52 @@ import { generateShopItems } from './items.js?cb=014';
 
 
 /**
+ * One-time migration: move any saves stored under the legacy 'advStorySave_'
+ * prefix to the current 'AG-' prefix. Runs silently at module load so players
+ * never lose saves after upgrading. Marks completion in localStorage to avoid
+ * re-scanning on every page load.
+ */
+(function migrateLegacySaves() {
+    try {
+        const MIGRATED_FLAG = 'AG-migration-v1-done';
+        if (localStorage.getItem(MIGRATED_FLAG)) return; // already ran
+
+        const oldPrefix = Config.SAVE_GAME_LEGACY_PREFIX;
+        const newPrefix = Config.SAVE_GAME_PREFIX;
+        let migrated = 0;
+
+        // Snapshot keys first — modifying localStorage while iterating is unsafe.
+        const allKeys = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            allKeys.push(localStorage.key(i));
+        }
+
+        allKeys.forEach(key => {
+            if (key && key.startsWith(oldPrefix)) {
+                const slotName = key.slice(oldPrefix.length);
+                const newKey = newPrefix + slotName;
+                // Only migrate if the new key doesn't already exist.
+                if (!localStorage.getItem(newKey)) {
+                    localStorage.setItem(newKey, localStorage.getItem(key));
+                    migrated++;
+                }
+                // Remove the old key regardless so the UI doesn't show duplicates.
+                localStorage.removeItem(key);
+            }
+        });
+
+        localStorage.setItem(MIGRATED_FLAG, '1');
+        if (migrated > 0) {
+            console.log(`SaveLoad: Migrated ${migrated} save(s) from '${oldPrefix}' → '${newPrefix}'.`);
+        }
+    } catch (e) {
+        // Never let migration crash the module load.
+        console.warn('SaveLoad: Legacy save migration failed (non-fatal):', e.message);
+    }
+}());
+
+
+/**
  * Saves the current game state to local storage in the specified slot.
  * @param {string} slotName - The name to use for the save slot.
  * @returns {boolean} True if saving was successful, false otherwise.

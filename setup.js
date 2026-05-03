@@ -439,10 +439,14 @@ export async function completeSetupAndStartGameIntelligent() {
             loadingManager.hideLoading();
             UI.showPopup(`Initialization failed: ${result.error}. Some features may not work properly.`, 'error');
             
-            // Try to show game screen anyway if players were created
-            if (result.results.completed.includes('createPlayers')) {
+            // Try to show game screen anyway if players were created.
+            // Wrap in its own try/catch: if renderPlayerCards throws for any
+            // reason (e.g. incomplete game state), we still show gameScreen
+            // rather than letting the exception propagate to the outer catch
+            // and silently navigate to mainMenuScreen.
+            if (result.results?.completed?.includes('createPlayers')) {
                 log("Setup: Players were created, attempting to continue...");
-                UI.renderPlayerCards();
+                try { UI.renderPlayerCards(); } catch (e) { log(`Setup: renderPlayerCards failed in recovery: ${e.message}`); }
                 UI.showScreen('gameScreen');
             } else {
                 UI.showScreen('mainMenuScreen');

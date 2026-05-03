@@ -2,7 +2,7 @@
 // Revolutionary Dynamic Enemy Generation System with Theme Intelligence
 // Replaces static enemy databases with intelligent, context-aware generation
 
-import { gameState } from './state.js?cb=014';
+import { gameState, buildGameContextBlock } from './state.js?cb=014';
 import * as Config from './config.js?cb=014';
 import * as ThemeIntelligence from './themeIntelligence.js?cb=014';
 import * as AdaptiveAbilities from './adaptiveAbilities.js?cb=014';
@@ -272,11 +272,12 @@ export class DynamicEnemyRegistry {
      */
     async callEnemyAgent(prompt, generationType) {
         try {
-            // (Removed dead `apiProvider === 'aistudio'` Gemma-hyperthreading
-            // branch. Local backend handles all generation now.)
-            const AI = await import('./aiHandler.js?cb=014');
-            const response = await AI.makeAICallForSystemAction(prompt, true);
-            return response.narrative;
+            const API = await import('./api_new.js?cb=014');
+            const messages = [
+                { role: 'system', content: 'You are a game data generator. Return only valid JSON matching the requested schema. No prose.' },
+                { role: 'user', content: prompt }
+            ];
+            return await API.getAIResponseJSON(messages, { type: 'object' }, { max_tokens: 500, temperature: 0.7 });
         } catch (error) {
             throw new Error(`Enemy agent failed: ${error.message}`);
         }
@@ -288,8 +289,10 @@ export class DynamicEnemyRegistry {
     buildEnemyGenerationPrompt(context, patterns) {
         const adaptation = AdaptiveAbilities.getCurrentThemeAdaptation();
         const difficulty = this.difficultyScaling.get(gameState.turn || 1);
-        
-        return `Create a contextually perfect enemy for a ${context.theme} adventure.
+        const gameCtx = buildGameContextBlock();
+
+        return `${gameCtx}
+Create a contextually perfect enemy for a ${context.theme} adventure.
 
 LOCATION CONTEXT:
 - Setting: ${context.location?.name || 'Unknown'}
@@ -647,6 +650,7 @@ Create an enemy that is PERFECTLY thematic and appropriately challenging. Respon
 
     parseEnemyResponse(response, context, patterns) {
         try {
+            if (response && typeof response === 'object') return response;
             const cleanResponse = response.trim().replace(/```json\n?|\n?```/g, '');
             return JSON.parse(cleanResponse);
         } catch (error) {

@@ -2,7 +2,7 @@
 // AI-Driven Dynamic Spell Generation System
 // Phase 3: Magic System Implementation
 
-import { gameState } from './state.js?cb=014';
+import { gameState, buildGameContextBlock } from './state.js?cb=014';
 import * as Spells from './spells.js?cb=014';
 import * as Config from './config.js?cb=014';
 import * as AI from './aiHandler.js?cb=014';
@@ -181,10 +181,14 @@ export async function generateDynamicSpell(school, type, level, context = {}) {
         // Build AI prompt for spell generation
         const prompt = buildSpellGenerationPrompt(school, type, level, context, schoolTheme, template);
         
-        // Generate spell using AI
-        const response = await AI.makeAICallForSystemAction(prompt, true);
-        const aiResponse = response.narrative;
-        
+        // Use schema-constrained JSON — narrative pipeline returns prose, not spell JSON
+        const API = await import('./api_new.js?cb=014');
+        const messages = [
+            { role: 'system', content: 'You are a game data generator. Return only valid JSON matching the requested schema. No prose.' },
+            { role: 'user', content: prompt }
+        ];
+        const aiResponse = await API.getAIResponseJSON(messages, { type: 'object' }, { max_tokens: 400, temperature: 0.7 });
+
         // Parse AI response and create spell object
         const spellData = parseSpellFromAI(aiResponse, school, type, level, template, schoolTheme);
         
@@ -218,7 +222,9 @@ function buildSpellGenerationPrompt(school, type, level, context, schoolTheme, t
     const typeData = Spells.SPELL_TYPES[type];
     const adaptation = AdaptiveAbilities.getCurrentThemeAdaptation();
     
-    return `Create a ${levelData.name} level ${schoolData.name} ${typeData.name} ${adaptation.abilityName.toLowerCase()} for an adventure game.
+    const gameCtx = buildGameContextBlock();
+    return `${gameCtx}
+Create a ${levelData.name} level ${schoolData.name} ${typeData.name} ${adaptation.abilityName.toLowerCase()} for an adventure game.
 
 ${adaptation.abilityName.toUpperCase()} REQUIREMENTS:
 - School: ${schoolData.name} (${schoolData.description})
@@ -271,15 +277,16 @@ Make the ${adaptation.abilityName.toLowerCase()} creative, thematically appropri
  */
 function parseSpellFromAI(aiResponse, school, type, level, template, schoolTheme) {
     const log = window.displayVisualError || console.log;
-    
+
     try {
-        // Extract JSON from AI response
-        const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) {
-            throw new Error('No JSON found in AI response');
+        let spellData;
+        if (aiResponse && typeof aiResponse === 'object') {
+            spellData = aiResponse;
+        } else {
+            const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
+            if (!jsonMatch) throw new Error('No JSON found in AI response');
+            spellData = JSON.parse(jsonMatch[0]);
         }
-        
-        const spellData = JSON.parse(jsonMatch[0]);
         
         // Validate and sanitize the data
         return validateAndSanitizeSpellData(spellData, school, type, level, template, schoolTheme);

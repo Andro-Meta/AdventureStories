@@ -82,8 +82,15 @@ def main():
     print(f"Press Ctrl+C to stop the server")
     print("-" * 50)
     
+    # ThreadingMixIn lets Python handle each browser connection in its own
+    # thread, so concurrent ES-module fetches don't queue behind each other.
+    # daemon_threads=True means worker threads exit when the main thread exits.
+    class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+        allow_reuse_address = True
+        daemon_threads = True
+
     try:
-        with socketserver.TCPServer(("", PORT), CORSRequestHandler) as httpd:
+        with ThreadedTCPServer(("", PORT), CORSRequestHandler) as httpd:
             print(f"Server started successfully!")
             print(f"Opening browser automatically...")
             

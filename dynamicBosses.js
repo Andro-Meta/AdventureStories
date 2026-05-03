@@ -2,7 +2,7 @@
 // Revolutionary Dynamic Boss Generation System with Theme Intelligence
 // Specialized system for generating contextually perfect bosses for infinite themes
 
-import { gameState } from './state.js?cb=014';
+import { gameState, buildGameContextBlock } from './state.js?cb=014';
 import * as Config from './config.js?cb=014';
 import * as ThemeIntelligence from './themeIntelligence.js?cb=014';
 import * as AdaptiveAbilities from './adaptiveAbilities.js?cb=014';
@@ -246,8 +246,10 @@ export class DynamicBossRegistry {
     buildBossGenerationPrompt(context, patterns) {
         const adaptation = AdaptiveAbilities.getCurrentThemeAdaptation();
         const power = this.powerScaling.get(gameState.turn || 1);
-        
-        return `Create a legendary ${context.bossType.replace('_', ' ')} for a ${context.theme} adventure.
+        const gameCtx = buildGameContextBlock();
+
+        return `${gameCtx}
+Create a legendary ${context.bossType.replace('_', ' ')} for a ${context.theme} adventure.
 
 THEME CONTEXT:
 - Adventure Theme: ${context.theme}
@@ -327,10 +329,13 @@ Make the boss feel like a natural part of the ${context.theme} world with a memo
                 }
             }
 
-            // Fallback to direct AI call
-            const AI = await import('./aiHandler.js?cb=014');
-            const response = await AI.makeAICallForSystemAction(prompt, true);
-            return response.narrative;
+            // Fallback to direct AI call (schema-constrained JSON, not narrative pipeline)
+            const API = await import('./api_new.js?cb=014');
+            const messages = [
+                { role: 'system', content: 'You are a game data generator. Return only valid JSON matching the requested schema. No prose.' },
+                { role: 'user', content: prompt }
+            ];
+            return await API.getAIResponseJSON(messages, { type: 'object' }, { max_tokens: 700, temperature: 0.7 });
         } catch (error) {
             throw new Error(`Boss agent failed: ${error.message}`);
         }
@@ -341,8 +346,7 @@ Make the boss feel like a natural part of the ${context.theme} world with a memo
      */
     parseBossResponse(aiResponse, context, patterns) {
         try {
-            // Try to parse JSON response
-            const bossData = JSON.parse(aiResponse);
+            const bossData = (aiResponse && typeof aiResponse === 'object') ? aiResponse : JSON.parse(aiResponse);
             
             // Validate and enhance boss data
             return {

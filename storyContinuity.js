@@ -2,7 +2,8 @@
 // Revolutionary Story Continuity AI Agent for Narrative Memory and Thread Weaving
 // Creates coherent, memorable story experiences with long-term consequences
 
-import { gameState } from './state.js?cb=014';
+import { gameState, buildGameContextBlock } from './state.js?cb=014';
+import { renderMemoryBlock } from './memoryRetriever.js?cb=014';
 import * as Config from './config.js?cb=014';
 import * as ThemeIntelligence from './themeIntelligence.js?cb=014';
 import * as AdaptiveAbilities from './adaptiveAbilities.js?cb=014';
@@ -651,14 +652,12 @@ export class StoryContinuityAgent {
     // Additional helper methods would continue here...
     buildStoryContinuationPrompt(context, analysis) {
         const adaptation = AdaptiveAbilities.getCurrentThemeAdaptation();
-        
-        return `Create a story continuation that maintains narrative coherence and advances the plot meaningfully.
+        const gameCtx = buildGameContextBlock();
+        const memoryQuery = (gameState.currentNarrative || '') + ' ' + (gameState.currentLocation?.name || '');
+        const memoryBlock = renderMemoryBlock(memoryQuery);
 
-CURRENT STORY CONTEXT:
-- Theme: ${context.theme || gameState.adventureTheme}
-- Current Narrative: ${context.currentNarrative || 'Beginning of adventure'}
-- Turn: ${gameState.turn}
-- Location: ${gameState.currentLocation?.name || 'Unknown'}
+        return `${gameCtx}
+${memoryBlock ? memoryBlock + '\n' : ''}Create a story continuation that maintains narrative coherence and advances the plot meaningfully.
 
 CONTINUITY ANALYSIS:
 - Continuity Score: ${analysis.continuityScore.toFixed(2)}
@@ -667,9 +666,9 @@ CONTINUITY ANALYSIS:
 - Character Arcs: ${analysis.characterArcs.count}
 
 STORY REQUIREMENTS:
-- Maintain coherence with previous events
-- Reference or advance existing plot threads
-- Develop character relationships and growth
+- Reference the Known NPCs and Story Flags listed in the game state above — do NOT invent contradicting facts
+- Advance or reference active plot threads; resolve them only if narratively earned
+- Develop character relationships consistent with Recent Events above
 - Create meaningful consequences for past actions
 - Plant seeds for future story developments
 
@@ -691,11 +690,12 @@ Create a continuation that feels natural and connected. Respond with ONLY a JSON
 
     async callStoryContinuityAgent(prompt, generationType) {
         try {
-            // (Removed dead `apiProvider === 'aistudio'` Gemma-hyperthreading
-            // branch. Local backend handles all generation now.)
-            const AI = await import('./aiHandler.js?cb=014');
-            const response = await AI.makeAICallForSystemAction(prompt, true);
-            return response.narrative;
+            const API = await import('./api_new.js?cb=014');
+            const messages = [
+                { role: 'system', content: 'You are a game data generator. Return only valid JSON matching the requested schema. No prose.' },
+                { role: 'user', content: prompt }
+            ];
+            return await API.getAIResponseJSON(messages, { type: 'object' }, { max_tokens: 600, temperature: 0.7 });
         } catch (error) {
             throw new Error(`Story continuity agent failed: ${error.message}`);
         }
@@ -703,6 +703,7 @@ Create a continuation that feels natural and connected. Respond with ONLY a JSON
 
     parseStoryContinuationResponse(response, context, analysis) {
         try {
+            if (response && typeof response === 'object') return response;
             const cleanResponse = response.trim().replace(/```json\n?|\n?```/g, '');
             return JSON.parse(cleanResponse);
         } catch (error) {

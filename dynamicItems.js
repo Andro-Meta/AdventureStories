@@ -2,7 +2,7 @@
 // Dynamic AI-driven contextual item generation system
 // Replaces static item databases with intelligent, context-aware generation
 
-import { gameState } from './state.js?cb=014';
+import { gameState, buildGameContextBlock } from './state.js?cb=014';
 import * as Config from './config.js?cb=014';
 import { generateId } from './utils.js?cb=014';
 import { gemmaHT } from './gemmaHyperthreading.js?cb=014';
@@ -946,15 +946,46 @@ async function generateBatchItems(itemRequests, theme, batchType) {
         
         // Use optimized single agent call for batch generation
         const API = await import('./api_new.js?cb=014');
-        const messages = [{
-            role: 'user',
-            content: batchPrompt
-        }];
+        const messages = [
+            { role: 'system', content: 'You are a game data generator. Return only valid JSON matching the requested schema. No prose.' },
+            { role: 'user', content: batchPrompt }
+        ];
 
-        response = await API.getAIResponse(messages, {
-            max_tokens: Math.min(1024, 150 * itemRequests.length), // Scale tokens with item count
-            temperature: 0.3 // Lower temperature for consistent item generation
+        // Use schema-constrained JSON: guarantees valid JSON and removes the 1024-token
+        // truncation that was cutting off the array mid-item for 7+ item batches.
+        const itemSchema = {
+            type: 'object',
+            properties: {
+                items: {
+                    type: 'array',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            name: { type: 'string' },
+                            type: { type: 'string' },
+                            tier: { type: 'string' },
+                            effect: { type: 'string' },
+                            stats: {
+                                type: 'object',
+                                properties: {
+                                    atk: { type: 'integer' },
+                                    def: { type: 'integer' },
+                                    heal: { type: 'integer' }
+                                }
+                            },
+                            cost: { type: 'integer' }
+                        },
+                        required: ['name', 'type', 'tier', 'effect', 'cost']
+                    }
+                }
+            },
+            required: ['items']
+        };
+        const jsonResult = await API.getAIResponseJSON(messages, itemSchema, {
+            max_tokens: 1500,
+            temperature: 0.3
         });
+        response = jsonResult.items || jsonResult;
         
         UI.showLoading(false);
         
@@ -985,18 +1016,23 @@ async function generateBatchItems(itemRequests, theme, batchType) {
  */
 function buildBatchItemPrompt(itemRequests, theme, batchType) {
     const themeDesc = theme === 'custom' ? gameState.customThemeDescription : theme;
-    
-    const itemSpecs = itemRequests.map((req, i) => 
+
+    const itemSpecs = itemRequests.map((req, i) =>
         `${i + 1}. ${req.tier} ${req.type} (${req.context.storyContext || 'general'})`
     ).join('\n');
-    
-    return `Generate ${itemRequests.length} ${themeDesc}-themed items for ${batchType}:
+
+    const gameCtx = buildGameContextBlock();
+
+    return `${gameCtx}
+Generate ${itemRequests.length} ${themeDesc}-themed items for ${batchType}:
 
 ${itemSpecs}
 
 Requirements:
 - Theme: ${themeDesc}
 - Context: ${itemRequests[0]?.context?.storyContext || 'adventure'}
+- Do NOT duplicate items already in "Inventory" or "Equipped" above
+- Price items relative to the player's current Coins shown above
 - Format each item as JSON with: name, type, tier, effect, stats{atk?, def?, heal?}, cost
 
 Return as JSON array: [{"name":"...", "type":"...", "tier":"...", "effect":"...", "stats":{...}, "cost":...}, ...]

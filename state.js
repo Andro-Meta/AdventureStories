@@ -206,6 +206,122 @@ export const gameState = {
     }
 };
 
+/**
+ * Build a compact game-state context block for AI data generators.
+ * Gives spell/item/enemy/encounter generators the same grounding the narrative
+ * AI has (player state, inventory, spells, quests, NPCs, story flags) without
+ * the narrative-format rules and age guidelines that belong only in the story
+ * narrator system prompt.
+ *
+ * All dynamic-content modules (spells.js, dynamicItems.js, dynamicEnemies.js,
+ * etc.) import this and prepend it to their prompts so generated content stays
+ * coherent with the running campaign.
+ *
+ * @returns {string} Plain-text context block, or '' if no player exists yet.
+ */
+export function buildGameContextBlock() {
+    const p = (gameState.players || [])[gameState.currentPlayerIndex || 0];
+    if (!p) return '';
+
+    const turn = gameState.turn || 1;
+    const rawTheme = gameState.adventureTheme || 'fantasy';
+    const theme = rawTheme === 'custom'
+        ? (gameState.customThemeDescription || 'custom')
+        : rawTheme;
+
+    // Player headline
+    const playerLine = `${p.name} | HP ${p.hp}/${p.maxHp} | MP ${p.mp ?? '?'}/${p.maxMp ?? '?'} | ATK ${p.atk} | DEF ${p.def} | Coins ${p.coins ?? 0}`;
+
+    // Party (excluding current player)
+    const partyLine = (gameState.players || [])
+        .filter(pl => pl && pl !== p)
+        .map(pl => `${pl.name} HP:${pl.hp}/${pl.maxHp}${pl.isDowned ? '(downed)' : ''}`)
+        .join(', ');
+
+    // Equipped items resolved to names
+    const equip = p.equipment || {};
+    const inv = p.inventory || [];
+    const weaponName = equip.weapon ? (inv.find(it => it?.id === equip.weapon)?.name ?? null) : null;
+    const armorName  = equip.armor  ? (inv.find(it => it?.id === equip.armor )?.name ?? null) : null;
+    const equipLine  = [weaponName && `weapon:${weaponName}`, armorName && `armor:${armorName}`].filter(Boolean).join(', ') || 'none';
+
+    // Unequipped inventory
+    const unequippedNames = inv
+        .filter(it => it && it.id !== equip.weapon && it.id !== equip.armor)
+        .map(it => it.name)
+        .filter(Boolean)
+        .slice(0, 8);
+    const inventoryLine = unequippedNames.length ? unequippedNames.join(', ') : 'none';
+
+    // Known spells
+    const knownSpellNames = (p.spellcasting?.knownSpells || []).map(s => s.name).filter(Boolean).slice(0, 8);
+    const spellsLine = knownSpellNames.length ? knownSpellNames.join(', ') : 'none';
+
+    // Active quests
+    const questParts = [];
+    if (gameState.adventureGoal && !gameState.isGoalComplete) {
+        const pct = gameState.questProgress?.completionPercentage ?? 0;
+        questParts.push(`main quest "${gameState.adventureGoal.slice(0, 60)}" (${pct}% done)`);
+    }
+    (gameState.questProgress?.sideQuests || [])
+        .filter(q => !q.completed)
+        .slice(0, 3)
+        .forEach(q => questParts.push(`side:"${q.name}"`));
+
+    // Recent milestones
+    const recentMilestones = (gameState.questProgress?.milestones || [])
+        .slice(-3)
+        .map(m => m.name)
+        .join(' → ') || 'none yet';
+
+    // Recent significant events
+    const recentEvents = (gameState.narrativeContext?.significantEvents || [])
+        .slice(-3)
+        .join('; ') || 'none';
+
+    // NPCs from entity memory (most recently seen)
+    const knownNPCs = Object.entries(gameState.entityMemory?.npcs || {})
+        .sort(([, a], [, b]) => (b.lastSeenTurn || 0) - (a.lastSeenTurn || 0))
+        .slice(0, 6)
+        .map(([name, data]) => `${name}${data.description ? ` (${data.description.slice(0, 40)})` : ''}`)
+        .join(', ') || 'none recorded';
+
+    // Story flags (truthy only)
+    const flags = Object.entries(gameState.storyFlags || {})
+        .filter(([, v]) => v === true)
+        .slice(0, 8)
+        .map(([k]) => k)
+        .join(', ') || 'none';
+
+    const location = gameState.currentLocation?.name || 'unknown';
+    const narrativeExcerpt = gameState.currentNarrative
+        ? gameState.currentNarrative.slice(-250)
+        : '';
+
+    let block = `=== CURRENT GAME STATE (Turn ${turn} | Theme: ${theme}) ===
+Location: ${location}
+Player: ${playerLine}
+Equipped: ${equipLine}
+Inventory: ${inventoryLine}
+Known Spells/Abilities: ${spellsLine}`;
+
+    if (partyLine) block += `\nParty: ${partyLine}`;
+
+    block += `
+Quests: ${questParts.join('; ') || 'none active'}
+Recent Milestones: ${recentMilestones}
+Recent Events: ${recentEvents}
+Known NPCs: ${knownNPCs}
+Story Flags: ${flags}`;
+
+    if (narrativeExcerpt) {
+        block += `\nCurrent Story (excerpt): "${narrativeExcerpt}"`;
+    }
+
+    block += '\n=== END GAME STATE ===\n';
+    return block;
+}
+
 // --- Type Definitions (JSDoc for better IDE support) ---
 
 /**

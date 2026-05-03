@@ -2,7 +2,7 @@
 // Revolutionary Dynamic Location Generation System with Theme Intelligence
 // Replaces static location maps with intelligent, story-driven generation
 
-import { gameState } from './state.js?cb=014';
+import { gameState, buildGameContextBlock } from './state.js?cb=014';
 import * as Config from './config.js?cb=014';
 import * as ThemeIntelligence from './themeIntelligence.js?cb=014';
 import * as AdaptiveAbilities from './adaptiveAbilities.js?cb=014';
@@ -233,11 +233,37 @@ export class DynamicLocationRegistry {
      */
     async callLocationAgent(prompt, generationType) {
         try {
-            // (Removed dead `apiProvider === 'aistudio'` Gemma-hyperthreading
-            // branch. Local backend handles all generation now.)
-            const AI = await import('./aiHandler.js?cb=014');
-            const response = await AI.makeAICallForSystemAction(prompt, true);
-            return response.narrative;
+            // Use schema-constrained JSON call — the narrative pipeline wraps prompts
+            // in a story narrator context and returns prose, not location JSON.
+            const API = await import('./api_new.js?cb=014');
+            const messages = [
+                { role: 'system', content: 'You are a game world generator. Return only valid JSON matching the requested schema. No prose.' },
+                { role: 'user', content: prompt }
+            ];
+            const locationSchema = {
+                type: 'object',
+                properties: {
+                    name: { type: 'string' },
+                    type: { type: 'string' },
+                    description: { type: 'string' },
+                    atmosphere: { type: 'string' },
+                    dangerLevel: { type: 'number' },
+                    features: { type: 'array', items: { type: 'string' } },
+                    interactables: { type: 'array', items: { type: 'string' } },
+                    secrets: { type: 'array', items: { type: 'string' } },
+                    connections: { type: 'array', items: { type: 'string' } },
+                    accessRequirements: { type: 'array', items: { type: 'string' } },
+                    storyRelevance: { type: 'string' },
+                    plotHooks: { type: 'array', items: { type: 'string' } },
+                    environmentalEffects: { type: 'array', items: { type: 'string' } },
+                    ambientSounds: { type: 'array', items: { type: 'string' } },
+                    lighting: { type: 'string' },
+                    isStarting: { type: 'boolean' },
+                    isEnding: { type: 'boolean' }
+                },
+                required: ['name', 'type', 'description', 'atmosphere']
+            };
+            return await API.getAIResponseJSON(messages, locationSchema, { max_tokens: 600, temperature: 0.7 });
         } catch (error) {
             throw new Error(`Location agent failed: ${error.message}`);
         }
@@ -248,8 +274,10 @@ export class DynamicLocationRegistry {
      */
     buildLocationGenerationPrompt(context, patterns) {
         const adaptation = AdaptiveAbilities.getCurrentThemeAdaptation();
-        
-        return `Create a contextually perfect location for a ${context.theme} adventure.
+        const gameCtx = buildGameContextBlock();
+
+        return `${gameCtx}
+Create a contextually perfect location for a ${context.theme} adventure.
 
 STORY CONTEXT:
 - Current Narrative: ${context.storyContext || 'exploration'}
@@ -565,6 +593,9 @@ Create a location that is PERFECTLY thematic and story-relevant. Respond with ON
 
     parseLocationResponse(response, context, patterns) {
         try {
+            if (response && typeof response === 'object') {
+                return response;
+            }
             const cleanResponse = response.trim().replace(/```json\n?|\n?```/g, '');
             return JSON.parse(cleanResponse);
         } catch (error) {

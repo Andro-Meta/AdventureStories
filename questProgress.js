@@ -33,12 +33,15 @@ export class QuestProgressManager {
      */
     initializeQuestProgress(theme, initialGoal) {
         const log = window.displayVisualError || console.log;
-        
+
+        // Only add a real goal string as an objective — not the placeholder.
+        const isRealGoal = initialGoal && initialGoal !== 'Not set yet.';
+
         gameState.questProgress = {
             currentPhase: 'beginning',
             completionPercentage: 0,
             milestones: [],
-            currentObjectives: [initialGoal],
+            currentObjectives: isRealGoal ? [initialGoal] : [],
             sideQuests: [],
             discoveredSecrets: [],
             keyEvents: [],
@@ -50,8 +53,8 @@ export class QuestProgressManager {
                 timestamp: Date.now()
             }]
         };
-        
-        log(`QuestProgress: Initialized for ${theme} theme with goal: ${initialGoal}`);
+
+        log(`QuestProgress: Initialized for ${theme} theme. Goal: ${isRealGoal ? initialGoal : '(pending AI generation)'}`);
         this.updateProgressUI();
     }
 
@@ -214,15 +217,20 @@ export class QuestProgressManager {
      * Calculate completion percentage based on milestones and progress
      */
     calculateCompletionPercentage() {
+        // No progress until the AI has set a real goal — prevents the bar from
+        // ticking up while "Not set yet." is displayed.
+        const hasGoal = gameState.adventureGoal && gameState.adventureGoal !== 'Not set yet.';
+        if (!hasGoal) return 0;
+
         const totalWeight = gameState.questProgress.milestones.reduce((sum, m) => sum + m.weight, 0);
-        
-        // Base percentage from milestones
-        let percentage = Math.min(85, totalWeight); // Cap at 85% from milestones
-        
-        // Add turn-based progression (slow background progress)
-        const turnBonus = Math.min(15, Math.floor(gameState.turn / 5)); // Max 15% from turns
+
+        // Base percentage from milestones (capped at 85%)
+        let percentage = Math.min(85, totalWeight);
+
+        // Slow turn-based background progress — max +15% over the whole game
+        const turnBonus = Math.min(15, Math.floor(gameState.turn / 5));
         percentage += turnBonus;
-        
+
         return Math.min(100, Math.max(0, percentage));
     }
 

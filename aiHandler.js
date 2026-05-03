@@ -465,7 +465,7 @@ Rules:
                     { role: 'user', content: jsonChoicePrompt }
                 ],
                 choiceSchema,
-                { jsonSchemaName: gameState.inCombat ? 'combat_choices' : 'exploration_choices' }
+                { jsonSchemaName: gameState.inCombat ? 'combat_choices' : 'exploration_choices', max_tokens: 512 }
             );
             choices = validateChoicesPayload(payload, gameState.inCombat);
             log(`JSON path: parsed ${choices.length} valid choices.`);
@@ -1152,7 +1152,13 @@ Recent Milestones: ${recentMilestones}
 export function generateSystemPrompt() {
     const log = window.displayVisualError || console.log;
     const currentPlayer = getCurrentPlayer();
-    const playerAge = currentPlayer?.age || 25;
+    // Average all players' ages so the reading level stays consistent across the
+    // whole party (spec requirement). Falls back to the current player's age for
+    // solo play, then 25 as a safe adult default if no ages are available yet.
+    const allAges = (gameState.players || []).map(p => p.age).filter(a => typeof a === 'number' && a > 0);
+    const playerAge = allAges.length > 0
+        ? Math.round(allAges.reduce((sum, a) => sum + a, 0) / allAges.length)
+        : (currentPlayer?.age || 25);
 
     // Phase 3.2: build the canonical state block FIRST so it's the first
     // content the narrator sees after the role directive. This is appended
@@ -1204,7 +1210,7 @@ Use these commands to provide structured progression feedback to players!`;
     
     let prompt = `You are the AI storyteller for an adventure game. Your role is to narrate the story and provide meaningful, contextual choices that drive the narrative forward.${questGuidance}
 
-AGE-APPROPRIATE READING LEVEL (Current Player Age: ${playerAge}):
+AGE-APPROPRIATE READING LEVEL (Average Party Age: ${playerAge}):
 ${ageAppropriateGuidelines ? `
 READING LEVEL: ${ageAppropriateGuidelines.bookComparison}
 TARGET LENGTH: ${ageAppropriateGuidelines.wordCount.min}-${ageAppropriateGuidelines.wordCount.max} words (${ageAppropriateGuidelines.readingTime} reading time)
@@ -1935,10 +1941,8 @@ Keep total length under ~400 words. Use second-person voice ("You ..."). Do NOT 
         gameState.messageHistory.push(historyEntry);
         pruneMessageHistory(gameState.messageHistory);
 
-        // Update UI and store choices in game state
-        UI.updateNarrative(narrative);
+        // processAIResponse already rendered narrative + choices; just sync state.
         gameState.currentChoices = choices;
-        UI.renderChoices(choices);
 
         // Handle turn advancement if not prevented. advanceTurn is async —
         // await it so the turn counter is up-to-date before the arc-memory
@@ -1959,10 +1963,11 @@ Keep total length under ~400 words. Use second-person voice ("You ..."). Do NOT 
 
     } catch (error) {
         log(`Error in makeAICallForSystemAction: ${error.message}`);
-        // Generate default narrative + minimal default choices on error so the
-        // game stays playable. (`addDefaultChoices` was referenced but never
-        // defined; we use the local validateAndFixChoices fallback instead.)
-        const defaultNarrative = "The story continues...";
+        // Preserve the narrative if the first AI call (story generation) already
+        // succeeded and set gameState.currentNarrative — only choices failed.
+        // Falling back to "The story continues..." here would overwrite real prose
+        // that was already rendered to the DOM by processAIResponse.
+        const defaultNarrative = gameState.currentNarrative || "The story continues...";
         const defaultChoices = validateAndFixChoices([], gameState.inCombat);
 
         UI.updateNarrative(defaultNarrative);
