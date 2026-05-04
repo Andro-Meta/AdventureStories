@@ -1,0 +1,34 @@
+{
+  "appId": "com.androsmeta.adventurestories",
+  "appName": "Adventure Stories",
+  "webDir": "www",
+  "bundledWebRuntime": false,
+  "android": {
+    "minWebViewVersion": 60,
+    "webContentsDebuggingEnabled": false,
+    "allowMixedContent": false,
+    "captureInput": true,
+    "buildOptions": {
+      "keystorePath": "release.keystore",
+      "keystoreAlias": "adventure-stories",
+      "releaseType": "AAB"
+    }
+  },
+  "plugins": {
+    "CapacitorLLM": {
+      "modelAssetPath": "Gemma3-1B-IT_multi-prefill-seq_q8_ekv4096.task",
+      "maxTokens": 4096,
+      "topK": 40,
+      "temperature": 0.7
+    },
+    "SplashScreen": {
+      "launchShowDuration": 2000,
+      "backgroundColor": "#1a1a2e",
+      "showSpinner": true,
+      "spinnerColor": "#FFD700"
+    }
+  },
+  "server": {
+    "androidScheme": "https"
+  }
+}

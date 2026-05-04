@@ -1,0 +1,27 @@
+{
+  "name": "Adventure Stories",
+  "short_name": "Adventure",
+  "description": "AI-powered text adventure with persistent world memory and god-mode endgame.",
+  "start_url": "/index.html",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#1a1a2e",
+  "theme_color": "#1a1a2e",
+  "categories": ["games", "entertainment", "books"],
+  "lang": "en",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' fill='%231a1a2e' rx='32'/><text x='50%25' y='62%25' font-size='110' text-anchor='middle' dominant-baseline='middle'>%F0%9F%8E%AE</text></svg>",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' fill='%231a1a2e' rx='80'/><text x='50%25' y='62%25' font-size='300' text-anchor='middle' dominant-baseline='middle'>%F0%9F%8E%AE</text></svg>",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

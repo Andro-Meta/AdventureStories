@@ -1,0 +1,63 @@
+# Adventure Stories — CI
+#
+# Runs the offline audit suite on every push and PR to main. The audits run
+# in pure Node (no browser, no AI server, no network), so this stays fast
+# and reliable. Catches regressions in:
+#   • engine.applyDiff path coverage and god-mode declaration paths
+#   • schema validators (exploration/combat choices, narrative-turn, arc memory)
+#   • god-mode unlock condition (must fire at isGoalComplete=true alone)
+#   • UI wiring (every button has a JS handler, every data-target points at
+#     a real screen, every backend has a JS reference, advanceTurn covered)
+#
+# What this DOESN'T cover (intentionally — those need a live AI server):
+#   • Live LLM JSON conformance per backend → run `npm run eval:models`
+#     locally against your Ollama before merging anything that touches
+#     prompts or schemas.
+#   • Playwright end-to-end UI tests → run `npm test` locally with a live
+#     llama-server / Ollama / cloud key.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  audit:
+    name: Offline audit suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci || npm install
+
+      - name: Run all audits
+        run: npm run audit
+
+      - name: Verify package.json scripts are wired
+        run: |
+          node -e "const p=require('./package.json'); for(const s of ['audit','audit:hooks','audit:engine','audit:godmode','audit:ui','eval:models']){if(!p.scripts[s]){console.error('Missing script:',s);process.exit(1);}}"
+
+  syntax:
+    name: JS syntax check (top-level modules)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - name: node --check every top-level .js
+        run: |
+          set -e
+          for f in *.js tools/*.mjs; do
+            node --check "$f" || { echo "Syntax error in $f"; exit 1; }
+          done
+          echo "All JS files parse cleanly"

@@ -23,7 +23,16 @@ export class LocalAIClient {
         this.baseUrl = backend.url;
         this.backendDefaults = backend.defaultParams;
         this.modelName = backend.modelName;
+        this.backendId = backend.id || 'unknown';
         this.isCloud = backend.isCloud === true;
+        this.isLiteRT = backend.isLiteRT === true;
+        // BUG-14 fix: capability flags drive request shape so json-mode actually
+        // applies on each backend instead of silently degrading.
+        this.supportsJsonSchema = backend.supportsJsonSchema !== false;
+        this.jsonSchemaShape = backend.jsonSchemaShape || null;
+        this.supportsJsonObject = backend.supportsJsonObject !== false;
+        this.supportsTopK = backend.supportsTopK !== false;
+        this.supportsCachePrompt = backend.supportsCachePrompt === true;
         this.apiKey = Config.getCloudApiKey();
         this.isAvailable = false;
         this.isHealthy = false;
@@ -202,6 +211,26 @@ export class LocalAIClient {
      * Check server health and availability
      */
     async checkHealth() {
+        // Phase 5: on-device LiteRT-LM. Health = "is the model loaded".
+        // The bridge handles initialization lazily on first generate, so
+        // 'pending' (plugin available, model not yet loaded) counts as
+        // healthy enough for the queue to drain — first real request
+        // triggers initialize() and any failure surfaces there.
+        if (this.baseUrl === 'litert://local') {
+            try {
+                const Bridge = await import('./liteRTBridge.js?cb=014');
+                const h = await Bridge.checkHealth();
+                this.isAvailable = h.status !== 'unavailable';
+                this.isHealthy   = h.status === 'healthy' || h.status === 'pending';
+                this.modelInfo   = h;
+                if (this.isHealthy && this.requestQueue.length > 0) this.processRequestQueue();
+                return h;
+            } catch (e) {
+                this.isAvailable = false;
+                this.isHealthy = false;
+                return null;
+            }
+        }
         // Cloud providers don't expose /health. Treat them as healthy iff
         // the user has provided an API key — actual reachability is
         // verified on first real request, with retries/timeout fallback.
@@ -277,9 +306,12 @@ export class LocalAIClient {
         const defaults = this.backendDefaults || Config.LOCAL_AI_CONFIG.DEFAULT_PARAMS;
         const requestData = {
             messages: this.formatMessages(messages),
-            max_tokens: options.max_tokens || defaults.max_tokens,
-            temperature: options.temperature || defaults.temperature,
-            top_p: options.top_p || defaults.top_p,
+            // BUG-05 fix: ?? not || so explicit zero / falsy values aren't
+            // overwritten with defaults (callers requesting deterministic
+            // output via temperature: 0 used to silently get 0.7).
+            max_tokens: options.max_tokens ?? defaults.max_tokens,
+            temperature: options.temperature ?? defaults.temperature,
+            top_p: options.top_p ?? defaults.top_p,
             stream: false
         };
 
@@ -290,19 +322,17 @@ export class LocalAIClient {
             requestData.model = this.modelName;
         }
 
-        if (this.isCloud) {
-            // Cloud APIs (OpenRouter, Groq, Google AI Studio) don't accept
-            // top_k or cache_prompt. Strip them so the request validates.
-            // Also strip Bearer-irrelevant fields.
-            // (cache_prompt and top_k are deliberately not added above.)
-        } else {
-            // Local backends (llama-server, MiniCPM Python) accept top_k.
-            requestData.top_k = options.top_k || defaults.top_k;
+        // BUG-13 fix: previously top_k + cache_prompt were sent to *every*
+        // non-cloud backend. Ollama's OpenAI endpoint ignores top_k (harmless)
+        // but `cache_prompt` is a llama.cpp-specific extension Ollama doesn't
+        // recognize and stricter builds warn on it. Now feature-gated.
+        if (this.supportsTopK) {
+            requestData.top_k = options.top_k ?? defaults.top_k;
+        }
+        if (this.supportsCachePrompt) {
             // Phase 1-D: tell llama-server to keep its KV-cache prefix slot
-            // warm. Branching choices share ~99% of the system prompt + arc
-            // memory + entity memory across turns, so prefix reuse is the
-            // single biggest free latency win on this stack. llama-server
-            // ignores the field on backends that don't support it.
+            // warm. Branching choices share ~99% of the system prompt across
+            // turns, so prefix reuse is the single biggest latency win.
             requestData.cache_prompt = true;
         }
 
@@ -318,29 +348,47 @@ export class LocalAIClient {
         // schemas.js) for count/type-uniqueness checks post-parse. Backends
         // that don't enforce schemas at all (e.g. MiniCPM Python) ignore the
         // field entirely; the system prompt + tolerant extractor still work.
+        // BUG-14 fix: response_format shape now driven by backend capability
+        // flags. Previously, every non-cloud backend received the llama.cpp
+        // bare-schema shape, which Ollama rejects and LiteRT ignores —
+        // causing every diff op to silently get dropped on those backends.
         if (options.jsonSchema) {
-            if (this.isCloud) {
-                // Cloud OpenAI-compatible APIs use the nested
-                // `json_schema: {name, schema, strict}` shape. Some
-                // (OpenRouter free models, Groq) silently ignore it; we
-                // include it anyway and rely on the tolerant extractor in
-                // parseJSONFromModelOutput as the safety net.
+            const stripped = stripUnsupportedSchemaConstraints(options.jsonSchema);
+            if (this.jsonSchemaShape === 'openai-nested') {
+                // Cloud (OpenAI / OpenRouter / Groq / Google AI Studio).
                 requestData.response_format = {
                     type: 'json_schema',
                     json_schema: {
                         name: options.jsonSchemaName || 'response',
-                        schema: stripUnsupportedSchemaConstraints(options.jsonSchema),
+                        schema: stripped,
                         strict: false
                     }
                 };
-            } else {
+            } else if (this.jsonSchemaShape === 'llama-cpp-bare') {
+                // llama.cpp's tools/server custom shape.
                 requestData.response_format = {
                     type: 'json_schema',
-                    schema: stripUnsupportedSchemaConstraints(options.jsonSchema)
+                    schema: stripped
                 };
+            } else if (this.supportsJsonObject) {
+                // Backend doesn't enforce schemas (Ollama, MiniCPM) — fall
+                // back to the lighter json_object hint. The system prompt
+                // already describes the expected shape; the tolerant parser
+                // catches malformed output.
+                requestData.response_format = { type: 'json_object' };
+            }
+            // For litert: keep a synthetic marker so the bridge knows JSON is
+            // required and can inject the directive into the system prompt.
+            // The bridge intercepts before HTTP, so this marker never reaches
+            // a network backend.
+            if (this.isLiteRT) {
+                requestData.response_format = { type: 'json_object' };
+                requestData._jsonSchema = stripped;
             }
         } else if (options.jsonObject) {
-            requestData.response_format = { type: 'json_object' };
+            if (this.supportsJsonObject || this.isLiteRT) {
+                requestData.response_format = { type: 'json_object' };
+            }
         }
 
         // If server is not healthy, queue the request
@@ -360,6 +408,34 @@ export class LocalAIClient {
      * Execute a single request with retry logic
      */
     async executeRequest(requestData, retries = 0) {
+        // Phase 5: on-device LiteRT-LM. The bridge speaks the same response
+        // shape as /v1/chat/completions, so we can short-circuit before the
+        // HTTP path. No retries on the local plugin — failures are model
+        // errors, not network ones.
+        if (this.baseUrl === 'litert://local') {
+            try {
+                const Bridge = await import('./liteRTBridge.js?cb=014');
+                const result = await Bridge.chatCompletion(requestData);
+                if (result?.choices?.[0]?.message?.content != null) {
+                    return result.choices[0].message.content;
+                }
+                throw new Error('liteRTBridge returned an empty response');
+            } catch (e) {
+                const msg = e?.message || String(e);
+                console.error(`LocalAI[litert]: ${msg}`);
+                // Surface a user-friendly error instead of a raw stack trace
+                if (msg.includes('ModelDownload plugin not found') || msg.includes('failed to load')) {
+                    throw new Error('On-device AI plugin not available. Go to Settings and switch to Cloud AI.');
+                }
+                if (msg.includes('AUTH_REQUIRED') || msg.includes('HuggingFace')) {
+                    throw new Error('Model download requires a HuggingFace token. Go to Settings → On-Device AI for instructions.');
+                }
+                if (msg.includes('model not yet loaded') || msg.includes('not yet loaded')) {
+                    throw new Error('AI model is still downloading. Check the progress in Settings → On-Device AI.');
+                }
+                throw e;
+            }
+        }
         try {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), Config.LOCAL_AI_CONFIG.CONNECTION_TIMEOUT);
@@ -396,29 +472,53 @@ export class LocalAIClient {
             });
             
             clearTimeout(timeoutId);
-            
+
             if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                // BUG-06 fix: distinguish 4xx (client error — retry pointless,
+                // user needs to fix the request) from 5xx (server error — retry
+                // sometimes helps). Tag the error so executeRequest's catch
+                // can decide.
+                let body = '';
+                try { body = (await response.text()).slice(0, 500); } catch (_) {}
+                const err = new Error(`HTTP ${response.status}: ${response.statusText}${body ? ' — ' + body : ''}`);
+                err.httpStatus = response.status;
+                err.retryable = response.status >= 500 || response.status === 429; // 5xx + rate-limit
+                throw err;
             }
             
             const result = await response.json();
             
             // Extract the response text
             if (result.choices && result.choices.length > 0) {
-                return result.choices[0].message.content;
+                // BUG: some cloud providers (notably reasoning-model OpenRouter
+                // routes) return content === null with reasoning_content set.
+                // Fall through to that field so the call doesn't surface as
+                // empty.
+                const msg = result.choices[0].message || {};
+                return msg.content ?? msg.reasoning_content ?? '';
             } else {
                 throw new Error('No response generated');
             }
-            
+
         } catch (error) {
-            console.log(`LocalAI: Request failed (attempt ${retries + 1}):`, error.message);
-            
-            if (retries < Config.LOCAL_AI_CONFIG.MAX_RETRIES) {
-                // Wait before retrying
+            // BUG-06 fix: only retry on network errors / 5xx / rate-limit.
+            // Auth errors (401), bad-request (400), validation (422) won't
+            // succeed on retry — surface them immediately so the user sees
+            // the real cause in <1s instead of after 8-10s of retry delays.
+            const isNetworkError = error.name === 'AbortError'
+                || error.name === 'TypeError'
+                || (error.message || '').toLowerCase().includes('failed to fetch');
+            const shouldRetry = isNetworkError || error.retryable === true;
+            console.log(`LocalAI: Request failed (attempt ${retries + 1}, retryable=${shouldRetry}):`, error.message);
+
+            if (shouldRetry && retries < Config.LOCAL_AI_CONFIG.MAX_RETRIES) {
                 await new Promise(resolve => setTimeout(resolve, Config.LOCAL_AI_CONFIG.RETRY_DELAY * (retries + 1)));
                 return this.executeRequest(requestData, retries + 1);
-            } else {
+            } else if (shouldRetry) {
                 throw new Error(`LocalAI request failed after ${Config.LOCAL_AI_CONFIG.MAX_RETRIES} attempts: ${error.message}`);
+            } else {
+                // Non-retryable: throw immediately, preserving status code.
+                throw error;
             }
         }
     }
@@ -533,7 +633,6 @@ function stripUnsupportedSchemaConstraints(schema) {
     if (Array.isArray(schema)) return schema.map(stripUnsupportedSchemaConstraints);
     const out = {};
     for (const [k, v] of Object.entries(schema)) {
-        if (k === 'minItems' || k === 'maxItems' || k === 'minLength' || k === 'maxLength') continue;
         out[k] = (v && typeof v === 'object') ? stripUnsupportedSchemaConstraints(v) : v;
     }
     return out;

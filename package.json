@@ -6,7 +6,14 @@
     "test": "playwright test",
     "test:themes": "playwright test --grep @themes",
     "test:integration": "playwright test --grep @integration",
-    "test:headed": "playwright test --headed"
+    "test:headed": "playwright test --headed",
+    "audit": "node --experimental-loader ./tools/preload.mjs tools/run_audits.mjs",
+    "audit:hooks": "node --experimental-loader ./tools/preload.mjs tools/audit.mjs",
+    "audit:engine": "node --experimental-loader ./tools/preload.mjs tools/engine_audit.mjs",
+    "audit:godmode": "node --experimental-loader ./tools/preload.mjs tools/godmode_audit.mjs",
+    "eval:models": "node --experimental-loader ./tools/preload.mjs tools/eval_models.mjs",
+    "audit:ui": "node tools/ui_audit.mjs",
+    "test:llm": "node --experimental-loader ./tools/preload.mjs tools/llm_contract.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1"

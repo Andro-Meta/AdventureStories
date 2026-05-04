@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Adventure Stories</string>
+    <string name="title_activity_main">Adventure Stories</string>
+    <string name="package_name">com.androsmeta.adventurestories</string>
+    <string name="custom_url_scheme">com.androsmeta.adventurestories</string>
+</resources>

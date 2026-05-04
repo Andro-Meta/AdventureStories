@@ -1,0 +1,24 @@
+{
+  "name": "adventure-stories-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Capacitor wrapper for the Adventure Stories Android APK / AAB.",
+  "scripts": {
+    "init": "npx cap init 'Adventure Stories' com.androsmeta.adventurestories --web-dir=..",
+    "add:android": "npx cap add android",
+    "sync": "npx cap sync android",
+    "open:android": "npx cap open android",
+    "build:debug": "cd android && ./gradlew assembleDebug",
+    "build:release": "cd android && ./gradlew bundleRelease",
+    "run:android": "npx cap run android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
+    "@capacitor/splash-screen": "^8.0.0",
+    "@capgo/capacitor-llm": "^8.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.0.0"
+  }
+}
