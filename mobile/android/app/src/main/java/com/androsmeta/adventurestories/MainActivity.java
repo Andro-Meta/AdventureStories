@@ -1,10 +1,17 @@
 package com.androsmeta.adventurestories;
 
+import android.os.Bundle;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
-    // Capacitor's BridgeActivity wires up the WebView, plugin registry,
-    // and lifecycle. The on-device LLM plugin (@capgo/capacitor-llm) is
-    // registered automatically via its CapacitorPlugin annotation; no
-    // explicit registerPlugin() call is needed in Capacitor 8+.
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+        // Register the local custom plugin BEFORE super.onCreate so the
+        // Capacitor bridge picks it up. Local plugins (defined in this app's
+        // own Java sources, not installed via npm) are NOT auto-registered;
+        // only npm-installed plugins are. See:
+        // https://capacitorjs.com/docs/android/custom-code
+        registerPlugin(ModelDownloadPlugin.class);
+        super.onCreate(savedInstanceState);
+    }
 }
