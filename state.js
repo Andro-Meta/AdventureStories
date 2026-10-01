@@ -672,7 +672,12 @@ export function resetGameState() {
             milestones: [], currentObjectives: [], sideQuests: [],
             discoveredSecrets: [], keyEvents: [], progressHistory: []
         },
-        narrativeContext: { events: [], turnsSinceLastBigBeat: 0 },
+        // Same shape as the initial gameState above; actionHandler reads these arrays on turn 1.
+        narrativeContext: {
+            lastAction: null, lastOutcome: null,
+            significantEvents: [], discoveredSecrets: [],
+            relationshipChanges: [], environmentalChanges: []
+        },
         // Hierarchical memory (Tier 3) — referenced by aiHandler/memoryRetriever.
         arcMemory: { summaries: [], lastSummarizedTurn: 0 },
         entityMemory: { npcs: {}, locations: {}, items: {} },
@@ -1098,5 +1103,4 @@ export function analyzePlayerBehavior(playerId) {
     });
     
     return patterns;
-}    return patterns;
 }
