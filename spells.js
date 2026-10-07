@@ -2,11 +2,11 @@
 // Core Magic & Spell System for Adventure Stories
 // Phase 3: Magic System Implementation
 
-import { gameState, buildGameContextBlock } from './state.js?cb=014';
-import * as Config from './config.js?cb=014';
-import * as UI from './ui.js?cb=014';
-import * as AdaptiveAbilities from './adaptiveAbilities.js?cb=014';
-import { generateId } from './utils.js?cb=014';
+import { gameState, buildGameContextBlock } from './state.js';
+import * as Config from './config.js';
+import * as UI from './ui.js';
+import * as AdaptiveAbilities from './adaptiveAbilities.js';
+import { generateId } from './utils.js';
 
 /**
  * Schools of Magic - Each with unique characteristics and themes
@@ -501,14 +501,14 @@ export function getAdaptedTerm(term) {
  */
 export async function generateDynamicSpell(school, type, level, context = {}) {
     try {
-        const DynamicSpells = await import('./dynamicSpells.js?cb=014');
+        const DynamicSpells = await import('./dynamicSpells.js');
         return await DynamicSpells.generateDynamicSpell(school, type, level, context);
     } catch (error) {
         const log = window.displayVisualError || console.log;
         log(`Spells: Dynamic generation failed, using fallback: ${error.message}`);
         
         // Fallback to basic generation
-        const SpellGeneration = await import('./spellGeneration.js?cb=014');
+        const SpellGeneration = await import('./spellGeneration.js');
         return await SpellGeneration.generateDynamicSpell(school, type, level, context);
     }
 }
@@ -522,7 +522,7 @@ export async function generateDynamicSpell(school, type, level, context = {}) {
  */
 export async function generateContextualSpell(situation, player, maxLevel = 3) {
     try {
-        const DynamicSpells = await import('./dynamicSpells.js?cb=014');
+        const DynamicSpells = await import('./dynamicSpells.js');
         return await DynamicSpells.generateContextualSpell(situation, player, maxLevel);
     } catch (error) {
         const log = window.displayVisualError || console.log;
@@ -540,7 +540,7 @@ export async function generateContextualSpell(situation, player, maxLevel = 3) {
  */
 export async function learnFromSpellCasting(player, spell, wasSuccessful, wasRelevant) {
     try {
-        const DynamicSpells = await import('./dynamicSpells.js?cb=014');
+        const DynamicSpells = await import('./dynamicSpells.js');
         DynamicSpells.learnFromSpellCasting(player, spell, wasSuccessful, wasRelevant);
     } catch (error) {
         const log = window.displayVisualError || console.log;
@@ -566,7 +566,7 @@ async function generateBatchSpells(spellRequests, player, batchType) {
         // Use schema-constrained JSON call so llama.cpp guarantees valid JSON output.
         // The narrative pipeline (makeAICallForSystemAction) wraps the prompt in a
         // story narrator context and returns prose text — wrong for structured data.
-        const API = await import('./api_new.js?cb=014');
+        const API = await import('./api_new.js');
         const messages = [
             { role: 'system', content: 'You are a game data generator. Return only valid JSON matching the requested schema. No prose.' },
             { role: 'user', content: batchPrompt }

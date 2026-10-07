@@ -2,13 +2,13 @@
 // Revolutionary Character Development AI Agent for Personality & Relationship Tracking
 // Creates deep character growth, NPC relationships, and reputation systems
 
-import { gameState } from './state.js?cb=014';
-import * as Config from './config.js?cb=014';
-import * as ThemeIntelligence from './themeIntelligence.js?cb=014';
-import * as AdaptiveAbilities from './adaptiveAbilities.js?cb=014';
-import { generateId, getRandomInt, getRandomElement } from './utils.js?cb=014';
-import { gemmaHT } from './gemmaHyperthreading.js?cb=014';
-import { gemmaContextOptimizer } from './gemmaContextOptimizer.js?cb=014';
+import { gameState } from './state.js';
+import * as Config from './config.js';
+import * as ThemeIntelligence from './themeIntelligence.js';
+import * as AdaptiveAbilities from './adaptiveAbilities.js';
+import { generateId, getRandomInt, getRandomElement } from './utils.js';
+import { gemmaHT } from './gemmaHyperthreading.js';
+import { gemmaContextOptimizer } from './gemmaContextOptimizer.js';
 
 /**
  * Character Development Agent - Manages personality evolution and relationships
@@ -323,7 +323,7 @@ Focus on realistic, gradual personality development based on the choice's moral 
 
         try {
             // Show loading indicator for AI processing
-            const UI = await import('./ui.js?cb=014');
+            const UI = await import('./ui.js');
             UI.showLoading(true, 'Analyzing character development...');
             
             const response = await gemmaHT.processWithHyperthreading(prompt, 'character_development');
@@ -339,7 +339,7 @@ Focus on realistic, gradual personality development based on the choice's moral 
         } finally {
             // Hide loading indicator
             try {
-                const UI = await import('./ui.js?cb=014');
+                const UI = await import('./ui.js');
                 UI.showLoading(false);
             } catch (e) {
                 // Ignore UI import errors

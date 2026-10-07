@@ -9,7 +9,7 @@
 // Existing call sites should `await` to stay forward-compatible.
 //
 // Usage:
-//   import { storage } from './storage.js?cb=014';
+//   import { storage } from './storage.js';
 //   await storage.setItem('myKey', JSON.stringify(value));
 //   const raw = await storage.getItem('myKey');
 //   await storage.removeItem('myKey');

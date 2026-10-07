@@ -2,11 +2,11 @@
 // Revolutionary Difficulty Adaptation AI Agent
 // Dynamically scales challenge based on player performance and engagement
 
-import { gameState } from './state.js?cb=014';
-import * as Config from './config.js?cb=014';
-import { generateId, clamp } from './utils.js?cb=014';
-import { gemmaHT } from './gemmaHyperthreading.js?cb=014';
-import { gemmaContextOptimizer } from './gemmaContextOptimizer.js?cb=014';
+import { gameState } from './state.js';
+import * as Config from './config.js';
+import { generateId, clamp } from './utils.js';
+import { gemmaHT } from './gemmaHyperthreading.js';
+import { gemmaContextOptimizer } from './gemmaContextOptimizer.js';
 
 /**
  * Difficulty Adaptation Agent - Intelligently scales game challenge
@@ -211,7 +211,7 @@ Focus on creating an optimal challenge level that maintains engagement without c
 
         try {
             // Show loading indicator for AI processing
-            const UI = await import('./ui.js?cb=014');
+            const UI = await import('./ui.js');
             UI.showLoading(true, 'Adapting difficulty...');
             
             const response = await gemmaHT.processWithHyperthreading(prompt, 'difficulty_adaptation');
@@ -227,7 +227,7 @@ Focus on creating an optimal challenge level that maintains engagement without c
         } finally {
             // Hide loading indicator
             try {
-                const UI = await import('./ui.js?cb=014');
+                const UI = await import('./ui.js');
                 UI.showLoading(false);
             } catch (e) {
                 // Ignore UI import errors

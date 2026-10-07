@@ -2,21 +2,21 @@
 // Handles DOM manipulation, UI updates, screen transitions, popups, modals, etc.
 
 // --- Module Imports ---
-import { gameState } from './state.js?cb=014';
-import * as Config from './config.js?cb=014';
-import { loadPlayerAges, loadPlayerNames, loadAdventureTheme } from './inputCache.js?cb=014';
-import * as Spells from './spells.js?cb=014';
-import * as SpellUI from './spellUI.js?cb=014';
+import { gameState } from './state.js';
+import * as Config from './config.js';
+import { loadPlayerAges, loadPlayerNames, loadAdventureTheme } from './inputCache.js';
+import * as Spells from './spells.js';
+import * as SpellUI from './spellUI.js';
 // Import specific utils needed
-import { sanitizeText, shuffleArray } from './utils.js?cb=014';
+import { sanitizeText, shuffleArray } from './utils.js';
 // Import functions from other new modules
-import { getCurrentPlayer, canCurrentPlayerAct } from './state.js?cb=014';
+import { getCurrentPlayer, canCurrentPlayerAct } from './state.js';
 // Import themedItemData directly if it's exported from items.js
-import { themedItemData } from './items.js?cb=014';
+import { themedItemData } from './items.js';
 // Import reputation price calculation
-import { calculateItemPrice } from './actionHandler.js?cb=014';
+import { calculateItemPrice } from './actionHandler.js';
 // Import reputation system functions
-import { getContextualizedFactions, calculateTrustLevel } from './reputationContextualizer.js?cb=014';
+import { getContextualizedFactions, calculateTrustLevel } from './reputationContextualizer.js';
 
 
 // --- DOM Element References ---

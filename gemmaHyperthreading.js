@@ -4,8 +4,8 @@
 // single AI call (processWithHyperthreading, processCombatScenario,
 // processSingleAgent). Kept under its old name to avoid a 13-import refactor.
 
-import { gameState } from './state.js?cb=014';
-import { localAIOrchestrator } from './localAIOrchestrator.js?cb=014';
+import { gameState } from './state.js';
+import { localAIOrchestrator } from './localAIOrchestrator.js';
 
 /**
  * Compatibility stub for Local AI Hyperthreading (formerly Gemma)
@@ -48,7 +48,7 @@ export class LocalAIHyperthreading {
 
         try {
             // Simple API call for basic requests
-            const API = await import('./api_new.js?cb=014');
+            const API = await import('./api_new.js');
             return await API.getAIResponse([
                 { role: 'system', content: 'You are a helpful AI assistant for an adventure game.' },
                 { role: 'user', content: prompt }
@@ -64,7 +64,7 @@ export class LocalAIHyperthreading {
      * difficultyAdaptation, dynamicSpells, worldEvolution. Returns the raw text response.
      */
     async processWithHyperthreading(prompt, requestType = 'general') {
-        const API = await import('./api_new.js?cb=014');
+        const API = await import('./api_new.js');
         return await API.getAIResponse([
             { role: 'system', content: `You are an AI specialist handling ${requestType} for an adventure game. Respond concisely and stay on-topic.` },
             { role: 'user', content: prompt }
@@ -75,7 +75,7 @@ export class LocalAIHyperthreading {
      * Combat-flavored single AI call. Used by combat.js for enemy turn reasoning.
      */
     async processCombatScenario(prompt, scenarioType = 'enemy_turn') {
-        const API = await import('./api_new.js?cb=014');
+        const API = await import('./api_new.js');
         return await API.getAIResponse([
             { role: 'system', content: `You are a tactical combat AI handling ${scenarioType}. Respond with a single decisive action.` },
             { role: 'user', content: prompt }

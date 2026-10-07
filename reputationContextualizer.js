@@ -2,8 +2,8 @@
 // Lightweight Faction Contextualization System
 // Dynamically adapts reputation factions to any theme without AI agents
 
-import { gameState } from './state.js?cb=014';
-import * as Config from './config.js?cb=014';
+import { gameState } from './state.js';
+import * as Config from './config.js';
 
 /**
  * Lightweight Reputation Contextualizer

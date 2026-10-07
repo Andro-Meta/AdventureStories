@@ -2,10 +2,10 @@
 // Revolutionary Local AI Multi-Agent Orchestrator
 // Coordinates specialized agents with local AI for intelligent, parallel processing
 
-import { gameState } from './state.js?cb=014';
-import * as API from './api_new.js?cb=014';
-import * as UI from './ui.js?cb=014';
-import { generateId } from './utils.js?cb=014';
+import { gameState } from './state.js';
+import * as API from './api_new.js';
+import * as UI from './ui.js';
+import { generateId } from './utils.js';
 
 /**
  * Local AI Multi-Agent Orchestrator
@@ -48,7 +48,7 @@ export class LocalAIOrchestrator {
             priority: 'high',
             executionTime: 'medium',
             dependencies: [],
-            module: './storyContinuity.js?cb=014',
+            module: './storyContinuity.js',
             className: 'StoryContinuityAgent'
         });
 
@@ -60,7 +60,7 @@ export class LocalAIOrchestrator {
             priority: 'medium',
             executionTime: 'fast',
             dependencies: ['theme_intelligence'],
-            module: './dynamicItems.js?cb=014',
+            module: './dynamicItems.js',
             className: 'DynamicItemRegistry'
         });
 
@@ -71,7 +71,7 @@ export class LocalAIOrchestrator {
             priority: 'high',
             executionTime: 'medium',
             dependencies: ['theme_intelligence', 'story_continuity'],
-            module: './dynamicEncounters.js?cb=014',
+            module: './dynamicEncounters.js',
             className: 'DynamicEncounterRegistry'
         });
 
@@ -82,7 +82,7 @@ export class LocalAIOrchestrator {
             priority: 'medium',
             executionTime: 'fast',
             dependencies: ['theme_intelligence'],
-            module: './dynamicEnemies.js?cb=014',
+            module: './dynamicEnemies.js',
             className: 'DynamicEnemyRegistry'
         });
 
@@ -93,7 +93,7 @@ export class LocalAIOrchestrator {
             priority: 'medium',
             executionTime: 'medium',
             dependencies: ['theme_intelligence', 'story_continuity'],
-            module: './dynamicLocations.js?cb=014',
+            module: './dynamicLocations.js',
             className: 'DynamicLocationRegistry'
         });
 
@@ -105,7 +105,7 @@ export class LocalAIOrchestrator {
             priority: 'high',
             executionTime: 'fast',
             dependencies: [],
-            module: './themeIntelligence.js?cb=014',
+            module: './themeIntelligence.js',
             className: 'ThemeIntelligenceEngine'
         });
 
@@ -116,7 +116,7 @@ export class LocalAIOrchestrator {
             priority: 'medium',
             executionTime: 'fast',
             dependencies: ['theme_intelligence'],
-            module: './adaptiveAbilities.js?cb=014',
+            module: './adaptiveAbilities.js',
             className: 'AdaptiveAbilities'
         });
 
@@ -128,7 +128,7 @@ export class LocalAIOrchestrator {
             priority: 'high',
             executionTime: 'fast',
             dependencies: [],
-            module: './questProgress.js?cb=014',
+            module: './questProgress.js',
             className: 'QuestProgressManager'
         });
     }

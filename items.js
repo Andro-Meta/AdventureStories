@@ -2,10 +2,10 @@
 // Handles item definitions, themed generation, shop population, loot drops.
 
 // --- Module Imports ---
-import * as Config from './config.js?cb=014'; // Needs config values (Tiers, Costs, etc.)
-import { gameState } from './state.js?cb=014'; // Needs gameState for context (theme, turn)
+import * as Config from './config.js'; // Needs config values (Tiers, Costs, etc.)
+import { gameState } from './state.js'; // Needs gameState for context (theme, turn)
 // Import specific utils needed
-import { generateId, getRandomInt, getRandomElement, shuffleArray, clamp } from './utils.js?cb=014';
+import { generateId, getRandomInt, getRandomElement, shuffleArray, clamp } from './utils.js';
 
 // --- Themed Item Data ---
 // Base names, prefixes, suffixes, effects per theme for combinatorial generation.

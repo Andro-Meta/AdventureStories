@@ -3,8 +3,8 @@ REM ============================================================
 REM   Adventure Stories - one-click launcher (Windows)
 REM ============================================================
 REM   Double-click this file to start the game.
-REM   - Opens the AI server (llama-server, port 8090)
-REM   - Opens the web server (port 8000+)
+REM   - Starts the web server (port 8321+). The AI runs online (free
+REM     OpenRouter / Google key, pasted once in AI Settings) - no local model.
 REM   - Opens your browser to the game
 REM   - Prints a phone-friendly URL if you're on Wi-Fi
 REM ============================================================
@@ -22,11 +22,11 @@ echo.
 REM Prefer the Python Launcher (py) when present; fall back to python.
 where py >nul 2>nul
 if %ERRORLEVEL% EQU 0 (
-    py start_game.py
+    py server.py
 ) else (
     where python >nul 2>nul
     if %ERRORLEVEL% EQU 0 (
-        python start_game.py
+        python server.py
     ) else (
         echo ERROR: Python is not installed or not on PATH.
         echo.

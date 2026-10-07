@@ -22,43 +22,38 @@ Fantasy Kingdom · Space Exploration · Pirate Seas · Underwater World · Jungl
 
 ---
 
-## AI backends
+## Play it (free online AI, nothing to install but Python)
 
-The game speaks OpenAI-compatible `/v1/chat/completions` and supports four backends. Switch via the in-game settings or `localStorage.setItem('adv.llmBackend', '...')`.
+1. **Windows:** double-click `easy.bat`. **Mac/Linux:** `python3 server.py`.
+   It serves the game at `http://localhost:8321` (next free port if taken) and opens your browser.
+   Keep using the same address: your key and saves are stored per address.
+2. Get a free key (no credit card):
+   - **OpenRouter** (default): <https://openrouter.ai/settings/keys>
+   - or **Google AI Studio** (fastest, ~1–2 s per turn): <https://aistudio.google.com/apikey>
+3. In the game: **⚙️ AI Settings → Cloud AI → pick the provider → paste the key → Save.**
 
-| Backend | When to use | Set via |
-|---|---|---|
-| **llama.cpp** (default desktop) | Desktop with Gemma-3n GGUF downloaded | `'llama-cpp'` |
-| **Ollama** | Ollama already installed and running | `'ollama'` |
-| **LiteRT** (auto-selected on Android) | Capacitor APK with on-device Gemma 3 1B | `'litert'` |
-| **Cloud** | No local model — free OpenRouter / Groq / Google AI key | `'cloud'` |
+The key lives only in this browser's localStorage; requests go straight from the browser to the provider.
 
-### Option A — llama.cpp (highest quality, offline)
+### Free-tier limits (checked 2026-10-07)
 
-1. Install [Python 3.10+](https://www.python.org/downloads/).
-2. Extract a [llama.cpp release](https://github.com/ggml-org/llama.cpp/releases) into `./llama-cpp/` so `llama-cpp/llama-server.exe` exists (CUDA build if you have NVIDIA).
-3. Download [Gemma-3n-E4B-it-Q4_K_M.gguf](https://huggingface.co/unsloth/gemma-3n-E4B-it-GGUF) (~4.5 GB) into `./models/`.
-4. **Windows:** double-click `easy.bat`. **Mac/Linux:** `python3 start_game.py`.
+| Provider | Models used | Limit | One turn |
+|---|---|---|---|
+| OpenRouter (default) | Nemotron 3 Super 120B → Nemotron 3 Ultra 550B → Gemma 4 31B (automatic fallback) | 20/min, **50 requests/day**; **1,000/day for good** after a one-time $10 credit purchase (free models never spend it) | ~2 requests, 5–15 s |
+| Google AI Studio | Gemini Flash-Lite | Free tier; daily cap shown in AI Studio | ~2 requests, 1–2 s |
 
-### Option B — Ollama (easiest local setup)
+A new game costs about 6–8 requests (intro, goal, shop, spells). On OpenRouter's 50/day that is
+roughly 20 turns a day; add the $10 credit, or use a Google key, for long sessions.
+If the daily quota runs out the game says so instead of failing silently.
 
-1. Install [Ollama](https://ollama.com) and pull a model: `ollama pull gemma3:27b`
-2. Run `python server.py` (or `python3 server.py`) to start the static-file server.
-3. Open `http://localhost:8000` and run in the browser console:
-   ```js
-   localStorage.setItem('adv.llmBackend', 'ollama')
-   ```
-4. Reload. The game will use Ollama on port 11434.
+### Local AI (optional)
 
-> **Tip:** Use `gemma3:27b` for best story quality, `gemma3:4b` or `qwen3.5:9b` for faster responses on smaller machines.
-
-### Option C — Cloud (no local AI required)
-
-Open the **Local AI Status** panel from the main menu and paste a free API key from [OpenRouter](https://openrouter.ai), [Groq](https://console.groq.com), or [Google AI Studio](https://aistudio.google.com). No credit card required for the free tiers.
+llama.cpp, Ollama and the old MiniCPM server still work for offline play: pick **Local AI** in
+AI Settings and start the server yourself (`python start_llama_server.py`, port 8090). Not needed for normal play.
 
 ### Play on your phone (same Wi-Fi)
 
-The launcher prints a LAN URL like `http://192.168.x.y:8000`. Open that on your phone with `?backend=http://192.168.x.y:8090` appended to point at the desktop's AI server. **Add to Home Screen** to install as a PWA.
+`server.py` prints a LAN URL like `http://192.168.x.y:8321`. Open it on the phone, paste a key in AI Settings
+(keys are per device), and **Add to Home Screen** to install it as a PWA.
 
 ---
 
@@ -132,10 +127,10 @@ These run pure Node, no browser, no AI server, no network — perfect for CI. Th
 | `liteRTBridge.js` | On-device LiteRT-LM bridge (Capacitor → @capgo/capacitor-llm) |
 | `saveLoad.js` | localStorage save/load + AG- migration |
 | `ui.js` | All DOM updates — narrative, choices, player cards, quest panel |
-| `server.py` | Static site server (port 8000) |
+| `server.py` | Static site server (port 8321+) |
 | `start_llama_server.py` | llama-server launcher (port 8090) |
 | `start_game.py` | Top-level orchestrator |
-| `easy.bat` | One-click launcher (Windows) |
+| `easy.bat` | One-click launcher (Windows): runs `server.py` |
 | `mobile/` | Capacitor wrapper + Android build instructions |
 | `tools/audit.mjs` | Static validation: themes, hooks, quest hints, schemas |
 | `tools/engine_audit.mjs` | Engine applyDiff coverage (every god-mode path) |

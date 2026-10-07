@@ -2,16 +2,16 @@
 // Spell Casting Mechanics and Execution System
 // Phase 3: Magic System Implementation
 
-import { gameState, getCurrentPlayer } from './state.js?cb=014';
-import * as Spells from './spells.js?cb=014';
-import * as UI from './ui.js?cb=014';
-import * as Combat from './combat.js?cb=014';
+import { gameState, getCurrentPlayer } from './state.js';
+import * as Spells from './spells.js';
+import * as UI from './ui.js';
+import * as Combat from './combat.js';
 // BUG: previously imported './statusEffects.js' which doesn't exist —
 // crashed the entire app at module-load time ("Could not load essential
 // game modules"). The actual implementation lives in combat.js as
 // applyStatusEffect(); we alias it here so existing call sites work.
 const StatusEffects = { applyStatusEffect: (target, effect) => Combat.applyStatusEffect(target, effect?.name || effect, effect?.duration ?? 3, effect?.effectTickData || {}, 'spell') };
-import * as AdaptiveAbilities from './adaptiveAbilities.js?cb=014';
+import * as AdaptiveAbilities from './adaptiveAbilities.js';
 
 /**
  * Cast a spell with full mechanics and effects

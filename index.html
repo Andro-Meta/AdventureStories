@@ -66,7 +66,7 @@
                     <!-- On-Device AI (Android / Capacitor only — shown by JS) -->
                     <label class="backend-mode-label" id="litertModeLabel" style="display:none">
                         <input type="radio" name="backendMode" id="backendModeLiteRT" value="litert">
-                        <span>📱 On-Device AI (Gemma 3 4B — private, offline)</span>
+                        <span>On-Device AI (Qwen 2.5 1.5B - private, offline, ~1.6 GB)</span>
                     </label>
                     <label class="backend-mode-label" id="localModeLabel">
                         <input type="radio" name="backendMode" id="backendModeLocal" value="local">
@@ -85,7 +85,7 @@
 
                     <div id="litertDownloadSection" class="hidden">
                         <p style="color:#aaa;font-size:0.9em;margin:10px 0 6px;">
-                            The Gemma 3 4B model (~2.4 GB) needs to download once to your device. Use WiFi.
+                            The Qwen 2.5 1.5B model ships with the app — no download needed. If this card ever shows up, your install is incomplete; reinstalling the app from the Play Store will fix it.
                         </p>
                         <button id="downloadModelBtn" class="primary" style="width:100%;padding:14px;font-size:1rem;margin-top:4px;">
                             ⬇️ Download AI Model
@@ -103,11 +103,14 @@
                 <!-- Cloud provider section (visible only when cloud mode selected) -->
                 <div id="cloudConfigSection" class="cloud-config hidden">
                     <h3>Cloud Provider:</h3>
+                    <!-- Static options. Keys MUST match CLOUD_PROVIDERS in
+                         config.js exactly. If you add a new provider in
+                         config.js, mirror it here. -->
                     <select id="cloudProviderSelect" class="cloud-provider-select">
-                        <option value="openrouter">OpenRouter — Gemma 4 31B (Free, recommended)</option>
-                        <option value="openrouter_gemma3">OpenRouter — Gemma 3 27B (Free)</option>
-                        <option value="groq">Groq — Llama 3.3 70B (Free, fastest)</option>
-                        <option value="googleai">Google AI Studio — Gemini Flash Lite (Free)</option>
+                        <option value="openrouter_free" selected>OpenRouter — Free models (auto-fallback) ★ recommended</option>
+                        <option value="openrouter_ultra">OpenRouter — Nemotron 3 Ultra 550B (Free, richest, slower)</option>
+                        <option value="openrouter_gemma4">OpenRouter — Gemma 4 31B (Free, often rate-limited)</option>
+                        <option value="googleai">Google AI Studio — Gemini Flash-Lite (Free, fastest)</option>
                     </select>
 
                     <p id="cloudProviderNotes" class="cloud-provider-notes"></p>
@@ -533,6 +536,13 @@
         </div>
 
     </div> <!-- End Container -->
+
+    <!-- Mobile bootstrap: defaults the backend to 'cloud' on first launch in the
+         Capacitor APK so users hit the configurable Cloud/On-Device picker
+         instead of crashing on a missing local model. Runs synchronously
+         before main.js (a module) so its localStorage write is visible to
+         config.js. No-op on desktop (window.Capacitor is undefined). -->
+    <script src="mobile-bootstrap.js"></script>
 
     <!-- Link JavaScript Entry Point -->
         <script type="module" src="main.js?v=20250915013000"></script>

@@ -1,7 +1,7 @@
 // loadingManager.js
 // Intelligent loading system with proper hierarchy and status indicators
 
-import { gameState } from './state.js?cb=014';
+import { gameState } from './state.js';
 
 /**
  * Loading Manager for Adventure Stories

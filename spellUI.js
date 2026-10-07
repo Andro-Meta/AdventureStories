@@ -2,10 +2,10 @@
 // User Interface for Magic & Spell System
 // Phase 3: Magic System Implementation
 
-import { gameState, getCurrentPlayer } from './state.js?cb=014';
-import * as Spells from './spells.js?cb=014';
-import * as UI from './ui.js?cb=014';
-import * as AdaptiveAbilities from './adaptiveAbilities.js?cb=014';
+import { gameState, getCurrentPlayer } from './state.js';
+import * as Spells from './spells.js';
+import * as UI from './ui.js';
+import * as AdaptiveAbilities from './adaptiveAbilities.js';
 
 /**
  * Render the spellbook interface
@@ -378,7 +378,7 @@ async function castSpellFromUI(spellId) {
     
     // Import spell casting system (will be created next)
     try {
-        const SpellCasting = await import('./spellCasting.js?cb=014');
+        const SpellCasting = await import('./spellCasting.js');
         await SpellCasting.castSpell(player, spell);
     } catch (error) {
         log('Error casting spell:', error);
@@ -486,12 +486,12 @@ export function addSpellbookButton() {
         castSpellBtn.title = adaptation.actionButton;
         castSpellBtn.addEventListener('click', () => {
             showQuickSpellSelector(player, async (spell) => {
-                const SpellCasting = await import('./spellCasting.js?cb=014');
+                const SpellCasting = await import('./spellCasting.js');
                 await SpellCasting.castSpell(player, spell);
                 
                 // Advance turn if in combat
                 if (gameState.inCombat) {
-                    const TurnManager = await import('./turnManager.js?cb=014');
+                    const TurnManager = await import('./turnManager.js');
                     await TurnManager.advanceTurn();
                 }
             });

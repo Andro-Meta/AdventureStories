@@ -2,12 +2,12 @@
 // Revolutionary Dynamic Location Generation System with Theme Intelligence
 // Replaces static location maps with intelligent, story-driven generation
 
-import { gameState, buildGameContextBlock } from './state.js?cb=014';
-import * as Config from './config.js?cb=014';
-import * as ThemeIntelligence from './themeIntelligence.js?cb=014';
-import * as AdaptiveAbilities from './adaptiveAbilities.js?cb=014';
-import { generateId, getRandomInt, getRandomElement } from './utils.js?cb=014';
-import { gemmaHT } from './gemmaHyperthreading.js?cb=014';
+import { gameState, buildGameContextBlock } from './state.js';
+import * as Config from './config.js';
+import * as ThemeIntelligence from './themeIntelligence.js';
+import * as AdaptiveAbilities from './adaptiveAbilities.js';
+import { generateId, getRandomInt, getRandomElement } from './utils.js';
+import { gemmaHT } from './gemmaHyperthreading.js';
 
 /**
  * Dynamic Location Registry - Generates contextually perfect locations for infinite themes
@@ -235,7 +235,7 @@ export class DynamicLocationRegistry {
         try {
             // Use schema-constrained JSON call — the narrative pipeline wraps prompts
             // in a story narrator context and returns prose, not location JSON.
-            const API = await import('./api_new.js?cb=014');
+            const API = await import('./api_new.js');
             const messages = [
                 { role: 'system', content: 'You are a game world generator. Return only valid JSON matching the requested schema. No prose.' },
                 { role: 'user', content: prompt }

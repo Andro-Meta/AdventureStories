@@ -2,8 +2,8 @@
 // Universal Ability System - Adapts to Any Adventure Theme
 // Phase 3: Magic System Enhancement - Theme Adaptation
 
-import { gameState } from './state.js?cb=014';
-import * as Config from './config.js?cb=014';
+import { gameState } from './state.js';
+import * as Config from './config.js';
 
 /**
  * Theme-Adaptive Ability System Configuration

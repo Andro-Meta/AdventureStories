@@ -29,11 +29,29 @@ class CORSRequestHandler(http.server.SimpleHTTPRequestHandler):
         self.send_response(200)
         self.end_headers()
 
-def find_free_port(start_port=8000, max_attempts=10):
+def port_in_use(port):
+    """True if anything already answers on localhost:port.
+
+    A bind test is not enough on Windows: another app on 127.0.0.1:8000
+    (Unreal Editor, here) still lets us bind 0.0.0.0:8000, and the browser's
+    localhost:8000 then reaches that other app instead of the game.
+    """
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.3)
+        return s.connect_ex(("127.0.0.1", port)) == 0
+
+# Fixed port so the browser keeps the same origin, and with it the saved key
+# and save games (localStorage is per origin). 8000 collides with common tools.
+DEFAULT_PORT = 8321
+
+def find_free_port(start_port=DEFAULT_PORT, max_attempts=10):
     """Find a free port starting from start_port"""
     for port in range(start_port, start_port + max_attempts):
+        if port_in_use(port):
+            continue
         try:
-            with socketserver.TCPServer(("", port), None) as test_server:
+            with socketserver.TCPServer(("", port), None):
                 return port
         except OSError:
             continue
@@ -78,7 +96,6 @@ def main():
     print(f"Game URL (this machine):  {url}")
     if lan_url:
         print(f"Game URL (phone on Wi-Fi): {lan_url}")
-        print(f"  └─ For mobile testing add ?backend={lan_url.replace(str(PORT), '8090')} to point AI calls at the same machine.")
     print(f"Press Ctrl+C to stop the server")
     print("-" * 50)
     
@@ -86,7 +103,7 @@ def main():
     # thread, so concurrent ES-module fetches don't queue behind each other.
     # daemon_threads=True means worker threads exit when the main thread exits.
     class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
-        allow_reuse_address = True
+        allow_reuse_address = False  # on Windows SO_REUSEADDR lets two servers share a port
         daemon_threads = True
 
     try:

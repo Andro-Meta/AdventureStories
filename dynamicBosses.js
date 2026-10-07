@@ -2,14 +2,14 @@
 // Revolutionary Dynamic Boss Generation System with Theme Intelligence
 // Specialized system for generating contextually perfect bosses for infinite themes
 
-import { gameState, buildGameContextBlock } from './state.js?cb=014';
-import * as Config from './config.js?cb=014';
-import * as ThemeIntelligence from './themeIntelligence.js?cb=014';
-import * as AdaptiveAbilities from './adaptiveAbilities.js?cb=014';
-import { generateId, getRandomInt, getRandomElement } from './utils.js?cb=014';
-import { gemmaHT } from './gemmaHyperthreading.js?cb=014';
-import { gemmaContextOptimizer } from './gemmaContextOptimizer.js?cb=014';
-import { localAIOrchestrator } from './localAIOrchestrator.js?cb=014';
+import { gameState, buildGameContextBlock } from './state.js';
+import * as Config from './config.js';
+import * as ThemeIntelligence from './themeIntelligence.js';
+import * as AdaptiveAbilities from './adaptiveAbilities.js';
+import { generateId, getRandomInt, getRandomElement } from './utils.js';
+import { gemmaHT } from './gemmaHyperthreading.js';
+import { gemmaContextOptimizer } from './gemmaContextOptimizer.js';
+import { localAIOrchestrator } from './localAIOrchestrator.js';
 
 /**
  * Dynamic Boss Registry - Generates contextually perfect bosses for infinite themes
@@ -330,7 +330,7 @@ Make the boss feel like a natural part of the ${context.theme} world with a memo
             }
 
             // Fallback to direct AI call (schema-constrained JSON, not narrative pipeline)
-            const API = await import('./api_new.js?cb=014');
+            const API = await import('./api_new.js');
             const messages = [
                 { role: 'system', content: 'You are a game data generator. Return only valid JSON matching the requested schema. No prose.' },
                 { role: 'user', content: prompt }

@@ -2,13 +2,13 @@
 // Dynamic AI-driven contextual spell/skill generation system
 // Matches the sophistication of dynamicItems.js with spell-specific intelligence
 
-import { gameState, buildGameContextBlock } from './state.js?cb=014';
-import * as Config from './config.js?cb=014';
-import { generateId } from './utils.js?cb=014';
-import * as Spells from './spells.js?cb=014';
-import * as AdaptiveAbilities from './adaptiveAbilities.js?cb=014';
-import { gemmaHT } from './gemmaHyperthreading.js?cb=014';
-import * as ThemeIntelligence from './themeIntelligence.js?cb=014';
+import { gameState, buildGameContextBlock } from './state.js';
+import * as Config from './config.js';
+import { generateId } from './utils.js';
+import * as Spells from './spells.js';
+import * as AdaptiveAbilities from './adaptiveAbilities.js';
+import { gemmaHT } from './gemmaHyperthreading.js';
+import * as ThemeIntelligence from './themeIntelligence.js';
 
 /**
  * Dynamic Spell Registry - Stores learned patterns and contextual spells for this game session
@@ -111,12 +111,12 @@ export class DynamicSpellRegistry {
         
         try {
             // Show loading indicator for AI processing
-            const UI = await import('./ui.js?cb=014');
+            const UI = await import('./ui.js');
             UI.showLoading(true, 'Generating dynamic spells...');
             
             // Use Gemma hyperthreading for better performance
             // Use schema-constrained JSON — narrative pipeline returns story prose, not spell JSON
-            const API = await import('./api_new.js?cb=014');
+            const API = await import('./api_new.js');
             const messages = [
                 { role: 'system', content: 'You are a game data generator. Return only valid JSON matching the requested schema. No prose.' },
                 { role: 'user', content: spellPrompt }
@@ -146,7 +146,7 @@ export class DynamicSpellRegistry {
         } finally {
             // Hide loading indicator
             try {
-                const UI = await import('./ui.js?cb=014');
+                const UI = await import('./ui.js');
                 UI.showLoading(false);
             } catch (e) {
                 // Ignore UI import errors

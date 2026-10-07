@@ -2,11 +2,11 @@
 // Dynamic AI-driven contextual item generation system
 // Replaces static item databases with intelligent, context-aware generation
 
-import { gameState, buildGameContextBlock } from './state.js?cb=014';
-import * as Config from './config.js?cb=014';
-import { generateId } from './utils.js?cb=014';
-import { gemmaHT } from './gemmaHyperthreading.js?cb=014';
-import { localAIOrchestrator } from './localAIOrchestrator.js?cb=014';
+import { gameState, buildGameContextBlock } from './state.js';
+import * as Config from './config.js';
+import { generateId } from './utils.js';
+import { gemmaHT } from './gemmaHyperthreading.js';
+import { localAIOrchestrator } from './localAIOrchestrator.js';
 
 /**
  * Dynamic Item Registry - Stores learned patterns and contextual items for this game session
@@ -120,7 +120,7 @@ export class DynamicItemRegistry {
             };
 
             // Show loading indicator for AI processing
-            const UI = await import('./ui.js?cb=014');
+            const UI = await import('./ui.js');
             UI.showLoading(true, 'Generating dynamic items...');
             
             try {
@@ -583,7 +583,7 @@ Respond with a JSON object containing: name, effect, stats (object with relevant
      */
     async directItemGeneration(prompt, tier, type) {
         try {
-            const API = await import('./api_new.js?cb=014');
+            const API = await import('./api_new.js');
             const response = await API.getAIResponse([
                 { role: 'system', content: 'You are an expert item designer for adventure games. Generate creative, thematic items that fit the requested specifications.' },
                 { role: 'user', content: prompt }
@@ -939,13 +939,13 @@ async function generateBatchItems(itemRequests, theme, batchType) {
         const batchPrompt = buildBatchItemPrompt(itemRequests, theme, batchType);
         
         // Use SINGLE API call for all items
-        const UI = await import('./ui.js?cb=014');
+        const UI = await import('./ui.js');
         UI.showLoading(true, `Generating ${itemRequests.length} ${batchType} items...`);
         
         let response;
         
         // Use optimized single agent call for batch generation
-        const API = await import('./api_new.js?cb=014');
+        const API = await import('./api_new.js');
         const messages = [
             { role: 'system', content: 'You are a game data generator. Return only valid JSON matching the requested schema. No prose.' },
             { role: 'user', content: batchPrompt }
@@ -1001,7 +1001,7 @@ async function generateBatchItems(itemRequests, theme, batchType) {
         return items;
         
     } catch (error) {
-        const UI = await import('./ui.js?cb=014');
+        const UI = await import('./ui.js');
         UI.showLoading(false);
         
         log(`DynamicItems: Batch generation failed: ${error.message}`);

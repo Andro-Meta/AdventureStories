@@ -17,9 +17,9 @@
 // grammar is OUR grammar — keyed to our gameState tree, single-player
 // indices baked in for now (multi-player is a Phase 3 concern).
 
-import { gameState, recordPlayerChoice, recordStoryBeat, recordWorldStateChange } from './state.js?cb=014';
-import * as Combat from './combat.js?cb=014';
-import * as Config from './config.js?cb=014';
+import { gameState, recordPlayerChoice, recordStoryBeat, recordWorldStateChange } from './state.js';
+import * as Combat from './combat.js';
+import * as Config from './config.js';
 
 /**
  * Phase 1.2: Look up a status effect from Config.STATUS_EFFECTS by name

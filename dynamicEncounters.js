@@ -2,14 +2,14 @@
 // Revolutionary Dynamic Encounter System with Theme Intelligence
 // Generates NPCs, Puzzles, Anomalies, and Boss Battles with infinite theme adaptation
 
-import { gameState, buildGameContextBlock } from './state.js?cb=014';
-import * as Config from './config.js?cb=014';
-import * as ThemeIntelligence from './themeIntelligence.js?cb=014';
-import * as AdaptiveAbilities from './adaptiveAbilities.js?cb=014';
-import * as Combat from './combat.js?cb=014';
-import * as UI from './ui.js?cb=014';
-import { generateId, getRandomInt, getRandomElement } from './utils.js?cb=014';
-import { gemmaHT } from './gemmaHyperthreading.js?cb=014';
+import { gameState, buildGameContextBlock } from './state.js';
+import * as Config from './config.js';
+import * as ThemeIntelligence from './themeIntelligence.js';
+import * as AdaptiveAbilities from './adaptiveAbilities.js';
+import * as Combat from './combat.js';
+import * as UI from './ui.js';
+import { generateId, getRandomInt, getRandomElement } from './utils.js';
+import { gemmaHT } from './gemmaHyperthreading.js';
 
 /**
  * Revolutionary Dynamic Encounter Registry
@@ -393,7 +393,7 @@ export class DynamicEncounterRegistry {
     // AI Generation Methods
     async callEncounterAgent(prompt, generationType) {
         try {
-            const API = await import('./api_new.js?cb=014');
+            const API = await import('./api_new.js');
             const messages = [
                 { role: 'system', content: 'You are a game data generator. Return only valid JSON matching the requested schema. No prose.' },
                 { role: 'user', content: prompt }
@@ -1210,7 +1210,7 @@ NPC Knowledge: ${npc.knowledge}
 The players encounter ${npc.name}. Describe the meeting and provide interaction choices based on the NPC's personality and motivation.`;
 
     // Trigger AI for NPC interaction
-    const AI = await import('./aiHandler.js?cb=014');
+    const AI = await import('./aiHandler.js');
     await AI.makeAICallForSystemAction(npcPrompt, true);
     
     return true;
@@ -1232,7 +1232,7 @@ Category: ${puzzle.category}
 The players encounter a puzzle. Describe the puzzle setup and provide options for how to approach solving it.`;
 
     // Trigger AI for puzzle presentation
-    const AI = await import('./aiHandler.js?cb=014');
+    const AI = await import('./aiHandler.js');
     await AI.makeAICallForSystemAction(puzzlePrompt, true);
     
     return true;
@@ -1252,7 +1252,7 @@ Effects: ${anomaly.effects?.join(', ') || 'Unknown'}
 A strange anomaly occurs. Describe the event and provide choices for how the players can respond.`;
 
     // Trigger AI for anomaly event
-    const AI = await import('./aiHandler.js?cb=014');
+    const AI = await import('./aiHandler.js');
     await AI.makeAICallForSystemAction(anomalyPrompt, true);
     
     return true;
@@ -1293,7 +1293,7 @@ ${encounter.encounter?.setupDescription || `A powerful adversary appears: ${boss
 The ultimate confrontation begins!`;
 
     // Trigger AI for boss encounter setup
-    const AI = await import('./aiHandler.js?cb=014');
+    const AI = await import('./aiHandler.js');
     await AI.makeAICallForSystemAction(bossPrompt, true);
     
     return true;
@@ -1307,7 +1307,7 @@ Description: ${encounter.description || 'An unexpected event occurs.'}
 
 Describe this encounter and provide appropriate choices for the players.`;
 
-    const AI = await import('./aiHandler.js?cb=014');
+    const AI = await import('./aiHandler.js');
     await AI.makeAICallForSystemAction(encounterPrompt, true);
     
     return true;
