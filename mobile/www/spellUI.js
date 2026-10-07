@@ -6,6 +6,7 @@ import { gameState, getCurrentPlayer } from './state.js';
 import * as Spells from './spells.js';
 import * as UI from './ui.js';
 import * as AdaptiveAbilities from './adaptiveAbilities.js';
+import { sanitizeText } from './utils.js'; // player names and model-written spells
 
 /**
  * Render the spellbook interface
@@ -43,7 +44,7 @@ export function renderSpellbook() {
     spellbookContainer.innerHTML = `
         <div class="spellbook-modal">
             <div class="spellbook-header">
-                <h2>${bookIcon} ${player.name}'s ${bookName}</h2>
+                <h2>${bookIcon} ${sanitizeText(player.name)}'s ${bookName}</h2>
                 <button class="close-spellbook-btn">✕</button>
             </div>
             
@@ -229,10 +230,10 @@ function renderSpellCard(spell, player, showCastButton = false, canCast = null) 
     }
     
     return `
-        <div class="spell-card ${spell.rarity}" data-spell-id="${spell.id}">
+        <div class="spell-card ${spell.rarity}" data-spell-id="${sanitizeText(spell.id)}">
             <div class="spell-header">
                 <div class="spell-name-row">
-                    <h4 class="spell-name">${spell.name}</h4>
+                    <h4 class="spell-name">${sanitizeText(spell.name)}</h4>
                     <span class="spell-level-badge level-${spell.level}">${levelData.name}</span>
                 </div>
                 <div class="spell-school-type">
@@ -243,7 +244,7 @@ function renderSpellCard(spell, player, showCastButton = false, canCast = null) 
                 </div>
             </div>
             
-            <p class="spell-description">${spell.description}</p>
+            <p class="spell-description">${sanitizeText(spell.description)}</p>
             
             <div class="spell-mechanics">
                 <div class="spell-stats">
@@ -419,7 +420,7 @@ export function showQuickSpellSelector(player, onSpellSelected) {
                 return `
                     <button class="quick-spell-btn" data-spell-id="${spell.id}">
                         <div class="quick-spell-icon" style="color: ${school.color}">${school.icon}</div>
-                        <div class="quick-spell-name">${spell.name}</div>
+                        <div class="quick-spell-name">${sanitizeText(spell.name)}</div>
                         <div class="quick-spell-cost">${mpCost} ${resourceAbbrev}</div>
                     </button>
                 `;

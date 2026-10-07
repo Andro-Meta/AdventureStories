@@ -18,7 +18,11 @@ fs.mkdirSync(fileURLToPath(new URL('../test-results/', import.meta.url)), { recu
 let count = 0;
 
 http.createServer(async (req, res) => {
-  const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': '*' };
+  // Only the local game may use this proxy; any other site you visit while
+  // it runs would otherwise be able to spend the key.
+  const origin = req.headers.origin || '';
+  if (!/^http:\/\/(127\.0\.0\.1|localhost):8321$/.test(origin)) { res.writeHead(403); return res.end(); }
+  const cors = { 'Access-Control-Allow-Origin': origin, 'Access-Control-Allow-Headers': 'authorization, content-type, http-referer, x-title', 'Access-Control-Allow-Methods': 'POST, GET, OPTIONS' };
   if (req.method === 'OPTIONS') { res.writeHead(204, cors); return res.end(); }
   const [, host, ...rest] = req.url.split('/');
   if (host !== HOST) { res.writeHead(403, cors); return res.end('{"error":{"message":"key_proxy only forwards to openrouter.ai"}}'); }

@@ -736,7 +736,7 @@ async function runConnectionCheck() {
                 <ul>
                     <li>Check that your API key is valid and active.</li>
                     <li>Verify your provider has not exceeded its daily rate limit.</li>
-                    <li>Error: ${error.message}</li>
+                    <li>Error: ${String(error.message).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}</li>
                 </ul>
             `);
         }
@@ -776,7 +776,7 @@ async function runConnectionCheck() {
                 <li>Wait for model load to finish (10-60s depending on model size).</li>
                 <li>Verify the URL is reachable: <code>${backend.url}/health</code></li>
                 <li>Or switch to Cloud mode above to skip local setup entirely.</li>
-                <li>Error: ${error.message}</li>
+                <li>Error: ${String(error.message).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}</li>
             </ul>
         `);
     }

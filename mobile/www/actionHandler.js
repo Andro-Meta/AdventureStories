@@ -126,6 +126,9 @@ export async function handlePlayerChoice(actionType, choiceText) {
         // Declare outcomeSet in the proper scope
         let outcomeSet;
         let success;
+        // What the game already rolled this turn, told to the narrator so the
+        // prose matches the popups (it used to see only "Success: Yes/No").
+        const outcomeNotes = [];
         
         // Process the action based on type
         log(`[HPC-DIAG] At branch decision: inCombat=${gameState.inCombat}, combat.isActive=${gameState.combat?.isActive}, enemies=${gameState.enemies?.filter(e=>!e.isDefeated)?.length || 0}, actionType=${actionType}`);
@@ -413,6 +416,7 @@ Narrate this combat round in vivid second-person voice. Then provide ${gameState
                         } else {
                             UI.showPopup(`Gained ${hpChange} HP!`, 'heal');
                         }
+                        outcomeNotes.push(`${hpChange < 0 ? 'lost' : 'regained'} ${Math.abs(hpChange)} HP (now ${currentPlayer.hp}/${currentPlayer.maxHp})`);
                     }
                 }
             }
@@ -429,6 +433,7 @@ Narrate this combat round in vivid second-person voice. Then provide ${gameState
                         } else if (coinChange < 0) {
                             UI.showPopup(`Lost ${Math.abs(coinChange)} coins!`, 'warning');
                         }
+                        outcomeNotes.push(`${coinChange > 0 ? 'found' : 'lost'} ${Math.abs(coinChange)} coins`);
                     }
                 }
 
@@ -440,6 +445,7 @@ Narrate this combat round in vivid second-person voice. Then provide ${gameState
                     if (newItem) {
                         currentPlayer.inventory.push(newItem);
                         UI.showPopup(`Found ${newItem.name}!`, 'item');
+                        outcomeNotes.push(`found ${newItem.name} (already in the inventory)`);
                         // Track significant item finds
                         if (newItem.rarity === 'Rare' || newItem.rarity === 'Legendary') {
                             gameState.narrativeContext.significantEvents.push({
@@ -584,23 +590,15 @@ Narrate this combat round in vivid second-person voice. Then provide ${gameState
             }
         }
 
-        // Construct AI Prompt with enhanced context
-        const actionLog = `[Action Report: ${actionType} Action]
-Player: ${currentPlayer.name}
-Action Description: "${choiceText}"
-Success: ${gameState.narrativeContext.lastOutcome?.success ? 'Yes' : 'No'}
-Current Location: ${gameState.currentLocation?.name || 'Unknown'}
-Environment: ${context.environment}
-Situation: ${context.situation}
-
-Recent Discoveries: ${gameState.narrativeContext.discoveredSecrets.slice(-2).map(s => s.action).join(', ')}
-Significant Events: ${gameState.narrativeContext.significantEvents.slice(-2).map(e => `${e.type}: ${e.item}`).join(', ')}
-Relationship Changes: ${gameState.narrativeContext.relationshipChanges.slice(-2).map(r => `${r.type} ${r.change > 0 ? 'improved' : 'worsened'}`).join(', ')}
-
-Previous Narrative:
-${gameState.currentNarrative}
-
-Narrate the outcome of this action and provide appropriate choices for what happens next.]`;
+        // The scene, location and recent turns are already in the turn prompt;
+        // this says only what was chosen and what the game rolled.
+        const outcomeText = outcomeNotes.length
+            ? `
+Already applied by the game (show these in the story; do not emit ops for them): ${outcomeNotes.join('; ')}.`
+            : '';
+        const actionLog = `${currentPlayer.name} chose (${actionType}): "${choiceText}"
+Result: ${gameState.narrativeContext.lastOutcome?.success ? 'it works out' : 'it goes wrong'}.${outcomeText}`;
+        gameState.lastActionMeta = { actor: currentPlayer.name, action: choiceText, success: !!gameState.narrativeContext.lastOutcome?.success, notes: outcomeNotes.join('; ') };
 
         log(`Constructed AI prompt with enhanced context: ${actionLog}`);
 

@@ -347,15 +347,17 @@ export function showGameOverScreen(info = {}) {
         ? `Your party has fallen ${info.consecutiveWipes || 'multiple'} times in a row in ${info.lastLocation || 'this place'}${info.lastEnemies ? `, defeated by ${info.lastEnemies}` : ''}. The world is unforgiving — but the choice is yours.`
         : `Your story pauses here. The choice is yours.`;
     if (flavor) flavor.textContent = flavorText;
+    // Names, goal and location are model-written; escape before innerHTML.
+    const esc = sanitizeText;
     summary.innerHTML = `
         <h3>What was achieved</h3>
         <p><strong>Turns played:</strong> ${gameState.turn || 1}</p>
-        <p><strong>Last known location:</strong> ${gameState.currentLocation?.name || info.lastLocation || 'Unknown'}</p>
-        <p><strong>Adventure goal:</strong> ${gameState.adventureGoal || 'Not set'}</p>
-        <p><strong>Milestones reached (${milestones.length}):</strong> ${milestones.length ? milestones.join(', ') : '— none —'}</p>
-        <p><strong>Items carried (${items.length}):</strong> ${items.length ? items.slice(0, 12).join(', ') + (items.length > 12 ? `, …and ${items.length - 12} more` : '') : '— none —'}</p>
-        <p><strong>Allies remembered:</strong> ${npcs.length ? npcs.slice(0, 8).join(', ') : '— none —'}</p>
-        <p><strong>Places known:</strong> ${locs.length ? locs.slice(0, 8).join(', ') : '— none —'}</p>
+        <p><strong>Last known location:</strong> ${esc(gameState.currentLocation?.name || info.lastLocation || 'Unknown')}</p>
+        <p><strong>Adventure goal:</strong> ${esc(gameState.adventureGoal || 'Not set')}</p>
+        <p><strong>Milestones reached (${milestones.length}):</strong> ${milestones.length ? esc(milestones.join(', ')) : '— none —'}</p>
+        <p><strong>Items carried (${items.length}):</strong> ${items.length ? esc(items.slice(0, 12).join(', ')) + (items.length > 12 ? `, …and ${items.length - 12} more` : '') : '— none —'}</p>
+        <p><strong>Allies remembered:</strong> ${npcs.length ? esc(npcs.slice(0, 8).join(', ')) : '— none —'}</p>
+        <p><strong>Places known:</strong> ${locs.length ? esc(locs.slice(0, 8).join(', ')) : '— none —'}</p>
     `;
     showScreen('gameOverScreen');
     log(`GameOver screen shown — reason=${info.reason}, wipes=${info.consecutiveWipes}`);
@@ -646,9 +648,9 @@ export function updateGameHeader() {
         } else { themeName = gameState.adventureTheme || 'Adventure'; }
     } catch (e) { log("Failed to get theme name for header", e); }
 
-    if (elements.adventureTitle) elements.adventureTitle.textContent = sanitizeText(themeName);
+    if (elements.adventureTitle) elements.adventureTitle.textContent = String(themeName);
     const hasRealGoal = gameState.adventureGoal && gameState.adventureGoal !== 'Not set yet.';
-    if (elements.adventureGoal) elements.adventureGoal.textContent = sanitizeText(hasRealGoal ? gameState.adventureGoal : 'Setting your quest...');
+    if (elements.adventureGoal) elements.adventureGoal.textContent = String(hasRealGoal ? gameState.adventureGoal : 'Setting your quest...');
     if (elements.turnCounter) elements.turnCounter.textContent = gameState.turn;
 
     // Update custom action visibility based on game state
@@ -674,7 +676,7 @@ export function renderPlayerCards() {
     }
     let currentPlayer;
     try { currentPlayer = getCurrentPlayer(); } catch (e) { log("Failed to get current player for rendering", e); }
-    elements.currentPlayerIndicator.textContent = `Current Turn: ${sanitizeText(currentPlayer?.name || 'N/A')}`;
+    elements.currentPlayerIndicator.textContent = `Current Turn: ${String(currentPlayer?.name || 'N/A')}`;
     gameState.players.forEach((player, index) => {
         if (!player) { log(`Warning: Player object at index ${index} is invalid.`); return; }
         const card = createCharacterCard(player, 'player', index, Config);
@@ -1565,7 +1567,7 @@ export function updateHelpAllyModal(downedAllies, revivalItemCount, revivalItemN
             const button = document.createElement('button');
             button.className = 'selectAllyBtn';
             button.dataset.playerId = ally.id; // Store target player ID
-            button.textContent = `Help ${sanitizeText(ally.name)} (HP: ${ally.hp ?? '?'}/${ally.maxHp ?? '?'})`;
+            button.textContent = `Help ${String(ally.name)} (HP: ${ally.hp ?? '?'}/${ally.maxHp ?? '?'})`;
             // Disable button if no revival items available OR if game is loading
             button.disabled = revivalItemCount <= 0 || gameState.isLoading;
             elements.helpAllyTargetList.appendChild(button);
@@ -1760,7 +1762,7 @@ function updateObjectivesList(objectives) {
     if (objectives && objectives.length > 0) {
         objectives.forEach(objective => {
             const li = document.createElement('li');
-            li.textContent = sanitizeText(objective);
+            li.textContent = String(objective);
             elements.objectivesList.appendChild(li);
         });
     } else {
@@ -1790,7 +1792,7 @@ function updateMilestonesList(milestones) {
             
             const nameSpan = document.createElement('span');
             nameSpan.className = 'milestone-name';
-            nameSpan.textContent = sanitizeText(milestone.name);
+            nameSpan.textContent = String(milestone.name);
             
             const turnSpan = document.createElement('span');
             turnSpan.className = 'milestone-turn';
@@ -1828,11 +1830,11 @@ function updateSideQuestsList(sideQuests) {
             
             const nameDiv = document.createElement('div');
             nameDiv.className = 'side-quest-name';
-            nameDiv.textContent = sanitizeText(quest.name);
+            nameDiv.textContent = String(quest.name);
             
             const descDiv = document.createElement('div');
             descDiv.className = 'side-quest-description';
-            descDiv.textContent = sanitizeText(quest.description);
+            descDiv.textContent = String(quest.description);
             
             const statusSpan = document.createElement('span');
             statusSpan.className = `side-quest-status ${quest.status}`;
@@ -1865,7 +1867,7 @@ function updateSecretsList(secrets) {
         recentSecrets.forEach(secret => {
             const div = document.createElement('div');
             div.className = 'secret-item';
-            div.textContent = sanitizeText(secret.text);
+            div.textContent = String(secret.text);
             elements.secretsList.appendChild(div);
         });
     } else {

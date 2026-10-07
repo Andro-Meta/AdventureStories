@@ -12,11 +12,31 @@ import webbrowser
 import time
 from pathlib import Path
 
+# Only the game itself is served. The project folder also holds .env (the
+# OpenRouter key), .git, tools and test dumps; SimpleHTTPRequestHandler would
+# hand any of them to every device on the Wi-Fi.
+BLOCKED_TOP_LEVEL = {'tools', 'test-results', 'tests', 'mobile', 'node_modules', 'models',
+                     'llama-cpp', 'venv_local_ai', '__pycache__', '.github'}
+ALLOWED_SUFFIXES = ('.html', '.js', '.css', '.json', '.png', '.jpg', '.jpeg', '.svg', '.ico', '.webp', '.woff', '.woff2', '.mp3', '.ogg', '.wav')
+
 class CORSRequestHandler(http.server.SimpleHTTPRequestHandler):
+    def _is_allowed(self):
+        from urllib.parse import urlsplit, unquote
+        path = unquote(urlsplit(self.path).path)
+        parts = [p for p in path.split('/') if p]
+        if any(p.startswith('.') for p in parts):
+            return False
+        if parts and parts[0] in BLOCKED_TOP_LEVEL:
+            return False
+        return not parts or path.endswith('/') or path.lower().endswith(ALLOWED_SUFFIXES)
+
+    def send_head(self):
+        if not self._is_allowed():
+            self.send_error(404)
+            return None
+        return super().send_head()
+
     def end_headers(self):
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', '*')
         # Disable browser caching so JS / CSS edits show up on next reload
         # without needing a hard cache flush. The chat API server is
         # separate; this only affects the static dev server.
@@ -125,7 +145,8 @@ def main():
             import threading
             browser_thread = threading.Thread(target=open_browser)
             browser_thread.daemon = True
-            browser_thread.start()
+            if not os.environ.get('ADV_NO_BROWSER'):  # tests set this
+                browser_thread.start()
             
             # Start serving
             httpd.serve_forever()
