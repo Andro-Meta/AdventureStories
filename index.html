@@ -168,20 +168,15 @@
                 <div class="button-container vertical">
                     <button class="playerCountBtn primary" data-count="1">Solo Adventure</button>
                 </div>
-                <details class="experimental-multiplayer">
-                    <summary>Co-op (experimental — see notes below)</summary>
-                    <p class="info-message" style="font-size: 0.85em; margin-top: 0.6rem;">
-                        Multi-player turn rotation works, but several systems (god mode, custom actions, equipment auto-equip,
-                        per-player choice routing, NPC reactions) currently target only the first player. We're shipping
-                        2-5 player co-op as an experimental feature; expect rough edges. Solo is the polished experience.
-                    </p>
-                    <div class="button-container vertical" style="margin-top: 0.5rem;">
-                        <button class="playerCountBtn" data-count="2">2 Players (experimental)</button>
-                        <button class="playerCountBtn" data-count="3">3 Players (experimental)</button>
-                        <button class="playerCountBtn" data-count="4">4 Players (experimental)</button>
-                        <button class="playerCountBtn" data-count="5">5 Players (experimental)</button>
-                    </div>
-                </details>
+                <div class="button-container vertical" style="margin-top: 0.5rem;">
+                    <button class="playerCountBtn" data-count="2">2 Players</button>
+                    <button class="playerCountBtn" data-count="3">3 Players</button>
+                    <button class="playerCountBtn" data-count="4">4 Players</button>
+                    <button class="playerCountBtn" data-count="5">5 Players</button>
+                </div>
+                <p class="info-message" style="font-size: 0.85em; margin-top: 0.6rem;">
+                    Co-op is hot-seat: pass the device, and the story names whose turn is next.
+                </p>
                  <div class="button-container">
                      <button class="backBtn" data-target="mainMenuScreen">Back</button>
                  </div>

@@ -38,11 +38,12 @@ The key lives only in this browser's localStorage; requests go straight from the
 
 | Provider | Models used | Limit | One turn |
 |---|---|---|---|
-| OpenRouter (default) | Nemotron 3 Super 120B → Nemotron 3 Ultra 550B → Gemma 4 31B (automatic fallback) | 20/min, **50 requests/day**; **1,000/day for good** after a one-time $10 credit purchase (free models never spend it) | ~2 requests, 5–15 s |
-| Google AI Studio | Gemini Flash-Lite | Free tier; daily cap shown in AI Studio | ~2 requests, 1–2 s |
+| OpenRouter (default) | Nemotron 3 Super 120B → Nemotron 3 Ultra 550B → Gemma 4 31B (automatic fallback) | 20/min, **50 requests/day**; **1,000/day for good** after a one-time $10 credit purchase (free models never spend it) | 1 request, ~3–7 s |
+| Google AI Studio | Gemini Flash-Lite | Free tier; daily cap shown in AI Studio | 1 request, ~1–2 s |
 
-A new game costs about 6–8 requests (intro, goal, shop, spells). On OpenRouter's 50/day that is
-roughly 20 turns a day; add the $10 credit, or use a Google key, for long sessions.
+A new game costs about 6 requests (intro, goal, shop, starting place, spells per player); each turn
+is 1 request (a second small one only if the choices come back unusable), plus a memory summary every
+5 rounds. On 50/day that is ~40 turns; with the $10 credit (1,000/day) a long group session fits easily.
 If the daily quota runs out the game says so instead of failing silently.
 
 ### Local AI (optional)
@@ -99,7 +100,18 @@ npm run audit:engine       # every applyDiff path + dedupe + turn cap + monotoni
 npm run audit:godmode      # main-quest-completion unlock, no extra gates
 ```
 
-These run pure Node, no browser, no AI server, no network — perfect for CI. The Playwright suite (`npm test`) covers the full UI / integration loop and still requires a live AI backend.
+These run pure Node, no browser, no AI server, no network — perfect for CI.
+`npm run audit` also runs `first_turn_check` (fresh game survives turn 1), `prompt_check` (no contradicting
+formats, prompt size budget, multiplayer op targeting, tolerant parsing, fight-op order) and `loot_check`
+(every loot roll yields an item in every theme).
+
+### Live play-test tools (developer only)
+
+- Put an OpenRouter key in `.env` (git-ignored; `powershell -File tools\set_key.ps1` prompts for it hidden).
+- `node tools/key_proxy.mjs` forwards the game's OpenRouter calls and adds the key, so it never enters the
+  page; `KEY_PROXY_DUMP=1` saves every request/response to `test-results/`.
+- `node --experimental-loader ./tools/preload.mjs tools/turn_metrics.mjs` scores those dumps: latency, tokens,
+  truncation, valid JSON, narration words, choice validity and engine-valid ops per call. The Playwright suite (`npm test`) covers the full UI / integration loop and still requires a live AI backend.
 
 ---
 

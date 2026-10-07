@@ -62,7 +62,7 @@ async function handleGodModeChoice(customChoice) {
         gameState.allowCustomActions = true;
         await handleCustomAction();
         // Record after completion so it doesn't double-record on errors.
-        try { recordPlayerChoice(gameState.players[0], 'God Mode', customChoice, 1.0); } catch (_) {}
+        try { recordPlayerChoice(getCurrentPlayer()?.id, 'God Mode', customChoice, 1.0); } catch (_) {}
     } catch (error) {
         log(`God Mode: Error handling custom choice: ${error.message}`);
         UI.showPopup('An error occurred while processing your divine command.', 'error', 3000);
