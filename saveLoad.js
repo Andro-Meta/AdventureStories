@@ -226,6 +226,19 @@ export function saveGameToLocalStorage(slotName) {
  * Continues the most recent game save automatically
  * @returns {Promise<void>}
  */
+/**
+ * Autosave after every completed turn into the "Autosave" slot, so a closed
+ * tab or crash costs at most one turn (there was no autosave at all).
+ * "Continue Last Game" picks the newest save, which is usually this one.
+ * The player's own slot stays the target of "Save" / "Save and Exit".
+ */
+export function autosave() {
+    if (!gameState.players?.length) return;
+    const ownSlot = gameState.currentSaveSlot;
+    try { saveGameToLocalStorage('Autosave'); }
+    finally { gameState.currentSaveSlot = ownSlot; }
+}
+
 export async function continueLastGame() {
     const log = window.displayVisualError || console.log;
     log("SaveLoad: Looking for most recent save to continue...");

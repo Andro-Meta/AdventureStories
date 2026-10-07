@@ -195,7 +195,7 @@ DO NOT in god mode:
     const act = determineCurrentAct(gameState);
     if (!act) return '';
     return `\n\nMAIN QUEST STAGE — ${act.name}:
-${act.narratorHint}
+${gameState.adventureGoal ? act.narratorHint.replace(/^- By turn 4-6, you MUST set \/adventureGoal.*\n/m, '') : act.narratorHint}
 
 When you reach a milestone listed above, emit a /questProgress/milestones/- diff op so the
 quest progresses. The act of completing the FINAL milestone of Act 3 (and setting

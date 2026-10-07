@@ -583,7 +583,11 @@ export async function advanceCombatTurn() {
         return null; // Enemy turn is handled automatically
     }
 
-    // Show whose turn it is
+    // Hand control to that hero. Only the popup changed before, so the
+    // fight starter acted for everyone, and if they were downed every click
+    // said "Cannot act now" (multiplayer softlock).
+    const heroIndex = gameState.players.findIndex(p => p && p.id === nextCharId);
+    if (heroIndex >= 0) gameState.currentPlayerIndex = heroIndex;
     showPopup(`${nextChar.name}'s turn!`, 'info');
 
     return nextCharId;

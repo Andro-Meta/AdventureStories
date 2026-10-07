@@ -774,7 +774,7 @@ export const ChoiceOutcomeConfig = {
                 coinChange: [0, 10],
                 itemChance: 0.2,
                 itemOptions: {
-                    tiers: ['LOW', 'MEDIUM'],
+                    tiers: ['Low', 'Medium'],
                     types: ['Consumable', 'Misc']
                 }
             },
@@ -800,7 +800,7 @@ export const ChoiceOutcomeConfig = {
                 coinChange: [-10, 20], // High risk, high reward
                 itemChance: 0.4, // Higher item chance
                 itemOptions: {
-                    tiers: ['MEDIUM', 'HIGH'],
+                    tiers: ['Medium', 'High'],
                     types: ['Weapon', 'Armor', 'Quest']
                 }
             },
@@ -826,7 +826,7 @@ export const ChoiceOutcomeConfig = {
                 coinChange: [-5, 15],
                 itemChance: 0.3,
                 itemOptions: {
-                    tiers: ['LOW', 'MEDIUM', 'HIGH'],
+                    tiers: ['Low', 'Medium', 'High'],
                     types: ['Weapon', 'Armor', 'Consumable']
                 }
             },
@@ -852,7 +852,7 @@ export const ChoiceOutcomeConfig = {
                 coinChange: [-2, 8],
                 itemChance: 0.15,
                 itemOptions: {
-                    tiers: ['LOW'],
+                    tiers: ['Low'],
                     types: ['Misc', 'Consumable']
                 }
             },
@@ -878,7 +878,7 @@ export const ChoiceOutcomeConfig = {
                 coinChange: [0, 15], // Better rewards for investigation
                 itemChance: 0.3, // Higher chance of finding items
                 itemOptions: {
-                    tiers: ['LOW', 'MEDIUM'],
+                    tiers: ['Low', 'Medium'],
                     types: ['Quest', 'Misc', 'Consumable'] // Added consumables for exploration finds
                 }
             },
@@ -905,7 +905,7 @@ export const ChoiceOutcomeConfig = {
                 coinChange: [0, 5],
                 itemChance: 0.1,
                 itemOptions: {
-                    tiers: ['LOW'],
+                    tiers: ['Low'],
                     types: ['Consumable']
                 }
             },
@@ -923,7 +923,7 @@ export const ChoiceOutcomeConfig = {
                 coinChange: [0, 10],
                 itemChance: 0.2,
                 itemOptions: {
-                    tiers: ['LOW', 'MEDIUM'],
+                    tiers: ['Low', 'Medium'],
                     types: ['Consumable', 'Misc']
                 }
             },
@@ -941,7 +941,7 @@ export const ChoiceOutcomeConfig = {
                 coinChange: [-5, 0], // Using items costs resources
                 itemChance: 0.05, // Low chance of finding items when using items
                 itemOptions: {
-                    tiers: ['LOW'],
+                    tiers: ['Low'],
                     types: ['Consumable']
                 }
             },
@@ -959,7 +959,7 @@ export const ChoiceOutcomeConfig = {
                 coinChange: [-2, 0], // Might lose some coins when fleeing
                 itemChance: 0.05,
                 itemOptions: {
-                    tiers: ['LOW'],
+                    tiers: ['Low'],
                     types: ['Misc']
                 }
             },

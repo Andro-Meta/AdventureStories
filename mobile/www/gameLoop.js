@@ -82,8 +82,10 @@ export class GameLoop {
         log(`GameLoop: Processing exploration action - ${actionType}`);
         
         try {
-            // Check for location progression based on action type
-            await this.checkLocationProgression(actionType, actionText);
+            // Location changes come from the narrator's /currentLocation op.
+            // checkLocationProgression substring-matched choice text ("go" in
+            // "gold", "run" in "rune") and moved the party before the story
+            // was written, even out of jail.
 
             // Encounters come from the narrator's diff ops (/enemies/-, /inCombat)
             // on every backend now. The legacy random-encounter roll raced the

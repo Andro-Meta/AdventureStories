@@ -527,9 +527,8 @@ export function generateThemedItem(theme, tier, type) {
     // to the closest available category so the legacy generator stops
     // erroring. Engine-emitted Quest items skip this path entirely.
     if (!categoryData) {
-        const fallbackType = type === 'Quest' ? 'Misc'
-            : type === 'Revival' ? 'Consumable'
-            : null;
+        // No theme defines Misc or Quest, so Quest -> Misc fell through too.
+        const fallbackType = (type === 'Quest' || type === 'Misc' || type === 'Revival') ? 'Consumable' : null;
         if (fallbackType && themeData[fallbackType]) {
             categoryData = themeData[fallbackType];
             if (window.displayVisualError) displayVisualError(`Note: Item Type '${type}' not in theme '${currentTheme}'; falling back to '${fallbackType}'.`);
@@ -540,7 +539,8 @@ export function generateThemedItem(theme, tier, type) {
         }
     }
 
-    let specificTypeData = categoryData[tier];
+    // Misc data is a flat {names, prefixes} list with no tiers; use it for any tier.
+    let specificTypeData = categoryData[tier] || (Array.isArray(categoryData.names) ? categoryData : null);
     let actualTier = tier;
 
     if (!specificTypeData) {

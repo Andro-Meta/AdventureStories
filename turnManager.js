@@ -147,12 +147,11 @@ export async function advanceTurn() {
             }
         } else do {
             newIndex = (newIndex + 1) % gameState.players.length;
-             // Check if we've wrapped around back to the start
-             if (newIndex === 0 && gameState.currentPlayerIndex === gameState.players.length - 1) { wrappedAround = true; }
-             else if (newIndex === gameState.currentPlayerIndex + 1 && newIndex !== 0) { wrappedAround = false; } // Reset wrap check if moving normally mid-list
-             // More robust wrap check: if newIndex loops back to starting point after checking others
-             if (newIndex === initialPlayerIndex && safetyCounter >= gameState.players.length) { wrappedAround = true; }
-
+            // Passing the end of the player list starts a new round. The old
+            // checks reset wrappedAround whenever a player was found, so with
+            // 2+ players gameState.turn never left 1 (no summaries, shop
+            // restocks, act changes or story-hook cutoff).
+            if (newIndex === 0) wrappedAround = true;
 
             const nextPlayer = gameState.players[newIndex];
             if (nextPlayer && !nextPlayer.isDowned) {
@@ -160,8 +159,6 @@ export async function advanceTurn() {
                 nextPlayerFound = true;
                 gameState.currentPlayerIndex = newIndex;
                 log(`Next player found: ${nextPlayer.name} (Index: ${gameState.currentPlayerIndex})`);
-                // If we found a player *before* wrapping around, it's not the end of a full round yet.
-                if (safetyCounter < gameState.players.length) wrappedAround = false;
             }
 
             safetyCounter++;

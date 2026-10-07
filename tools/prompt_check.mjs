@@ -47,5 +47,14 @@ for (const [label, payload] of [['top-level ops', { narration: 'x', ops: [op] }]
   check(validateNarrativeTurnPayload(payload).diff.ops.length === 1, `turn payload with ${label} keeps its op`);
 }
 
+// Fight started with ops in the "wrong" order must still build a turn order.
+gameState.inCombat = false; gameState.enemies = []; gameState.combat = null;
+Engine.applyDiff([
+  { op: 'replace', path: '/inCombat', value: true },
+  { op: 'add', path: '/enemies/-', value: { name: 'Reef Shark', hp: 20, maxHp: 20, atk: 5, def: 2 } },
+], { strict: false });
+const init = gameState.combat?.initiative || [];
+check(gameState.inCombat && init.some(id => String(id).startsWith('enemy')), `inCombat-before-enemy ops still put the enemy in the turn order (${init.length} entries)`);
+
 console.log(failed ? `✗ ${failed} PROMPT CHECK FAILURE(S)` : '✓ prompt checks pass');
 process.exit(failed ? 1 : 0);

@@ -12,6 +12,11 @@ import * as Config from './config.js';
  * Local AI Client
  * Manages connection and requests to local AI server
  */
+/** Tell the loading overlay what a slow request is doing (ui.js listens). */
+function announceAIStatus(message) {
+    try { globalThis.dispatchEvent?.(new CustomEvent('adv:ai-status', { detail: message })); } catch (_) { /* no DOM */ }
+}
+
 export class LocalAIClient {
     constructor() {
         // Tier 2: route to whichever backend config.LLM_BACKEND selects.
@@ -414,7 +419,9 @@ export class LocalAIClient {
         }
 
         if (this.isCloud && !this.apiKey) {
-            throw new Error('No AI key saved yet. Open "AI Settings" on the main menu and paste your free key.');
+            const e = new Error('No AI key saved yet. Open "AI Settings" on the main menu and paste your free key.');
+            e.httpStatus = 0; // configuration problem: not worth a retry
+            throw e;
         }
 
         // If server is not healthy, queue the request
@@ -467,7 +474,7 @@ export class LocalAIClient {
         }
         try {
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), Config.LOCAL_AI_CONFIG.CONNECTION_TIMEOUT);
+            const timeoutId = setTimeout(() => controller.abort(), this.isCloud ? 45000 : Config.LOCAL_AI_CONFIG.CONNECTION_TIMEOUT);
 
             // Build headers — cloud providers require an Authorization
             // bearer token; local servers don't (and would reject extra
@@ -512,6 +519,7 @@ export class LocalAIClient {
                 const err = new Error(`HTTP ${response.status}: ${response.statusText}${body ? ' — ' + body : ''}`);
                 err.httpStatus = response.status;
                 err.retryable = response.status >= 500 || response.status === 429; // 5xx + rate-limit
+                err.retryAfterMs = Number(response.headers.get('retry-after')) * 1000 || 0;
                 if (response.status === 429 && /per[- ]day/i.test(body)) {
                     // Daily free quota, not a burst limit: retrying can't help.
                     err.retryable = false;
@@ -553,11 +561,22 @@ export class LocalAIClient {
             const shouldRetry = isNetworkError || error.retryable === true;
             console.log(`LocalAI: Request failed (attempt ${retries + 1}, retryable=${shouldRetry}):`, error.message);
 
-            if (shouldRetry && retries < Config.LOCAL_AI_CONFIG.MAX_RETRIES) {
-                await new Promise(resolve => setTimeout(resolve, Config.LOCAL_AI_CONFIG.RETRY_DELAY * (retries + 1)));
+            const maxRetries = this.isCloud ? 2 : Config.LOCAL_AI_CONFIG.MAX_RETRIES;
+            if (shouldRetry && retries < maxRetries) {
+                // A per-minute 429 needs the window to roll over: honour
+                // Retry-After, else wait 20 s. Quick 2/4/6 s retries all landed
+                // in the same minute and failed.
+                const wait = error.httpStatus === 429
+                    ? Math.min(Math.max(error.retryAfterMs || 20000, 5000), 60000)
+                    : Config.LOCAL_AI_CONFIG.RETRY_DELAY * (retries + 1);
+                const why = error.httpStatus === 429 ? 'The storyteller is busy' : 'Connection hiccup';
+                announceAIStatus(`${why}. Trying again in ${Math.round(wait / 1000)} s (attempt ${retries + 2} of ${maxRetries + 1})...`);
+                await new Promise(resolve => setTimeout(resolve, wait));
                 return this.executeRequest(requestData, retries + 1);
             } else if (shouldRetry) {
-                throw new Error(`LocalAI request failed after ${Config.LOCAL_AI_CONFIG.MAX_RETRIES} attempts: ${error.message}`);
+                const e = new Error(`The storyteller didn't respond after ${maxRetries + 1} tries (${error.message}). Your choices are still there; try again in a moment.`);
+                e.httpStatus = error.httpStatus ?? 0;
+                throw e;
             } else {
                 // Non-retryable: throw immediately, preserving status code.
                 throw error;

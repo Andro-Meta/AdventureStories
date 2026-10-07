@@ -70,14 +70,14 @@ Example: {"op":"add","path":"${P}/inventory/-","value":{"name":"Singing Sword","
     }
     return `${rules}
 
-ALREADY HANDLED BY THE GAME (do not emit): the small HP/coin/reputation results of the chosen action. Only change HP or coins when the narration describes a specific, meaningful event ("the fireball strikes you").
+ALREADY HANDLED BY THE GAME (do not emit): anything listed under "Already applied by the game" in the action, and small reputation shifts. Show those results in the story. Emit HP or coin ops only for an extra, specific event you add ("a second arrow grazes her").
 YOURS TO EMIT when the story makes them happen:
 - A named new place the players enter: replace /currentLocation AND add /entityMemory/locations/<Name>.
 - New named NPCs or notable items: add /entityMemory/npcs/<Name> or /entityMemory/items/<Name>; items the hero picks up: add ${P}/inventory/-.
 - A fight starts: add /enemies/- (hp, maxHp, atk, def, abilities) AND replace /inCombat true.
 - Status effects with narrative weight (Poison, Burn, Stun, Fear, Regen, Shield...): add ${P}/statusEffects/- {name, duration}.
 - Quest beats: add /questProgress/milestones/- using the EXACT names from the MAIN QUEST STAGE block, plus replace /questProgress/completionPercentage. Favors or rumors: add /questProgress/sideQuests/- {name, description, reward}.
-- Set /adventureGoal once early (turn 4-6). Main quest truly finished: replace /isGoalComplete true.
+${gameState.adventureGoal ? '' : '- Set /adventureGoal once early (turn 4-6).\n'}- Main quest truly finished: add the "final_blow" milestone (the game then completes the quest).
 If the narration says the hero picked something up, met someone named, arrived somewhere named, or a fight began, the matching op MUST be in "ops". An empty list is only for a turn where nothing in the world changed.
 Examples:
 {"op":"add","path":"/entityMemory/locations/The Crystal Hall","value":{"name":"The Crystal Hall","description":"a vaulted chamber of humming crystals"}}
@@ -104,11 +104,13 @@ export async function processAIResponse(prompt) {
     const types = inCombat ? COMBAT_CHOICE_TYPES : EXPLORATION_CHOICE_TYPES;
     const pIdx = gameState.currentPlayerIndex || 0;
     const actor = gameState.players?.[pIdx]?.name || 'the hero';
+    const nextActor = gameState.players?.[gameState.nextActorIndex ?? pIdx];
     const ages = (gameState.players || []).map(p => p.age).filter(a => typeof a === 'number' && a > 0);
     const wc = getReadingSpecification(ages.length ? Math.round(ages.reduce((a, b) => a + b, 0) / ages.length) : 25).targetWordCount;
     const words = isInitialSetup ? `${wc.min}-${Math.round(wc.max * 1.5)}` : `${wc.min}-${wc.max}`;
 
-    const scene = isInitialSetup ? prompt : `PREVIOUS SCENE:
+    const recent = (gameState.recentTurns || []).slice(-3);
+    const scene = isInitialSetup ? prompt : `${recent.length ? `RECENT TURNS (oldest first):\n${recent.join('\n')}\n\n` : ''}PREVIOUS SCENE:
 ${gameState.currentNarrative || '(the story is just beginning)'}
 
 WHAT ${actor.toUpperCase()} JUST DID:
@@ -119,9 +121,11 @@ ${prompt}`;
 Reply with ONE JSON object with all three keys, and nothing else:
 {"narration":"...","ops":[],"choices":[${types.map(t => `{"type":"${t}","text":"..."}`).join(',')}]}
 
-NARRATION: ${words} words, second person. Show what happens because of the action, then end on a moment that invites the next decision. No choices or bracket tokens inside the narration.
+NARRATION: ${words} words, third person, naming the hero who acted. Show what happens because of the action, then end on a moment that invites the next decision. No choices or bracket tokens inside the narration.
 
-${buildChoiceInstructions(types, inCombat)}
+${nextActor && (gameState.players || []).length > 1 ? `NEXT TO ACT: ${nextActor.name}. Write the choices for ${nextActor.name}${nextActor.specialMoves?.length ? ` (special moves: ${nextActor.specialMoves.map(m => m.name).join(', ')})` : ''} and end the narration by turning to them.
+
+` : ''}${buildChoiceInstructions(types, inCombat)}
 
 ${buildDiffInstructions(pIdx)}`;
 
@@ -136,6 +140,7 @@ ${buildDiffInstructions(pIdx)}`;
             payload = await API.getAIResponseJSON(messages, storyTurnSchema, { jsonSchemaName: 'story_turn', max_tokens: 2000, temperature: 0.8 });
             validateNarrativeTurnPayload(payload);
         } catch (firstErr) {
+            if (firstErr.httpStatus !== undefined) throw firstErr;
             log(`Turn reply unusable (${firstErr.message}); retrying once.`);
             payload = await API.getAIResponseJSON(messages, storyTurnSchema, { jsonSchemaName: 'story_turn', max_tokens: 2000, temperature: 0.6 });
         }
@@ -835,11 +840,15 @@ export async function refreshArcMemory() {
         : 0;
 
     // Pull the recent narrative window since the last summary.
-    const recentWindow = (gameState.messageHistory || [])
-        .filter(m => (m.turn || 0) > lastSummaryTurn)
-        .map(m => `Turn ${m.turn}: ${m.content || ''} -> ${m.response || ''}`)
-        .join('\n')
-        .slice(-3500); // hard cap to keep the summary call cheap
+    // Narration per turn, capped per entry so every turn since the last
+    // summary is represented. The old .slice(-3500) over full prompts kept
+    // only the last ~2.5 turns, starting mid-word.
+    const turnsSince = (gameState.messageHistory || []).filter(m => (m.turn || 0) > lastSummaryTurn).slice(-10);
+    const recentWindow = [
+        ...(gameState.recentTurns || []).slice(-Math.max(turnsSince.length, 1)),
+        '',
+        ...turnsSince.map(m => `Turn ${m.turn}: ${String(m.response || '').slice(0, 450)}`)
+    ].join('\n');
 
     if (!recentWindow.trim()) {
         gameState.arcMemory.nextSummaryAtTurn = gameState.turn + Config.SUMMARY_EVERY_N_TURNS;
@@ -907,10 +916,11 @@ ${recentWindow}` }
         mergeEntities(gameState.entityMemory.items, result.newItems);
 
         log(`ArcMemory: stored summary at turn ${gameState.turn} (${result.summary.length} chars; +${result.newNpcs.length} NPCs, +${result.newLocations.length} locs, +${result.newItems.length} items).`);
-    } catch (err) {
-        log(`ArcMemory: refresh failed (${err.message}); will retry next interval.`);
-    } finally {
         gameState.arcMemory.nextSummaryAtTurn = gameState.turn + Config.SUMMARY_EVERY_N_TURNS;
+    } catch (err) {
+        // Retry on the next turn instead of waiting another full interval.
+        gameState.arcMemory.nextSummaryAtTurn = gameState.turn + 1;
+        log(`ArcMemory: refresh failed (${err.message}); retrying next turn.`);
     }
 }
 
@@ -1130,8 +1140,20 @@ Part 3: USE THE STORY HOOK BELOW as the inciting incident. Do not invent a diffe
 This opening may run up to half again the READING LEVEL length. Use second-person voice ("You ..."). Avoid the over-used names listed under THEME.`;
     }
 
+    // Who picks from the choices this call produces: the same hero when the
+    // turn will not advance (intro, combat rounds), otherwise the next
+    // conscious player. Choices used to be written for the hero who just acted.
+    const players = gameState.players || [];
+    let nextIdx = gameState.currentPlayerIndex || 0;
+    if (!preventTurnAdvance && !gameState.inCombat && players.length > 1) {
+        for (let step = 1; step <= players.length; step++) {
+            const i = (nextIdx + step) % players.length;
+            if (players[i] && !players[i].isDowned) { nextIdx = i; break; }
+        }
+    }
+    gameState.nextActorIndex = nextIdx;
+
     try {
-        // Process the AI response using dual agents
         const response = await processAIResponse(prompt);
         
         if (!response || typeof response !== 'object') {
@@ -1163,6 +1185,16 @@ This opening may run up to half again the READING LEVEL length. Use second-perso
         gameState.messageHistory.push(historyEntry);
         pruneMessageHistory(gameState.messageHistory);
 
+        // One line per turn for the RECENT TURNS block and arc summaries:
+        // the model used to see only the last scene.
+        const meta = gameState.lastActionMeta;
+        if (meta && prompt !== 'start_adventure') {
+            const firstSentence = (narrative.match(/^[^.!?]*[.!?]/) || [narrative.slice(0, 160)])[0].trim();
+            gameState.recentTurns = [...(gameState.recentTurns || []),
+                `T${gameState.turn} ${meta.actor}: ${meta.action} -> ${meta.success ? 'worked' : 'went wrong'}${meta.notes ? ` (${meta.notes})` : ''}. ${firstSentence}`].slice(-12);
+            gameState.lastActionMeta = null;
+        }
+
         // processAIResponse already rendered narrative + choices; just sync state.
         gameState.currentChoices = choices;
 
@@ -1174,6 +1206,9 @@ This opening may run up to half again the READING LEVEL length. Use second-perso
         }
 
         log("AI Call Wrapper finished successfully.");
+
+        try { (await import('./saveLoad.js')).autosave(); }
+        catch (e) { log(`Autosave failed: ${e.message}`); }
 
         // Tier 3 hierarchical memory: kick off a non-blocking arc-memory
         // refresh after each successful turn. The summary call only fires

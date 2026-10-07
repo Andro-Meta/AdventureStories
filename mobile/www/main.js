@@ -148,7 +148,10 @@ displayVisualError("main.js: DOMContentLoaded listener logic executed/scheduled.
 if ('serviceWorker' in navigator && location.protocol !== 'file:' && !/[?&]nosw=1\b/.test(location.search)) {
     window.addEventListener('load', async () => {
         try {
-            const recovered = sessionStorage.getItem('__sw_poison_recovered__');
+            // Once per browser, not per tab: sessionStorage made every new tab
+            // unregister the (already network-first) worker and reload the page.
+            let recovered = null;
+            try { recovered = localStorage.getItem('__sw_poison_recovered_v015__'); } catch (_) {}
             if (!recovered) {
                 const regs = await navigator.serviceWorker.getRegistrations();
                 if (regs.length > 0) {
@@ -156,12 +159,12 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:' && !/[?&]nosw=
                         try { reg.active?.postMessage({ type: 'PURGE_CACHE' }); } catch (_) {}
                         try { await reg.unregister(); } catch (_) {}
                     }
-                    sessionStorage.setItem('__sw_poison_recovered__', '1');
+                    try { localStorage.setItem('__sw_poison_recovered_v015__', '1'); } catch (_) {}
                     displayVisualError('SW poison-recovery: unregistered old worker, reloading once for fresh modules.');
                     location.reload();
                     return;
                 }
-                sessionStorage.setItem('__sw_poison_recovered__', '1');
+                try { localStorage.setItem('__sw_poison_recovered_v015__', '1'); } catch (_) {}
             }
             const reg = await navigator.serviceWorker.register('./sw.js');
             displayVisualError(`SW registered: scope=${reg.scope}`);
@@ -268,7 +271,16 @@ function setupEventListeners(UI, setup, actionHandler, saveLoad) { // Added acti
 
 
     // --- Main Menu & Setup Navigation ---
-    safeAddListener('newGameBtn', 'click', () => UI.showScreen('playerCountScreen'), 'newGameBtn');
+    safeAddListener('newGameBtn', 'click', () => {
+        // Cloud play needs a key; say so before the party is set up (the
+        // check used to happen only after names, ages and theme were entered).
+        if (Config.LLM_BACKEND === 'cloud' && !Config.getCloudApiKey()) {
+            UI.showPopup('First, paste your free AI key here (one time only).', 'info', 6000);
+            showLocalAIStatus();
+            return;
+        }
+        UI.showScreen('playerCountScreen');
+    }, 'newGameBtn');
     safeAddListener('continueGameBtn', 'click', async () => { await saveLoad.continueLastGame(); }, 'continueGameBtn');
     // Show the Load Game screen FIRST, then list saves. listSaves() only
     // renders into the saved-games list when currentScreen === 'loadGameScreen';

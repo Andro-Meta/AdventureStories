@@ -631,6 +631,16 @@ const PATHS = [
                     window.__jailSystem.tryApplyJailMilestone(canonicalName);
                 }
             } catch (_) { /* don't let the hook break milestone application */ }
+            // Keep the quest phase in step: only the legacy command path ever
+            // recomputed it, so it stayed "beginning" for the whole game.
+            try { gs.questProgressManager?.updateCurrentPhase?.(); } catch (_) {}
+            // final_blow completes the main quest even if the narrator forgets
+            // the separate /isGoalComplete op (Act 3 could loop forever).
+            if (canonicalName === 'final_blow' && !gs.isGoalComplete) {
+                const done = PATHS.find(h => h.regex.test('/isGoalComplete'));
+                try { done.apply('/isGoalComplete'.match(done.regex), true, gs); }
+                catch (e) { (window.displayVisualError || console.log)(`final_blow completion failed: ${e.message}`); }
+            }
             return `milestone: ${canonicalName}${canonicalName !== original ? ` (normalized from "${original}")` : ''}`;
         }
     },
@@ -697,6 +707,7 @@ const PATHS = [
             }
             const next = Math.max(current, value);
             gs.questProgress.completionPercentage = next;
+            try { gs.questProgressManager?.updateCurrentPhase?.(); } catch (_) {} // phase follows the percentage
             return next === value
                 ? `quest progress = ${next}%`
                 : `quest progress = ${next}% (clamped from regressive ${value})`;
@@ -821,6 +832,11 @@ export function applyDiff(ops, opts = {}) {
         planned.push({ op, result });
     }
 
+    // Enemies must exist before /inCombat true builds the turn order; with
+    // the ops the other way round combat got an empty initiative list and
+    // enemy turns recursed until the stack overflowed.
+    planned.sort((a, b) => (a.op.path === '/inCombat') - (b.op.path === '/inCombat'));
+
     const applied = [];
     for (const { op, result } of planned) {
         try {
@@ -861,7 +877,7 @@ export function describeAllowedPaths() {
         '/enemies/<idx>/hp    (replace, number)',
         '/enemies/<idx>/isDefeated (replace, boolean)',
         '/enemies/<idx>/statusEffects/- (add, {name, duration, effectTickData})',
-        '/currentLocation     (replace, {name, type, dangerLevel, description})',
+        '/currentLocation     (replace, {name, type, dangerLevel 0-1: 0.2 calm, 0.5 tense, 0.8+ deadly, description})',
         '/adventureGoal       (replace, string)',
         '/questProgress/milestones/- (add, {name, description})',
         '/questProgress/completionPercentage (replace, 0-100)',

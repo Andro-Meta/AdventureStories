@@ -211,7 +211,12 @@ export async function handlePlayerChoice(actionType, choiceText) {
 
                     case 'Item': {
                         cbStep('3-Item', 'enter Item case');
-                        const item = (currentPlayer.inventory || []).find(i => i && i.type === 'Consumable' && (i.quantity == null || i.quantity > 0));
+                        const usable = (currentPlayer.inventory || []).filter(i => i && i.type === 'Consumable' && (i.quantity == null || i.quantity > 0));
+                        const lowerChoice = String(choiceText || '').toLowerCase();
+                        // The item the choice names, else one that heals, else any consumable.
+                        const item = usable.find(i => i.name && lowerChoice.includes(i.name.toLowerCase()))
+                            || usable.find(i => (i.stats?.heal || 0) + (i.stats?.healPercent || 0) > 0)
+                            || usable[0];
                         cbStep('3-Item', `item=${item?.name || 'NONE'}`);
                         if (!item) {
                             combatLog = `${currentPlayer.name} fumbles for an item but finds nothing usable.`;
@@ -406,9 +411,11 @@ Narrate this combat round in vivid second-person voice. Then provide ${gameState
                     const [min, max] = outcomeSet.outcomes.physical.hpChange;
                     const hpChange = getRandomInt(min, max);
                     if (hpChange !== 0) {
+                        // Exploration rolls leave a hero at 1 HP at worst: hp 0 outside
+                        // combat had no effect at all (no downed state, no warning).
                         currentPlayer.hp = clamp(
                             currentPlayer.hp + hpChange,
-                            0,
+                            Math.min(1, currentPlayer.hp),
                             currentPlayer.maxHp
                         );
                         if (hpChange < 0) {
@@ -438,7 +445,9 @@ Narrate this combat round in vivid second-person voice. Then provide ${gameState
                 }
 
                 // Handle item drops
-                if (outcomeSet.outcomes.resource.itemChance && Math.random() < outcomeSet.outcomes.resource.itemChance) {
+                // Loot only when the action works out; "Bad" has the richest table
+                // and used to pay out even on failure, which made it the best pick.
+                if (success && outcomeSet.outcomes.resource.itemChance && Math.random() < outcomeSet.outcomes.resource.itemChance) {
                     const tier = getRandomElement(outcomeSet.outcomes.resource.itemOptions.tiers);
                     const type = getRandomElement(outcomeSet.outcomes.resource.itemOptions.types);
                     const newItem = Items.generateThemedItem(gameState.adventureTheme, tier, type);

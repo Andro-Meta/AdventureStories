@@ -126,6 +126,9 @@ export async function handlePlayerChoice(actionType, choiceText) {
         // Declare outcomeSet in the proper scope
         let outcomeSet;
         let success;
+        // What the game already rolled this turn, told to the narrator so the
+        // prose matches the popups (it used to see only "Success: Yes/No").
+        const outcomeNotes = [];
         
         // Process the action based on type
         log(`[HPC-DIAG] At branch decision: inCombat=${gameState.inCombat}, combat.isActive=${gameState.combat?.isActive}, enemies=${gameState.enemies?.filter(e=>!e.isDefeated)?.length || 0}, actionType=${actionType}`);
@@ -208,7 +211,12 @@ export async function handlePlayerChoice(actionType, choiceText) {
 
                     case 'Item': {
                         cbStep('3-Item', 'enter Item case');
-                        const item = (currentPlayer.inventory || []).find(i => i && i.type === 'Consumable' && (i.quantity == null || i.quantity > 0));
+                        const usable = (currentPlayer.inventory || []).filter(i => i && i.type === 'Consumable' && (i.quantity == null || i.quantity > 0));
+                        const lowerChoice = String(choiceText || '').toLowerCase();
+                        // The item the choice names, else one that heals, else any consumable.
+                        const item = usable.find(i => i.name && lowerChoice.includes(i.name.toLowerCase()))
+                            || usable.find(i => (i.stats?.heal || 0) + (i.stats?.healPercent || 0) > 0)
+                            || usable[0];
                         cbStep('3-Item', `item=${item?.name || 'NONE'}`);
                         if (!item) {
                             combatLog = `${currentPlayer.name} fumbles for an item but finds nothing usable.`;
@@ -403,9 +411,11 @@ Narrate this combat round in vivid second-person voice. Then provide ${gameState
                     const [min, max] = outcomeSet.outcomes.physical.hpChange;
                     const hpChange = getRandomInt(min, max);
                     if (hpChange !== 0) {
+                        // Exploration rolls leave a hero at 1 HP at worst: hp 0 outside
+                        // combat had no effect at all (no downed state, no warning).
                         currentPlayer.hp = clamp(
                             currentPlayer.hp + hpChange,
-                            0,
+                            Math.min(1, currentPlayer.hp),
                             currentPlayer.maxHp
                         );
                         if (hpChange < 0) {
@@ -413,6 +423,7 @@ Narrate this combat round in vivid second-person voice. Then provide ${gameState
                         } else {
                             UI.showPopup(`Gained ${hpChange} HP!`, 'heal');
                         }
+                        outcomeNotes.push(`${hpChange < 0 ? 'lost' : 'regained'} ${Math.abs(hpChange)} HP (now ${currentPlayer.hp}/${currentPlayer.maxHp})`);
                     }
                 }
             }
@@ -429,17 +440,21 @@ Narrate this combat round in vivid second-person voice. Then provide ${gameState
                         } else if (coinChange < 0) {
                             UI.showPopup(`Lost ${Math.abs(coinChange)} coins!`, 'warning');
                         }
+                        outcomeNotes.push(`${coinChange > 0 ? 'found' : 'lost'} ${Math.abs(coinChange)} coins`);
                     }
                 }
 
                 // Handle item drops
-                if (outcomeSet.outcomes.resource.itemChance && Math.random() < outcomeSet.outcomes.resource.itemChance) {
+                // Loot only when the action works out; "Bad" has the richest table
+                // and used to pay out even on failure, which made it the best pick.
+                if (success && outcomeSet.outcomes.resource.itemChance && Math.random() < outcomeSet.outcomes.resource.itemChance) {
                     const tier = getRandomElement(outcomeSet.outcomes.resource.itemOptions.tiers);
                     const type = getRandomElement(outcomeSet.outcomes.resource.itemOptions.types);
                     const newItem = Items.generateThemedItem(gameState.adventureTheme, tier, type);
                     if (newItem) {
                         currentPlayer.inventory.push(newItem);
                         UI.showPopup(`Found ${newItem.name}!`, 'item');
+                        outcomeNotes.push(`found ${newItem.name} (already in the inventory)`);
                         // Track significant item finds
                         if (newItem.rarity === 'Rare' || newItem.rarity === 'Legendary') {
                             gameState.narrativeContext.significantEvents.push({
@@ -584,23 +599,15 @@ Narrate this combat round in vivid second-person voice. Then provide ${gameState
             }
         }
 
-        // Construct AI Prompt with enhanced context
-        const actionLog = `[Action Report: ${actionType} Action]
-Player: ${currentPlayer.name}
-Action Description: "${choiceText}"
-Success: ${gameState.narrativeContext.lastOutcome?.success ? 'Yes' : 'No'}
-Current Location: ${gameState.currentLocation?.name || 'Unknown'}
-Environment: ${context.environment}
-Situation: ${context.situation}
-
-Recent Discoveries: ${gameState.narrativeContext.discoveredSecrets.slice(-2).map(s => s.action).join(', ')}
-Significant Events: ${gameState.narrativeContext.significantEvents.slice(-2).map(e => `${e.type}: ${e.item}`).join(', ')}
-Relationship Changes: ${gameState.narrativeContext.relationshipChanges.slice(-2).map(r => `${r.type} ${r.change > 0 ? 'improved' : 'worsened'}`).join(', ')}
-
-Previous Narrative:
-${gameState.currentNarrative}
-
-Narrate the outcome of this action and provide appropriate choices for what happens next.]`;
+        // The scene, location and recent turns are already in the turn prompt;
+        // this says only what was chosen and what the game rolled.
+        const outcomeText = outcomeNotes.length
+            ? `
+Already applied by the game (show these in the story; do not emit ops for them): ${outcomeNotes.join('; ')}.`
+            : '';
+        const actionLog = `${currentPlayer.name} chose (${actionType}): "${choiceText}"
+Result: ${gameState.narrativeContext.lastOutcome?.success ? 'it works out' : 'it goes wrong'}.${outcomeText}`;
+        gameState.lastActionMeta = { actor: currentPlayer.name, action: choiceText, success: !!gameState.narrativeContext.lastOutcome?.success, notes: outcomeNotes.join('; ') };
 
         log(`Constructed AI prompt with enhanced context: ${actionLog}`);
 

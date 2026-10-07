@@ -189,8 +189,10 @@ export class InitializationManager {
                 const Spells = await import('./spells.js');
                 
                 // Initialize spellcasting for each player
+                // One spell call per player, in parallel: sequential calls made a
+                // 5-player start wait for five round-trips back to back.
                 const results = [];
-                for (const player of gameState.players) {
+                await Promise.all(gameState.players.map(async (player) => {
                     try {
                         await Spells.initializePlayerSpellcasting(player);
                         results.push({ player: player.name, spells: player.spellcasting?.knownSpells?.length || 0 });
@@ -209,7 +211,7 @@ export class InitializationManager {
                         };
                         results.push({ player: player.name, spells: 0, fallback: true });
                     }
-                }
+                }));
                 
                 return { spellInitResults: results };
             },
@@ -286,7 +288,7 @@ export class InitializationManager {
             critical: true,
             action: async () => {
                 const { makeAICallForSystemAction } = await import('./aiHandler.js');
-                await makeAICallForSystemAction('start_adventure', null);
+                await makeAICallForSystemAction('start_adventure', true); // the opening must not use up player 1's turn
                 return { storyGenerated: true };
             },
             description: 'Generate initial story'

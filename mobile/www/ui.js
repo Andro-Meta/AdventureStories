@@ -1631,6 +1631,13 @@ export function showSuccess(element, message) {
  * @param {boolean} isLoading - Whether to show or hide the loading indicator.
  * @param {string} [message='Loading...'] - The message to display in the loading indicator.
  */
+// Retry/wait messages from localAI.js replace the loading text while it shows.
+globalThis.addEventListener?.('adv:ai-status', (e) => {
+    if (elements.loadingIndicator && !elements.loadingIndicator.classList.contains('hidden') && elements.loadingMessage) {
+        elements.loadingMessage.textContent = e.detail;
+    }
+});
+
 export function showLoading(isLoading, message = 'Loading...') {
     const loadingIndicator = elements.loadingIndicator;
     const loadingMessage = elements.loadingMessage;
