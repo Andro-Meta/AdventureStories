@@ -64,3 +64,6 @@ mobile/android/app/src/main/assets/
 
 # Local secrets (OpenRouter key for dev tests) - never commit
 .env
+mobile/offline-models/
+# Built APKs are artifacts, not source
+*.apk
