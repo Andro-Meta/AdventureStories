@@ -6,7 +6,6 @@ import { gameState, buildGameContextBlock } from './state.js';
 import * as Config from './config.js';
 import { generateId } from './utils.js';
 import { gemmaHT } from './gemmaHyperthreading.js';
-import { localAIOrchestrator } from './localAIOrchestrator.js';
 
 /**
  * Dynamic Item Registry - Stores learned patterns and contextual items for this game session
@@ -101,39 +100,8 @@ export class DynamicItemRegistry {
     async callItemsAgent(tier, type, context) {
         const itemPrompt = this.buildItemGenerationPrompt(tier, type, context);
         
-        // Use local AI orchestrator if available
-        if (localAIOrchestrator) {
-            
-            const contextAnalysis = {
-                situationType: 'item_generation',
-                requiredAgents: ['items'],
-                itemContext: {
-                    tier,
-                    type,
-                    theme: gameState.adventureTheme,
-                    customTheme: gameState.customThemeDescription,
-                    currentLocation: gameState.currentLocation,
-                    storyContext: context.storyContext || '',
-                    playerNeeds: context.playerNeeds || [],
-                    recentEvents: context.recentEvents || []
-                }
-            };
-
-            // Show loading indicator for AI processing
-            const UI = await import('./ui.js');
-            UI.showLoading(true, 'Generating dynamic items...');
-            
-            try {
-                const result = await localAIOrchestrator.orchestrateAgents('item_generation', contextAnalysis);
-                if (result && result.items) {
-                    return this.parseAIItemResponse(result.items, tier, type);
-                }
-            } finally {
-                UI.showLoading(false);
-            }
-        }
-
-        // Fallback to direct AI call if orchestrator fails
+        // Direct call only: the orchestrator path never returned the `items`
+        // field checked here (live: a 600-token prose reply, then this call anyway).
         return await this.directItemGeneration(itemPrompt, tier, type);
     }
 

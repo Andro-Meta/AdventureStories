@@ -159,6 +159,13 @@ ${buildDiffInstructions(pIdx)}`;
         UI.renderEnemyCards();
         UI.updateContextHeaders();
 
+        // Ops that defeat the last enemy end the fight here, so the choices
+        // match: before, a narrator kill left combat choices on screen after
+        // actionHandler closed the fight (live: Attack/Run while exploring).
+        if (gameState.inCombat && (gameState.enemies || []).length && Combat.areAllEnemiesDefeated()) {
+            gameState.inCombat = false;
+            if (gameState.combat) gameState.combat.isActive = false;
+        }
         // The diff may have started or ended a fight; choices must match the mode now.
         const nowInCombat = !!gameState.inCombat;
         let choices = null;

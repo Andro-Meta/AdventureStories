@@ -9,7 +9,6 @@ import * as AdaptiveAbilities from './adaptiveAbilities.js';
 import { generateId, getRandomInt, getRandomElement } from './utils.js';
 import { gemmaHT } from './gemmaHyperthreading.js';
 import { gemmaContextOptimizer } from './gemmaContextOptimizer.js';
-import { localAIOrchestrator } from './localAIOrchestrator.js';
 
 /**
  * Dynamic Boss Registry - Generates contextually perfect bosses for infinite themes
@@ -307,29 +306,7 @@ Make the boss feel like a natural part of the ${context.theme} world with a memo
      */
     async callBossAgent(prompt, generationType) {
         try {
-            // Use enhanced AI processing for bosses
-            if (localAIOrchestrator) {
-                
-                const contextAnalysis = {
-                    situationType: 'boss_generation',
-                    requiredAgents: ['bosses'],
-                    bossContext: {
-                        generationType,
-                        theme: gameState.adventureTheme,
-                        customTheme: gameState.customThemeDescription,
-                        currentLocation: gameState.currentLocation,
-                        storyContext: gameState.currentNarrative?.slice(-300) || '',
-                        recentEvents: gameState.narrativeContext?.significantEvents?.slice(-3) || []
-                    }
-                };
-
-                const result = await localAIOrchestrator.orchestrateAgents('boss_generation', contextAnalysis);
-                if (result && result.bosses) {
-                    return result.bosses;
-                }
-            }
-
-            // Fallback to direct AI call (schema-constrained JSON, not narrative pipeline)
+            // Direct JSON call (the orchestrator never returned `bosses`; it only added a wasted call).
             const API = await import('./api_new.js');
             const messages = [
                 { role: 'system', content: 'You are a game data generator. Return only valid JSON matching the requested schema. No prose.' },
