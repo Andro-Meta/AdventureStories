@@ -679,7 +679,7 @@ export function resetGameState() {
             relationshipChanges: [], environmentalChanges: []
         },
         // Hierarchical memory (Tier 3) — referenced by aiHandler/memoryRetriever.
-        arcMemory: { summaries: [], lastSummarizedTurn: 0 },
+        arcMemory: { summaries: [], lastSummarizedTurn: 0, nextSummaryAtTurn: 5 }, // same as initial state; was missing, so the first summary call fired on turn 2
         entityMemory: { npcs: {}, locations: {}, items: {} },
         // Reputation + jail — referenced by reputationContextualizer + jailSystem.
         reputationSystem: {
