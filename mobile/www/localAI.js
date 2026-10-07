@@ -334,6 +334,15 @@ export class LocalAIClient {
         if (this.isCloud && this.fallbackModels.length && this.baseUrl.includes('openrouter')) {
             requestData.models = [this.modelName, ...this.fallbackModels];
         }
+        // The free Nemotron models "think" before answering by default, and
+        // that hidden reasoning counts against max_tokens: in a live test 2 of 3
+        // story calls and 1 of 3 choice calls came back empty (finish=length),
+        // dropping the turn's state changes and costing a retry call. Replaying
+        // those exact requests with reasoning off: story 2/2 valid in 2.5-4 s
+        // (vs 1/2 in 12-14 s), choices 2/2 valid in 1.9 s (vs 0/2).
+        if (this.isCloud && this.baseUrl.includes('openrouter')) {
+            requestData.reasoning = { enabled: false };
+        }
 
         // BUG-13 fix: previously top_k + cache_prompt were sent to *every*
         // non-cloud backend. Ollama's OpenAI endpoint ignores top_k (harmless)
@@ -521,8 +530,14 @@ export class LocalAIClient {
                 // routes) return content === null with reasoning_content set.
                 // Fall through to that field so the call doesn't surface as
                 // empty.
+                // Only the answer counts. Falling back to `reasoning_content`
+                // turned a model's private notes into story text when the
+                // answer was cut off; an empty answer is reported instead.
                 const msg = result.choices[0].message || {};
-                return msg.content ?? msg.reasoning_content ?? '';
+                if (!msg.content && result.choices[0].finish_reason === 'length') {
+                    throw new Error('The AI ran out of room before answering (max_tokens reached)');
+                }
+                return msg.content ?? '';
             } else {
                 throw new Error('No response generated');
             }

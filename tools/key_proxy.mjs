@@ -15,6 +15,7 @@ if (!KEY) { console.error('OPENROUTER_API_KEY is empty in .env'); process.exit(1
 const HOST = 'openrouter.ai';
 const LOG = fileURLToPath(new URL('../test-results/key_proxy.log', import.meta.url));
 fs.mkdirSync(fileURLToPath(new URL('../test-results/', import.meta.url)), { recursive: true });
+let count = 0;
 
 http.createServer(async (req, res) => {
   const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': '*' };
@@ -31,10 +32,13 @@ http.createServer(async (req, res) => {
       body: req.method === 'GET' ? undefined : body,
     });
     const text = await r.text();
-    let asked = '', served = '';
+    let asked = '', served = '', usage = {};
     try { asked = JSON.parse(body).model; } catch {}
-    try { served = JSON.parse(text).model || ''; } catch {}
-    fs.appendFileSync(LOG, `${new Date().toISOString()} req=${asked} served=${served} ${r.status} ${Date.now() - t0}ms\n`);
+    try { const j = JSON.parse(text); served = j.model || ''; usage = j.usage || {}; } catch {}
+    const n = ++count;
+    fs.appendFileSync(LOG, `${new Date().toISOString()} #${n} req=${asked} served=${served} ${r.status} ${Date.now() - t0}ms in=${usage.prompt_tokens ?? '?'} out=${usage.completion_tokens ?? '?'}\n`);
+    // KEY_PROXY_DUMP=1 saves each request/response pair for prompt review.
+    if (process.env.KEY_PROXY_DUMP) fs.writeFileSync(fileURLToPath(new URL(`../test-results/call_${String(n).padStart(3, '0')}.json`, import.meta.url)), JSON.stringify({ request: JSON.parse(body || '{}'), response: text }, null, 2));
     res.writeHead(r.status, { ...cors, 'Content-Type': 'application/json' });
     res.end(text);
   } catch (e) {
