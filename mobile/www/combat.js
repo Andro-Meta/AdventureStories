@@ -2,21 +2,21 @@
 // Handles combat calculations, enemy generation, status effects, and combat state checks.
 
 // --- Module Imports ---
-import { gameState, determineContext } from './state.js?cb=014'; // Needs gameState to access players/enemies
-import * as Config from './config.js?cb=014'; // Needs config values
+import { gameState, determineContext } from './state.js'; // Needs gameState to access players/enemies
+import * as Config from './config.js'; // Needs config values
 // Import specific functions from utils needed here
-import { getRandomInt, getRandomElement, clamp, generateId } from './utils.js?cb=014';
+import { getRandomInt, getRandomElement, clamp, generateId } from './utils.js';
 // Import item functions needed for enemy loot generation
-import { generateThemedItem, generateLootDrop } from './items.js?cb=014';
-import * as AdaptiveAbilities from './adaptiveAbilities.js?cb=014';
-import * as DynamicEnemies from './dynamicEnemies.js?cb=014';
-import { getTrustDifficultyModifiers } from './reputationContextualizer.js?cb=014';
+import { generateThemedItem, generateLootDrop } from './items.js';
+import * as AdaptiveAbilities from './adaptiveAbilities.js';
+import * as DynamicEnemies from './dynamicEnemies.js';
+import { getTrustDifficultyModifiers } from './reputationContextualizer.js';
 // Import UI function for popups and potentially updating UI after combat actions
-import { showPopup, renderPlayerCards, renderEnemyCards, updateContextHeaders, renderInventory } from './ui.js?cb=014'; // Added renderInventory
+import { showPopup, renderPlayerCards, renderEnemyCards, updateContextHeaders, renderInventory } from './ui.js'; // Added renderInventory
 // Import Gemma hyperthreading for enhanced combat AI
-import { gemmaHT } from './gemmaHyperthreading.js?cb=014';
+import { gemmaHT } from './gemmaHyperthreading.js';
 // Import boss system for enhanced boss encounters
-import * as Bosses from './bosses.js?cb=014';
+import * as Bosses from './bosses.js';
 
 // --- Enemy Generation & Scaling ---
 
@@ -1255,10 +1255,13 @@ export async function handleEnemyDefeat(enemyId) {
      }
      const enemy = gameState.enemies[enemyIndex];
 
-     if (enemy.isDefeated) {
+     // Own flag, not isDefeated: executeWeaponAttack sets isDefeated on the
+     // killing blow, which used to make this return early with no loot.
+     if (enemy.defeatProcessed) {
          log(`Combat Info: Enemy ${enemy.name} defeat already processed.`);
          return;
      }
+     enemy.defeatProcessed = true;
 
      enemy.isDefeated = true;
      enemy.hp = 0;
@@ -1273,7 +1276,7 @@ export async function handleEnemyDefeat(enemyId) {
          // Check loot drop chance first
          if (Math.random() <= enemy.lootChance) {
              // Import dynamic items system
-             const dynamicItems = await import('./dynamicItems.js?cb=014');
+             const dynamicItems = await import('./dynamicItems.js');
              
              if (enemy.isBoss) {
                  // Boss rewards with enhanced luck and tier potential
@@ -1365,7 +1368,7 @@ export async function handleEnemyDefeat(enemyId) {
      try {
          const player = gameState.players.find(p => p && !p.isDowned && p.spellcasting);
          if (player && (enemy.isBoss || enemy.isElite || Math.random() < 0.15)) {
-             const DynamicSpells = await import('./dynamicSpells.js?cb=014');
+             const DynamicSpells = await import('./dynamicSpells.js');
              const rewardSpell = await DynamicSpells.generateSpellReward(enemy.type || 'regular', player);
              
              if (rewardSpell) {
@@ -1412,9 +1415,11 @@ export async function handleEnemyDefeat(enemyId) {
      renderEnemyCards();
 
      // Check if this was the last enemy and trigger combat victory if so
-     if (areAllEnemiesDefeated()) {
+     // During a player's combat round actionHandler narrates the victory
+     // itself; triggering handleCombatVictory too gave two narrations.
+     if (areAllEnemiesDefeated() && !gameState.combatRoundInProgress) {
          log("All enemies defeated after processing this enemy. Triggering combat victory...");
-         import('./resolution.js?cb=014').then(resolution => {
+         import('./resolution.js').then(resolution => {
              resolution.handleCombatVictory();
          }).catch(error => {
              log("Error importing resolution module:", error);
@@ -1516,8 +1521,9 @@ export async function handleEnemyTurn(enemyId) {
                 await processStatusEffectTicks(enemy);
             }
             
-            // Advance the turn after boss ability
-            advanceCombatTurn();
+            // Advance the turn after boss ability (awaited so the whole enemy
+            // phase lands before the narrator is told the round's result)
+            await advanceCombatTurn();
             return;
         }
         // If boss ability failed, fall through to normal attack
@@ -1537,8 +1543,8 @@ export async function handleEnemyTurn(enemyId) {
         await processStatusEffectTicks(enemy);
     }
 
-    // Advance the turn
-    advanceCombatTurn();
+    // Advance the turn (awaited: see boss branch above)
+    await advanceCombatTurn();
 }
 
 /**

@@ -2,6 +2,7 @@
 // Run all four suites in sequence; exit 1 if any fail.
 
 import { spawn } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
@@ -15,7 +16,7 @@ let failed = 0;
 async function run(suite, useLoader) {
   console.log(`\n\x1b[1m┌─── ${suite} ───\x1b[0m`);
   const args = useLoader
-    ? ['--experimental-loader', resolve(__dirname, 'preload.mjs'), resolve(__dirname, `${suite}.mjs`)]
+    ? ['--experimental-loader', pathToFileURL(resolve(__dirname, 'preload.mjs')).href, resolve(__dirname, `${suite}.mjs`)]
     : [resolve(__dirname, `${suite}.mjs`)];
   const code = await new Promise((res) => {
     const p = spawn(process.execPath, args, { stdio: 'inherit' });

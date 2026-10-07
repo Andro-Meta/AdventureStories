@@ -38,30 +38,30 @@ displayVisualError("main.js: Script starting execution.");
 let Config, gameState, UI, setup, actionHandler, saveLoad;
 try {
     displayVisualError("main.js: Importing core modules...");
-    Config = await import('./config.js?cb=014');
-    ({ gameState } = await import('./state.js?cb=014'));
-    UI = await import('./ui.js?cb=014');
+    Config = await import('./config.js');
+    ({ gameState } = await import('./state.js'));
+    UI = await import('./ui.js');
     displayVisualError("main.js: Core modules imported successfully.");
     displayVisualError("main.js: Importing feature modules...");
     
     // Import loading manager first
-    await import('./loadingManager.js?cb=014');
+    await import('./loadingManager.js');
     displayVisualError('LoadingManager: Initialized with intelligent loading system');
     
     // Import local AI integration
-    await import('./localAI.js?cb=014');
+    await import('./localAI.js');
     displayVisualError('LocalAI: Integration initialized');
 
     // Phase 2: load the jail system module so it registers itself on
     // window.__jailSystem before any AI prompts are built. Without this
     // import being explicit somewhere, modules that lazily reach for
     // window.__jailSystem (questDefinitions, engine) won't find it.
-    await import('./jailSystem.js?cb=014');
+    await import('./jailSystem.js');
     displayVisualError('JailSystem: registered.');
 
-    setup = await import('./setup.js?cb=014');
-    actionHandler = await import('./actionHandler.js?cb=014');
-    saveLoad = await import('./saveLoad.js?cb=014');
+    setup = await import('./setup.js');
+    actionHandler = await import('./actionHandler.js');
+    saveLoad = await import('./saveLoad.js');
     // Other modules like combat, items, turnManager, resolution are imported statically
     // within the modules that need them (actionHandler, aiHandler, etc.)
     displayVisualError("main.js: All feature modules imported successfully.");
@@ -342,10 +342,10 @@ function setupEventListeners(UI, setup, actionHandler, saveLoad) { // Added acti
         // Soft revive: revert to handlePartyWipe's normal recovery path so the
         // player keeps playing. Reset the wipe counter so they get another N
         // chances before the screen reappears.
-        const { gameState } = await import('./state.js?cb=014');
+        const { gameState } = await import('./state.js');
         gameState.consecutiveWipes = 0;
         // Run the soft-recovery directly (skip the threshold check inside handlePartyWipe).
-        const Combat = await import('./combat.js?cb=014');
+        const Combat = await import('./combat.js');
         gameState.players?.forEach(p => {
             if (!p) return;
             p.hp = Math.max(1, Math.floor((p.maxHp || 100) * 0.25)); // revive at 25% HP
@@ -481,7 +481,7 @@ function setupEventListeners(UI, setup, actionHandler, saveLoad) { // Added acti
     displayVisualError("main.js: Quest progress UI initialized.");
     
     // Initialize Local AI Orchestrator
-    import('./localAIOrchestrator.js?cb=014')
+    import('./localAIOrchestrator.js')
         .then(({ localAIOrchestrator }) => {
             displayVisualError("main.js: Local AI Orchestrator initialized and ready for multi-agent coordination.");
         })
@@ -582,7 +582,7 @@ function syncBackendModeUI() {
     const banner = document.getElementById('localAIBanner');
     if (banner) {
         if (isCapacitor) {
-            banner.textContent = 'On-Device AI runs Gemma 3 4B privately on your phone. Cloud AI uses a free online provider instead.';
+            banner.textContent = 'On-Device AI runs Qwen 2.5 1.5B privately on your phone — works offline, no signup. Cloud AI uses a free online provider instead.';
         } else {
             banner.textContent = 'Choose how you want to play. Local AI is private and unlimited; Cloud AI requires no local setup.';
         }
@@ -620,33 +620,37 @@ async function refreshLiteRTModelStatus() {
     if (!statusEl) return;
 
     try {
-        const { checkHealth, _internal } = await import('./liteRTBridge.js');
-        const health = await checkHealth();
+        const bridge = await import('./liteRTBridge.js');
+        const health = await bridge.checkHealth();
 
+        // Already loaded into MediaPipe → green check, exact source.
         if (health.status === 'healthy') {
-            statusEl.textContent = `✅ Model ready — ${health.model?.name || 'Gemma 3 4B'}`;
+            const name = health.model?.name || 'On-device AI';
+            const src  = health.model?.source === 'bundled-asset' ? ' (bundled)' : '';
+            statusEl.textContent = `✅ Model ready — ${name}${src}`;
             statusEl.className = 'status-message healthy';
             if (dlSection) dlSection.classList.add('hidden');
-        } else if (health.status === 'pending') {
-            // Plugin found but model not loaded yet — check if file exists
-            const dl = window.Capacitor?.Plugins?.ModelDownload;
-            if (dl) {
-                const { LITERT_CONFIG } = await import('./config.js');
-                const modelFile = LITERT_CONFIG.MODEL_FILE || (LITERT_CONFIG.MODEL_NAME + '.task');
-                const check = await dl.checkModel({ modelName: modelFile });
-                if (check.exists) {
-                    statusEl.textContent = `⏳ Model file present (~${Math.round(check.sizeBytes / 1e6)} MB) — will load on first game start.`;
-                    statusEl.className = 'status-message checking';
-                    if (dlSection) dlSection.classList.add('hidden');
-                } else {
-                    statusEl.textContent = '⬇️ Model not downloaded yet.';
-                    statusEl.className = 'status-message warning';
-                    if (dlSection) dlSection.classList.remove('hidden');
-                }
-            } else {
-                statusEl.textContent = '⚠️ ModelDownload plugin not found.';
-                statusEl.className = 'status-message error';
-            }
+            return;
+        }
+
+        // Not loaded yet, but inside the Capacitor APK we ship the model
+        // bundled as an Android asset — so it is functionally "ready, will
+        // activate on first generation". Don't nag the user about a download
+        // they don't need to perform.
+        if (bridge.isAvailable && bridge.isAvailable()) {
+            statusEl.textContent = '✅ Model bundled in app — ready to use (will load on first generation).';
+            statusEl.className = 'status-message healthy';
+            if (dlSection) dlSection.classList.add('hidden');
+            return;
+        }
+
+        // Not in Capacitor and not loaded — fall back to a legacy download
+        // hint (mostly so this UI degrades gracefully when poked from a
+        // desktop browser).
+        if (health.status === 'pending') {
+            statusEl.textContent = '⬇️ Model not present yet.';
+            statusEl.className = 'status-message warning';
+            if (dlSection) dlSection.classList.remove('hidden');
         } else {
             statusEl.textContent = `⚠️ ${health.reason || 'On-device AI unavailable'}`;
             statusEl.className = 'status-message error';
@@ -704,7 +708,7 @@ async function runConnectionCheck() {
         statusElement.className = 'status-message checking';
 
         try {
-            const { localAI } = await import('./localAI.js?cb=014');
+            const { localAI } = await import('./localAI.js');
             // Minimal completion to verify auth + reachability
             const response = await localAI.makeRequest(
                 [{ role: 'user', content: 'Reply with just the word OK.' }],
@@ -748,7 +752,7 @@ async function runConnectionCheck() {
         : 'python working_ai_server.py';
 
     try {
-        const { testLocalAI } = await import('./api_new.js?cb=014');
+        const { testLocalAI } = await import('./api_new.js');
         await testLocalAI();
 
         statusElement.textContent = `✅ Local AI Server is running and healthy! ${backend.modelName} ready.`;
@@ -817,7 +821,7 @@ function setupCloudBackendListeners() {
     if (localRadio) {
         localRadio.addEventListener('change', async () => {
             if (!localRadio.checked) return;
-            const { localAI } = await import('./localAI.js?cb=014');
+            const { localAI } = await import('./localAI.js');
             localAI.setLocalBackend();
             window.location.reload();
         });
@@ -857,7 +861,7 @@ function setupCloudBackendListeners() {
 
             try { localStorage.setItem('adv.llmBackend', 'cloud'); } catch (_) {}
 
-            const { localAI } = await import('./localAI.js?cb=014');
+            const { localAI } = await import('./localAI.js');
             localAI.setCloudProvider(providerKey);
             localAI.setApiKey(key);
 

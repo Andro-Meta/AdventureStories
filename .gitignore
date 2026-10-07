@@ -51,3 +51,13 @@ advStorySave_*
 # Editor scratch
 *.bak
 *.orig
+
+# Local secrets baked into APK at build time but never committed.
+# Create mobile/local-secrets.json with {"openrouterApiKey": "sk-or-v1-..."}
+mobile/local-secrets.json
+mobile/www/mobile-bootstrap.js
+mobile/android/app/src/main/assets/public/mobile-bootstrap.js
+
+# On-device model files (1.6 GB) and Capacitor-generated web assets: never commit
+*.task
+mobile/android/app/src/main/assets/

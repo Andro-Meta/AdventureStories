@@ -4,7 +4,7 @@
  * Ensures engaging, properly-sized content for each age group
  */
 
-import { gameState } from './state.js?cb=014';
+import { gameState } from './state.js';
 
 /**
  * Reading level specifications based on actual children's and adult literature

@@ -2,8 +2,8 @@
 // Revolutionary Theme-Contextual AI Agent for Infinite Dynamic Ability Generation
 // Analyzes story context, location, and theme to generate perfectly appropriate abilities
 
-import { gameState } from './state.js?cb=014';
-import * as AdaptiveAbilities from './adaptiveAbilities.js?cb=014';
+import { gameState } from './state.js';
+import * as AdaptiveAbilities from './adaptiveAbilities.js';
 
 /**
  * Theme Intelligence Engine - Analyzes context to determine appropriate ability types

@@ -2,24 +2,24 @@
 // Handles game initialization and player/adventure setup steps.
 
 // --- Static Imports ---
-import { gameState, resetGameState, createNewPlayer, initializeGameState } from './state.js?cb=014';
-import * as Config from './config.js?cb=014';
-import * as UI from './ui.js?cb=014';
-import * as API from './api_new.js?cb=014';
-import * as Items from './items.js?cb=014';
-import * as Combat from './combat.js?cb=014';
-import * as Spells from './spells.js?cb=014';
-import { loadingManager, withLoading } from './loadingManager.js?cb=014';
+import { gameState, resetGameState, createNewPlayer, initializeGameState } from './state.js';
+import * as Config from './config.js';
+import * as UI from './ui.js';
+import * as API from './api_new.js';
+import * as Items from './items.js';
+import * as Combat from './combat.js';
+import * as Spells from './spells.js';
+import { loadingManager, withLoading } from './loadingManager.js';
 // Import necessary functions from aiHandler statically
-import { getThemeName, generateSystemPrompt, processAIResponse, handleApiError, makeAICallForSystemAction } from './aiHandler.js?cb=014';
+import { getThemeName, generateSystemPrompt, processAIResponse, handleApiError, makeAICallForSystemAction } from './aiHandler.js';
 // Import location system
-import { initializeLocationSystem } from './locations.js?cb=014';
+import { initializeLocationSystem } from './locations.js';
 // Import items for fallback generation
-import { generateId } from './utils.js?cb=014';
+import { generateId } from './utils.js';
 // Import input caching
-import { savePlayerAges, savePlayerNames, saveAdventureTheme, loadAdventureTheme } from './inputCache.js?cb=014';
+import { savePlayerAges, savePlayerNames, saveAdventureTheme, loadAdventureTheme } from './inputCache.js';
 // Import intelligent initialization manager
-import { initManager } from './initializationManager.js?cb=014';
+import { initManager } from './initializationManager.js';
 
 /**
  * Initializes the game application, sets up initial state and listeners.
@@ -48,17 +48,14 @@ export async function initializeGame() {
 async function checkLocalAIStatus() {
     const log = window.displayVisualError || console.log;
     try {
-        const { testLocalAI } = await import('./api_new.js?cb=014');
+        const { testLocalAI } = await import('./api_new.js');
         await testLocalAI();
         gameState.localAIStatus = 'healthy';
         log("Setup: Local AI server is healthy and ready");
     } catch (error) {
         gameState.localAIStatus = 'unavailable';
-        log("Setup WARNING: Local AI server not available:", error.message);
-        const guidance = Config.LLM_BACKEND === 'llama-cpp'
-            ? 'Run `python start_llama_server.py` (llama.cpp) before starting a game.'
-            : 'Run `python working_ai_server.py` (MiniCPM) before starting a game.';
-        UI.showPopup(`Local AI server not available. ${guidance}`, 'error');
+        log("Setup WARNING: AI not ready:", error.message);
+        UI.showPopup(`AI not ready: ${error.message}`, 'error');
     }
 }
 
@@ -195,13 +192,11 @@ export async function completeSetupAndStartGame() {
     const log = window.displayVisualError || console.log;
     log("Setup: Starting game setup completion...");
 
-    // Check local AI status first
+    // Re-check on every start so saving a key in AI Settings takes effect
+    // without a page reload.
+    await checkLocalAIStatus();
     if (gameState.localAIStatus !== 'healthy') {
-        log("Setup ERROR: Local AI server not available");
-        const guidance = Config.LLM_BACKEND === 'llama-cpp'
-            ? 'Run `python start_llama_server.py` to start llama.cpp.'
-            : 'Run `python working_ai_server.py` to start the MiniCPM backend.';
-        UI.showPopup(`Local AI server not available. ${guidance}`, 'error');
+        log("Setup ERROR: AI backend not ready");
         return;
     }
 
@@ -304,7 +299,7 @@ export async function completeSetupAndStartGame() {
     gameState.currentSaveSlot = null;
     // Generate shop items using dynamic system with fallback
     try {
-        const dynamicItems = await import('./dynamicItems.js?cb=014');
+        const dynamicItems = await import('./dynamicItems.js');
         gameState.shopItems = await dynamicItems.generateDynamicShopItems(8, gameState.turn);
         log(`Generated ${gameState.shopItems.length} dynamic shop items`);
     } catch (error) {
@@ -320,7 +315,7 @@ export async function completeSetupAndStartGame() {
     // Initialize dynamic spell system
     loadingManager.updateStatus('Loading AI systems...');
     try {
-        const DynamicSpells = await import('./dynamicSpells.js?cb=014');
+        const DynamicSpells = await import('./dynamicSpells.js');
         // The dynamicSpellRegistry is already initialized on import
         log("Dynamic spell registry loaded:", DynamicSpells.dynamicSpellRegistry ? "Success" : "Failed");
         log("Dynamic spell system initialized successfully");
@@ -371,9 +366,6 @@ export async function completeSetupAndStartGameIntelligent() {
     const log = window.displayVisualError || console.log;
     log("Setup: Starting INTELLIGENT game initialization...");
     
-    // Show loading screen
-    loadingManager.showLoading('Preparing intelligent initialization...');
-
     // Validate inputs one more time - use the same method as the working system
     if (!UI.elements.nameInputsContainer) { 
         log("Setup ERROR: Name inputs container missing."); 
@@ -404,6 +396,8 @@ export async function completeSetupAndStartGameIntelligent() {
     gameState.playerNames = [...playerNames];
     log(`Setup: Names validated: [${playerNames.join(', ')}]. Starting intelligent initialization...`);
 
+    // Shown only after validation so an invalid name can't strand the overlay.
+    loadingManager.showLoading('Preparing your adventure...');
     try {
         // Set up progress monitoring
         const progressInterval = setInterval(() => {

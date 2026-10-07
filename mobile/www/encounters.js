@@ -2,14 +2,14 @@
 // Handles encounter generation, probability calculations, and combat initiation
 
 // --- Module Imports ---
-import { gameState } from './state.js?cb=014';
-import * as Config from './config.js?cb=014';
-import * as Combat from './combat.js?cb=014';
-import * as Bosses from './bosses.js?cb=014';
-import * as UI from './ui.js?cb=014';
-import { getRandomInt, getRandomElement } from './utils.js?cb=014';
-import * as DynamicEncounters from './dynamicEncounters.js?cb=014';
-import { getTrustDifficultyModifiers } from './reputationContextualizer.js?cb=014';
+import { gameState } from './state.js';
+import * as Config from './config.js';
+import * as Combat from './combat.js';
+import * as Bosses from './bosses.js';
+import * as UI from './ui.js';
+import { getRandomInt, getRandomElement } from './utils.js';
+import * as DynamicEncounters from './dynamicEncounters.js';
+import { getTrustDifficultyModifiers } from './reputationContextualizer.js';
 
 /**
  * Main encounter system class
@@ -669,11 +669,4 @@ export async function checkAndProcessEncounter() {
     }
 
     return false;
-}
-ounterSystem.processEncounter(encounter);
-    }
-
-    return false;
-}
-}
 }

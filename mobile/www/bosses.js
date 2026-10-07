@@ -1,11 +1,11 @@
 // bosses.js
 // Comprehensive boss battle system with multi-phase mechanics, special abilities, and elite variants
 
-import { gameState } from './state.js?cb=014';
-import * as Config from './config.js?cb=014';
-import * as Combat from './combat.js?cb=014';
-import * as UI from './ui.js?cb=014';
-import { generateId, clamp, getRandomElement, getRandomInt } from './utils.js?cb=014';
+import { gameState } from './state.js';
+import * as Config from './config.js';
+import * as Combat from './combat.js';
+import * as UI from './ui.js';
+import { generateId, clamp, getRandomElement, getRandomInt } from './utils.js';
 
 /**
  * Boss types and their characteristics
@@ -206,7 +206,7 @@ async function createDynamicBoss(bossType, bossConfig, theme, turn, context) {
     
     try {
         // Import the PROPER dynamic boss system
-        const { DynamicBossRegistry } = await import('./dynamicBosses.js?cb=014');
+        const { DynamicBossRegistry } = await import('./dynamicBosses.js');
         
         // Get or create dynamic boss registry
         if (!gameState.dynamicBossRegistry) {

@@ -2,9 +2,9 @@
 // Defines the central game state object and related helper functions/types.
 
 // --- Module Imports ---
-import * as Config from './config.js?cb=014'; // Needs config for initial values
-import { generateId } from './utils.js?cb=014'; // Needs ID generation
-import { ChoiceOutcomeConfig } from './config.js?cb=014';
+import * as Config from './config.js'; // Needs config for initial values
+import { generateId } from './utils.js'; // Needs ID generation
+import { ChoiceOutcomeConfig } from './config.js';
 // Note: getCurrentPlayer moved to avoid circular dependency
 
 /**
@@ -672,7 +672,12 @@ export function resetGameState() {
             milestones: [], currentObjectives: [], sideQuests: [],
             discoveredSecrets: [], keyEvents: [], progressHistory: []
         },
-        narrativeContext: { events: [], turnsSinceLastBigBeat: 0 },
+        // Same shape as the initial gameState above; actionHandler reads these arrays on turn 1.
+        narrativeContext: {
+            lastAction: null, lastOutcome: null,
+            significantEvents: [], discoveredSecrets: [],
+            relationshipChanges: [], environmentalChanges: []
+        },
         // Hierarchical memory (Tier 3) — referenced by aiHandler/memoryRetriever.
         arcMemory: { summaries: [], lastSummarizedTurn: 0 },
         entityMemory: { npcs: {}, locations: {}, items: {} },
@@ -860,7 +865,7 @@ export async function initializeGameState() {
     // Initialize reputation system contextualized factions
     if (gameState.reputationSystem && !gameState.reputationSystem.contextualizedFactions) {
         try {
-            const { getContextualizedFactions, calculatePriceModifiers } = await import('./reputationContextualizer.js?cb=014');
+            const { getContextualizedFactions, calculatePriceModifiers } = await import('./reputationContextualizer.js');
             gameState.reputationSystem.contextualizedFactions = getContextualizedFactions();
             gameState.reputationSystem.priceModifiers = calculatePriceModifiers(gameState.reputationSystem.factions);
             log("State: Reputation system contextualized factions initialized for theme:", gameState.adventureTheme);
@@ -1098,5 +1103,4 @@ export function analyzePlayerBehavior(playerId) {
     });
     
     return patterns;
-}    return patterns;
 }

@@ -28,18 +28,21 @@
 export const LLM_BACKEND = (() => {
     try {
         if (typeof window !== 'undefined') {
+            // One-time move of existing installs onto the free cloud default
+            // (older builds stored 'llama-cpp' / 'litert' automatically).
+            if (!window.localStorage.getItem('adv.cloudDefaultV2')) {
+                window.localStorage.setItem('adv.cloudDefaultV2', '1');
+                window.localStorage.setItem('adv.llmBackend', 'cloud');
+            }
             const stored = window.localStorage.getItem('adv.llmBackend');
             if (stored === 'cloud' || stored === 'llama-cpp' || stored === 'minicpm-python' || stored === 'ollama' || stored === 'litert') {
                 return stored;
             }
-            // Auto-select litert when running in Capacitor (production APK).
-            const Cap = window.Capacitor;
-            if (Cap && typeof Cap.isNativePlatform === 'function' && Cap.isNativePlatform()) {
-                return 'litert';
-            }
         }
     } catch (_) { /* fall through to default */ }
-    return 'llama-cpp';
+    // Default everywhere (desktop, phone browser, Android APK): free cloud AI.
+    // Local backends stay available but must be opted into via Settings.
+    return 'cloud';
 })();
 
 // Phase 5: LiteRT-LM (on-device) config.
@@ -69,15 +72,15 @@ export const LLM_BACKEND = (() => {
 //   Phi-4 mini q8         → 3.91 GB
 // Switch via localStorage.adv.litertModel = '<key>' to one of ALTERNATES below.
 export const LITERT_CONFIG = {
-    MODEL_NAME: 'gemma3-1b-it-q8',
-    MODEL_FILE: 'Gemma3-1B-IT_multi-prefill-seq_q8_ekv4096.task',
-    MODEL_ASSET_PATH: 'Gemma3-1B-IT_multi-prefill-seq_q8_ekv4096.task',
+    MODEL_NAME: 'qwen2.5-1.5b-instruct-q8',
+    MODEL_FILE: 'Qwen2.5-1.5B-Instruct_multi-prefill-seq_q8_ekv4096.task',
+    MODEL_ASSET_PATH: 'Qwen2.5-1.5B-Instruct_multi-prefill-seq_q8_ekv4096.task',
     // Direct .task URL from the litert-community Gemma 3 1B repo. q8
     // weights, 4k context window, 1.05 GB. Best quality-per-MB for this
     // game's narrator workload.
-    MODEL_DOWNLOAD_URL: 'https://huggingface.co/litert-community/Gemma3-1B-IT/resolve/main/Gemma3-1B-IT_multi-prefill-seq_q8_ekv4096.task',
+    MODEL_DOWNLOAD_URL: 'https://huggingface.co/litert-community/Qwen2.5-1.5B-Instruct/resolve/main/Qwen2.5-1.5B-Instruct_multi-prefill-seq_q8_ekv4096.task',
     MODEL_HF_TOKEN: '', // PASTE your HF read token here. Required for any Gemma model.
-    MODEL_EXPECTED_BYTES: 1054023846, // strict-size check; set to 0 to disable
+    MODEL_EXPECTED_BYTES: 1598556720, // strict-size check; set to 0 to disable
     CONTEXT_WINDOW: 4096,
     DEFAULT_PARAMS: {
         max_tokens: 1024,
@@ -254,102 +257,65 @@ function resolveBackendUrl(defaultUrl) {
 // and Authorization header differ. Phase 0 docs (IMPLEMENTATION_PLAN.md)
 // recommend OpenRouter Gemma 4 31B for users who want to stick with Gemma.
 // ─────────────────────────────────────────────────────────────────────────────
-// CLOUD MODEL IDs — VERIFIED LIVE against openrouter.ai/api/v1/models in May
-// 2026 (HEAD-checked, 200 OK). Picks ranked by storytelling fit + context
-// window. Free-tier rate limits: 20 RPM + 50/day on a fresh account, OR
-// 1000/day after a one-time $10 credit top-up (no monthly fee).
+// CLOUD MODEL IDs — re-verified 2026-10-07 against openrouter.ai/api/v1/models
+// and with a live game-shaped JSON prompt (narration + diff + 5 typed choices):
+//   nemotron-3-super-120b:free   ~10 s, valid JSON, 5/5 choice types
+//   openrouter/free (router)     ~8 s,  valid JSON, 5/5 choice types
+//   nemotron-3-ultra-550b:free   ~25 s, valid JSON, richest narration
+//   gemma-4-31b / 26b :free      429 "rate-limited upstream" at test time
+//   inkling(-small):free         403 "only available on agentic harnesses"
+//   nemotron-3.5-lightning, dots-3-note-preview: broke JSON (reasoning prose)
+// The old Qwen3 80B / Llama 3.3 70B / Hermes 405B / Gemma 3 :free IDs no
+// longer exist on OpenRouter.
 //
-// Why these picks:
-//   • Gemma 4 31B (262k ctx) — Google's newest open-weight, best narrative
-//     quality + biggest context for long campaigns. Default.
-//   • Nemotron 3 Super 120B (262k) — best raw intelligence, slower.
-//   • Qwen3 80B (262k) — great instruction-following + JSON compliance.
-//   • Llama 3.3 70B (65k) — proven workhorse, fastest of the big ones.
-//   • Hermes 3 Llama 405B (131k) — most parameters, fine-tuned for
-//     storytelling/RP, less polish than newer models.
-//   • Gemma 3 27B (131k) — Gemma family backup if 4 31B has issues.
-//   • Gemma 3n E4B (8k) — smallest, fastest fallback for short sessions.
+// OpenRouter free-model limits (docs, 2026-10): 20 requests/minute, and
+// 50 requests/day, raised to 1000/day permanently once an account has bought
+// at least $10 of credits (free models never spend them). One game turn is
+// ~2 requests. `fallbackModels` goes out as OpenRouter's `models` array, so a
+// rate-limited or down model fails over server-side within one request.
+const OPENROUTER_FREE_LIMITS = '20/min · 50/day (1000/day after a one-time $10 credit purchase)';
 export const CLOUD_PROVIDERS = {
-    openrouter: {
-        name: 'OpenRouter — Gemma 4 31B (Free) ★ recommended',
-        baseUrl: 'https://openrouter.ai/api/v1',
-        model: 'google/gemma-4-31b-it:free',
-        signupUrl: 'https://openrouter.ai',
-        contextWindow: 262144,
-        rateLimit: '20 RPM, 50/day (1000/day after $10 credit)',
-        notes: '262k context, current Gemma flagship. Best balance of quality + speed for this game.'
-    },
-    openrouter_nemotron: {
-        name: 'OpenRouter — Nemotron 3 Super 120B (Free, smartest)',
+    openrouter_free: {
+        name: 'OpenRouter — Free models (auto-fallback) ★ recommended',
         baseUrl: 'https://openrouter.ai/api/v1',
         model: 'nvidia/nemotron-3-super-120b-a12b:free',
-        signupUrl: 'https://openrouter.ai',
+        fallbackModels: ['openrouter/free', 'nvidia/nemotron-3-ultra-550b-a55b:free'],
+        signupUrl: 'https://openrouter.ai/settings/keys',
         contextWindow: 262144,
-        rateLimit: '20 RPM, 50/day (1000/day after $10 credit)',
-        notes: 'Highest-quality narrative output. Slower per turn; pick this for set-piece moments.'
+        rateLimit: OPENROUTER_FREE_LIMITS,
+        notes: "Nemotron 3 Super 120B, failing over to OpenRouter's free router, then Nemotron 3 Ultra."
     },
-    openrouter_qwen: {
-        name: 'OpenRouter — Qwen3 80B (Free, JSON-strong)',
+    openrouter_ultra: {
+        name: 'OpenRouter — Nemotron 3 Ultra 550B (Free, richest, slower)',
         baseUrl: 'https://openrouter.ai/api/v1',
-        model: 'qwen/qwen3-next-80b-a3b-instruct:free',
-        signupUrl: 'https://openrouter.ai',
-        contextWindow: 262144,
-        rateLimit: '20 RPM, 50/day (1000/day after $10 credit)',
-        notes: 'Excellent at structured output. Pick this if you see schema-violation errors with Gemma.'
-    },
-    openrouter_llama70b: {
-        name: 'OpenRouter — Llama 3.3 70B (Free, fastest of the big)',
-        baseUrl: 'https://openrouter.ai/api/v1',
-        model: 'meta-llama/llama-3.3-70b-instruct:free',
-        signupUrl: 'https://openrouter.ai',
-        contextWindow: 65536,
-        rateLimit: '20 RPM, 50/day (1000/day after $10 credit)',
-        notes: 'Reliable workhorse. 65k context — fine for normal play, may run short on 100+ turn arcs.'
-    },
-    openrouter_hermes405b: {
-        name: 'OpenRouter — Hermes 3 Llama 405B (Free, most params)',
-        baseUrl: 'https://openrouter.ai/api/v1',
-        model: 'nousresearch/hermes-3-llama-3.1-405b:free',
-        signupUrl: 'https://openrouter.ai',
-        contextWindow: 131072,
-        rateLimit: '20 RPM, 50/day (1000/day after $10 credit)',
-        notes: 'Largest free model. Fine-tuned for storytelling/RP. Slower; pick for narrative depth.'
-    },
-    openrouter_gemma3_27b: {
-        name: 'OpenRouter — Gemma 3 27B (Free, Gemma family backup)',
-        baseUrl: 'https://openrouter.ai/api/v1',
-        model: 'google/gemma-3-27b-it:free',
-        signupUrl: 'https://openrouter.ai',
-        contextWindow: 131072,
-        rateLimit: '20 RPM, 50/day (1000/day after $10 credit)',
-        notes: 'Pre-Gemma-4 flagship. Use if Gemma 4 31B has reliability issues.'
-    },
-    openrouter_gemma3n: {
-        name: 'OpenRouter — Gemma 3n E4B (Free, smallest)',
-        baseUrl: 'https://openrouter.ai/api/v1',
-        model: 'google/gemma-3n-e4b-it:free',
-        signupUrl: 'https://openrouter.ai',
-        contextWindow: 8192,
-        rateLimit: '20 RPM, 50/day (1000/day after $10 credit)',
-        notes: 'Smallest, fastest. 8k context — short sessions only. Use only as last resort.'
-    },
-    groq: {
-        name: 'Groq — Llama 3.3 70B (Free, ~315 tok/s)',
-        baseUrl: 'https://api.groq.com/openai/v1',
-        model: 'llama-3.3-70b-versatile',
-        signupUrl: 'https://console.groq.com',
-        contextWindow: 128000,
-        rateLimit: '30 RPM, 100K tokens/day',
-        notes: 'Extremely fast inference. Tighter daily-token cap; great for active play, not all-day binges.'
-    },
-    googleai: {
-        name: 'Google AI Studio — Gemini 2.5 Flash (Free)',
-        baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/',
-        model: 'gemini-2.5-flash',
-        signupUrl: 'https://aistudio.google.com',
+        model: 'nvidia/nemotron-3-ultra-550b-a55b:free',
+        fallbackModels: ['nvidia/nemotron-3-super-120b-a12b:free', 'openrouter/free'],
+        signupUrl: 'https://openrouter.ai/settings/keys',
         contextWindow: 1000000,
-        rateLimit: '15 RPM, 1500 requests/day',
-        notes: 'Most generous daily quota (1500 req/day) and 1M context. Best for marathon sessions.'
+        rateLimit: OPENROUTER_FREE_LIMITS,
+        notes: '~25 s per call. Best descriptions; falls back to the faster models.'
+    },
+    openrouter_gemma4: {
+        name: 'OpenRouter — Gemma 4 31B (Free, often rate-limited)',
+        baseUrl: 'https://openrouter.ai/api/v1',
+        model: 'google/gemma-4-31b-it:free',
+        fallbackModels: ['nvidia/nemotron-3-super-120b-a12b:free', 'openrouter/free'],
+        signupUrl: 'https://openrouter.ai/settings/keys',
+        contextWindow: 262144,
+        rateLimit: OPENROUTER_FREE_LIMITS,
+        notes: 'Upstream free provider is frequently busy; falls back to Nemotron.'
+    },
+    // Not OpenRouter: a separate free key from aistudio.google.com. Tested
+    // 2026-10-07: ~1.4 s per call, valid JSON, 5/5 choice types. Google lists
+    // free-tier daily caps per project in AI Studio rather than in the docs.
+    googleai: {
+        name: 'Google AI Studio — Gemini Flash-Lite (Free, fastest)',
+        baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+        model: 'gemini-flash-lite-latest',
+        signupUrl: 'https://aistudio.google.com/apikey',
+        contextWindow: 1000000,
+        rateLimit: 'Free tier — daily cap shown in AI Studio',
+        notes: 'Separate Google key. Fastest option tested.'
     }
 };
 
@@ -357,13 +323,13 @@ export const CLOUD_PROVIDERS = {
  * Default cloud provider when LLM_BACKEND === 'cloud' but no specific
  * provider has been selected. Users override via localStorage('adv.cloudProvider').
  */
-export const DEFAULT_CLOUD_PROVIDER = 'openrouter';
+export const DEFAULT_CLOUD_PROVIDER = 'openrouter_free';
 
 /**
  * Resolve the active cloud provider config from localStorage selection,
  * falling back to DEFAULT_CLOUD_PROVIDER.
  */
-function resolveCloudProvider() {
+export function resolveCloudProvider() {
     try {
         if (typeof window !== 'undefined') {
             const key = window.localStorage.getItem('adv.cloudProvider');
@@ -380,10 +346,19 @@ function resolveCloudProvider() {
 export function getCloudApiKey() {
     try {
         if (typeof window !== 'undefined') {
-            return window.localStorage.getItem('adv.apiKey') || null;
+            const ls = window.localStorage;
+            const scoped = ls.getItem(cloudKeyStorageName(resolveCloudProvider()));
+            if (scoped) return scoped;
+            // Pre-2026-10 builds kept one unscoped key; it was an OpenRouter key.
+            if (resolveCloudProvider().baseUrl.includes('openrouter')) return ls.getItem('adv.apiKey') || null;
         }
     } catch (_) { /* fall through */ }
     return null;
+}
+
+/** Keys are stored per provider host so an OpenRouter and a Google key can coexist. */
+export function cloudKeyStorageName(provider) {
+    return 'adv.apiKey.' + new URL(provider.baseUrl).hostname;
 }
 
 /**
@@ -396,6 +371,7 @@ export function getActiveBackendConfig() {
         return {
             url: provider.baseUrl,
             modelName: provider.model,
+            fallbackModels: provider.fallbackModels || [],
             contextWindow: provider.contextWindow,
             defaultParams: {
                 max_tokens: 2048,
@@ -409,8 +385,11 @@ export function getActiveBackendConfig() {
             providerName: provider.name,
             // BUG-14 fix: cloud backends use OpenAI's nested json_schema shape.
             // Most enforce the schema; Groq/free OpenRouter sometimes ignore it.
-            supportsJsonSchema: true,
-            jsonSchemaShape: 'openai-nested',
+            // json_object, not strict json_schema: the free router can land on
+            // models that reject json_schema with a 400. Shape is enforced by
+            // the prompt + validateChoicesPayload after parsing.
+            supportsJsonSchema: false,
+            jsonSchemaShape: null,
             supportsJsonObject: true,
             supportsTopK: false,
             supportsCachePrompt: false

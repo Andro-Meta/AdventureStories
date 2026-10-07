@@ -2,9 +2,9 @@
 // God Mode / Creative Mode System
 // Unlocks unlimited creative freedom after main questline completion
 
-import { gameState } from './state.js?cb=014';
-import { generateId } from './utils.js?cb=014';
-import * as UI from './ui.js?cb=014';
+import { gameState } from './state.js';
+import { generateId } from './utils.js';
+import * as UI from './ui.js';
 // Phase 4: god mode now actually calls the AI instead of returning canned
 // flavor text. Dynamic-import in the methods to avoid a top-level cycle
 // (aiHandler imports state which imports godMode lazily during init).
@@ -391,7 +391,7 @@ export class GodModeManager {
 
             // Lazy import to dodge any module-load ordering issues with
             // aiHandler ↔ state ↔ godMode.
-            const aiHandler = await import('./aiHandler.js?cb=014');
+            const aiHandler = await import('./aiHandler.js');
             const result = await aiHandler.makeAICallForSystemAction(prompt, false);
 
             // makeAICallForSystemAction returns { narrative, choices } and

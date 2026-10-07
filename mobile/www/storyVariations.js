@@ -4,7 +4,7 @@
  * Ensures no two playthroughs are the same, even with the same theme
  */
 
-import { gameState } from './state.js?cb=014';
+import { gameState } from './state.js';
 
 /**
  * Story variation patterns for each theme
@@ -525,7 +525,7 @@ DO NOT include any choices or actions in your response. The Choice AI Agent will
 
     // Try to enhance with age-appropriate reading specifications
     try {
-        const { buildAgeAppropriatePrompt } = await import('./ageAppropriateReading.js?cb=014');
+        const { buildAgeAppropriatePrompt } = await import('./ageAppropriateReading.js');
         return buildAgeAppropriatePrompt(playerAge, basePrompt);
     } catch (error) {
         console.log(`Failed to load age-appropriate reading enhancements: ${error.message}`);

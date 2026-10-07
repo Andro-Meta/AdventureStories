@@ -2,13 +2,13 @@
 // Enhanced Choice Generation AI Agent for Contextual Fallback Choices
 // Replaces generic boring fallbacks with intelligent, context-aware alternatives
 
-import { gameState } from './state.js?cb=014';
-import * as Config from './config.js?cb=014';
-import * as ThemeIntelligence from './themeIntelligence.js?cb=014';
-import * as AdaptiveAbilities from './adaptiveAbilities.js?cb=014';
-import { generateId, getRandomInt, getRandomElement } from './utils.js?cb=014';
-import { gemmaHT } from './gemmaHyperthreading.js?cb=014';
-import { gemmaContextOptimizer } from './gemmaContextOptimizer.js?cb=014';
+import { gameState } from './state.js';
+import * as Config from './config.js';
+import * as ThemeIntelligence from './themeIntelligence.js';
+import * as AdaptiveAbilities from './adaptiveAbilities.js';
+import { generateId, getRandomInt, getRandomElement } from './utils.js';
+import { gemmaHT } from './gemmaHyperthreading.js';
+import { gemmaContextOptimizer } from './gemmaContextOptimizer.js';
 
 /**
  * Dynamic Choice Generator - Creates contextual fallback choices when AI fails
@@ -305,7 +305,7 @@ Your choices:`;
 
         try {
             // Show loading indicator for AI processing
-            const UI = await import('./ui.js?cb=014');
+            const UI = await import('./ui.js');
             UI.showLoading(true, 'Generating dynamic choices...');
             
             const response = await gemmaHT.processWithHyperthreading(prompt, 'choices');
@@ -343,7 +343,7 @@ Your choices:`;
         } finally {
             // Hide loading indicator
             try {
-                const UI = await import('./ui.js?cb=014');
+                const UI = await import('./ui.js');
                 UI.showLoading(false);
             } catch (e) {
                 // Ignore UI import errors

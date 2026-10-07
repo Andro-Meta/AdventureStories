@@ -2,32 +2,32 @@
 // Handles AI communication, prompt generation, response processing, and command execution.
 
 // --- Static Imports ---
-import { gameState } from './state.js?cb=014';
-import * as Config from './config.js?cb=014';
-import * as UI from './ui.js?cb=014';
-import * as API from './api_new.js?cb=014';
-import { getChoiceSchema, validateChoicesPayload, arcMemorySchema, validateArcMemoryPayload, narrativeTurnSchema, validateNarrativeTurnPayload, EXPLORATION_CHOICE_TYPES, COMBAT_CHOICE_TYPES } from './schemas.js?cb=014';
-import { applyDiff, describeAllowedPaths } from './engine.js?cb=014';
-import { renderMemoryBlock } from './memoryRetriever.js?cb=014';
-import { buildQuestStageHint } from './questDefinitions.js?cb=014';
-import { generateNarrativeGuidelines } from './ageAppropriateReading.js?cb=014';
-import * as Combat from './combat.js?cb=014';
-import * as Items from './items.js?cb=014';
-import { generateId, clamp } from './utils.js?cb=014';
+import { gameState } from './state.js';
+import * as Config from './config.js';
+import * as UI from './ui.js';
+import * as API from './api_new.js';
+import { getChoiceSchema, validateChoicesPayload, arcMemorySchema, validateArcMemoryPayload, narrativeTurnSchema, validateNarrativeTurnPayload, EXPLORATION_CHOICE_TYPES, COMBAT_CHOICE_TYPES } from './schemas.js';
+import { applyDiff, describeAllowedPaths } from './engine.js';
+import { renderMemoryBlock } from './memoryRetriever.js';
+import { buildQuestStageHint } from './questDefinitions.js';
+import { generateNarrativeGuidelines } from './ageAppropriateReading.js';
+import * as Combat from './combat.js';
+import * as Items from './items.js';
+import { generateId, clamp } from './utils.js';
 // Import turn manager functions statically
-import { advanceTurn } from './turnManager.js?cb=014';
-import { getCurrentPlayer, canCurrentPlayerAct } from './state.js?cb=014';
+import { advanceTurn } from './turnManager.js';
+import { getCurrentPlayer, canCurrentPlayerAct } from './state.js';
 // Import location system
-import { getCurrentLocationContext } from './locations.js?cb=014';
+import { getCurrentLocationContext } from './locations.js';
 // Import resolution functions statically
-import { handleGoalCompletionRewards } from './resolution.js?cb=014';
-import { determineContext } from './state.js?cb=014';
+import { handleGoalCompletionRewards } from './resolution.js';
+import { determineContext } from './state.js';
 // Import context management (using local AI orchestration)
-import { contextManager } from './contextManager.js?cb=014';
+import { contextManager } from './contextManager.js';
 // Import reputation system
-import { getContextualizedFactions, getTrustDifficultyModifiers } from './reputationContextualizer.js?cb=014';
-import { dynamicChoiceGenerator } from './dynamicChoices.js?cb=014';
-import { localAIOrchestrator } from './localAIOrchestrator.js?cb=014';
+import { getContextualizedFactions, getTrustDifficultyModifiers } from './reputationContextualizer.js';
+import { dynamicChoiceGenerator } from './dynamicChoices.js';
+import { localAIOrchestrator } from './localAIOrchestrator.js';
 // Note: Intelligent compression recording is handled in actionHandler.js
 
 // FALLBACK FUNCTION REMOVED - AI must work correctly or fail clearly
@@ -1895,7 +1895,7 @@ export async function makeAICallForSystemAction(prompt, preventTurnAdvance = fal
         // game-init in initializationManager.js.
         let hookBlock = '';
         try {
-            const { describeHookForPrompt } = await import('./storyHooks.js?cb=014');
+            const { describeHookForPrompt } = await import('./storyHooks.js');
             hookBlock = describeHookForPrompt(gameState.storyHook);
         } catch (_) { /* graceful: if storyHooks isn't loaded yet, fall back to generic intro */ }
 
@@ -1977,9 +1977,14 @@ Keep total length under ~400 words. Use second-person voice ("You ..."). Do NOT 
         // Falling back to "The story continues..." here would overwrite real prose
         // that was already rendered to the DOM by processAIResponse.
         const defaultNarrative = gameState.currentNarrative || "The story continues...";
-        const defaultChoices = validateAndFixChoices([], gameState.inCombat);
+        // Say what went wrong (quota, bad key, network) instead of quietly
+        // swapping in stock choices, and put the previous choices back so the
+        // player can simply try again. The turn does not advance.
+        UI.showPopup(`The storyteller couldn't answer: ${error.message}`, 'error');
+        const previous = Array.isArray(gameState.currentChoices) && gameState.currentChoices.length
+            ? gameState.currentChoices : null;
+        const defaultChoices = previous || validateAndFixChoices([], gameState.inCombat);
 
-        UI.updateNarrative(defaultNarrative);
         UI.renderChoices(defaultChoices);
         gameState.currentChoices = defaultChoices;
 

@@ -8,15 +8,15 @@
 // Doing the rip-and-replace was deferred to keep desktop save/load stable.
 
 // --- Static Imports ---
-import { gameState } from './state.js?cb=014'; // Import gameState
-import * as Config from './config.js?cb=014';
-import * as UI from './ui.js?cb=014';
+import { gameState } from './state.js'; // Import gameState
+import * as Config from './config.js';
+import * as UI from './ui.js';
 // Import functions from other new modules statically
-import { pruneMessageHistory, getThemeName } from './aiHandler.js?cb=014';
+import { pruneMessageHistory, getThemeName } from './aiHandler.js';
 // CORRECTED IMPORT: resetGameState is in state.js
-import { resetGameState } from './state.js?cb=014';
+import { resetGameState } from './state.js';
 // Need item generation for potential shop refresh on load
-import { generateShopItems } from './items.js?cb=014';
+import { generateShopItems } from './items.js';
 
 
 /**
@@ -135,7 +135,14 @@ export function saveGameToLocalStorage(slotName) {
             }
         } catch (e) { log(`SaveLoad: GodModeManager toJSON failed (non-fatal): ${e?.message}`); }
 
-        const stateToSave = JSON.parse(JSON.stringify(gameState));
+        // JSON.stringify turns a Map into {}, so swap Maps for plain objects
+        // during the clone (the old post-clone `instanceof Map` checks never
+        // matched, and every save lost these fields).
+        const stateToSave = JSON.parse(JSON.stringify(gameState, (k, v) => v instanceof Map ? Object.fromEntries(v) : v));
+        // Runtime-only fields: a saved in-flight promise becomes {} (truthy)
+        // and blocked every later arc-memory summary after loading.
+        delete stateToSave._arcMemoryRefreshInFlight;
+        stateToSave.combatRoundInProgress = false;
         log("SaveLoad: Pruning message history for save...");
         stateToSave.messageHistory = pruneMessageHistory(stateToSave.messageHistory);
         stateToSave.isLoading = false;
@@ -313,6 +320,14 @@ export async function loadGame(slotName) {
 
         Object.assign(gameState, loadedGameState);
         log("SaveLoad: Loaded game state applied.");
+        // Saves made while resetGameState built an incomplete narrativeContext
+        // lack these arrays, and every turn after loading would crash on them.
+        gameState.narrativeContext = gameState.narrativeContext || {};
+        for (const k of ['significantEvents', 'discoveredSecrets', 'relationshipChanges', 'environmentalChanges']) {
+            if (!Array.isArray(gameState.narrativeContext[k])) gameState.narrativeContext[k] = [];
+        }
+        gameState.isLoading = false;
+        gameState._arcMemoryRefreshInFlight = null;
         
         // Phase 1.1: Validate and initialize spellcasting data for loaded
         // players. Previously this used `forEach(async ...)` which dropped
@@ -324,7 +339,7 @@ export async function loadGame(slotName) {
             const playersNeedingInit = gameState.players.filter(p => p && !p.spellcasting);
             if (playersNeedingInit.length > 0) {
                 try {
-                    const Spells = await import('./spells.js?cb=014');
+                    const Spells = await import('./spells.js');
                     if (Spells && Spells.initializePlayerSpellcasting) {
                         await Promise.all(playersNeedingInit.map(player =>
                             Promise.resolve(Spells.initializePlayerSpellcasting(player))
@@ -385,17 +400,17 @@ export async function loadGame(slotName) {
         // god-mode unlock checks throw, quest milestone updates no-op.
         // Phase 0 audit P1 #15.
         try {
-            const { godModeManager } = await import('./godMode.js?cb=014');
+            const { godModeManager } = await import('./godMode.js');
             gameState.godModeManager = godModeManager;
             // BUG-26 fix: restore the Map-backed manager state from the
             // snapshot saved in saveGameToLocalStorage. Without this every
             // load resets custom-choice-history, achievement counters, and
             // creative-stats to zero.
-            if (loaded._godModeSnapshot) {
+            if (loadedGameState._godModeSnapshot) {
                 if (typeof godModeManager.restoreFromJSON === 'function') {
-                    godModeManager.restoreFromJSON(loaded._godModeSnapshot);
+                    godModeManager.restoreFromJSON(loadedGameState._godModeSnapshot);
                 }
-                delete loaded._godModeSnapshot;
+                delete gameState._godModeSnapshot;
             }
             // BUG-08 fix: re-attached singleton has fresh isUnlocked=false,
             // isActive=false. If the saved game was post-victory, restore
@@ -410,7 +425,7 @@ export async function loadGame(slotName) {
             }
         } catch (e) { log(`SaveLoad: re-attach godModeManager failed: ${e.message}`); }
         try {
-            const { questProgressManager } = await import('./questProgress.js?cb=014');
+            const { questProgressManager } = await import('./questProgress.js');
             // Preserve any saved quest-progress *data* that lives on the
             // manager singleton's properties. The manager itself is the
             // class-shaped wrapper; data is read from gameState.questProgress
@@ -433,7 +448,7 @@ export async function loadGame(slotName) {
         // character's statusEffects and merge in catalog defaults by name
         // so combat ticks behave the same after load as before save.
         try {
-            const { STATUS_EFFECTS } = await import('./config.js?cb=014');
+            const { STATUS_EFFECTS } = await import('./config.js');
             const lookupCat = (name) => {
                 if (!name || typeof name !== 'string') return null;
                 const upper = name.toUpperCase();
@@ -490,9 +505,12 @@ export async function loadGame(slotName) {
         UI.showScreen('gameScreen');
         UI.updateGameUI(); // Renders header, players, enemies, actions
 
-        const lastAssistantMessage = gameState.messageHistory?.slice().reverse().find(m => m.role === 'assistant');
-        if (lastAssistantMessage) {
-            UI.updateStoryText(lastAssistantMessage.content);
+        // History entries are {content: prompt, response: narration}; there is
+        // no `role` field, so the old role==='assistant' search never matched.
+        const lastNarration = gameState.currentNarrative
+            || gameState.messageHistory?.slice().reverse().find(m => m.response)?.response;
+        if (lastNarration) {
+            UI.updateStoryText(lastNarration);
             log("SaveLoad: Restored last story text.");
         } else {
              log("SaveLoad Warning: No assistant message found in history to restore story text.");
@@ -508,7 +526,7 @@ export async function loadGame(slotName) {
         } else {
             log("SaveLoad: No currentChoices in save (legacy format or empty); regenerating from narrative.");
             try {
-                const { makeAICallForSystemAction } = await import('./aiHandler.js?cb=014');
+                const { makeAICallForSystemAction } = await import('./aiHandler.js');
                 await makeAICallForSystemAction('Resume the adventure: regenerate the next set of player choices based on the current narrative and game state. Do not advance the turn.', true);
             } catch (regenErr) {
                 log(`SaveLoad: choice regeneration failed (${regenErr.message}); rendering empty list.`);

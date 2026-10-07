@@ -2,12 +2,12 @@
 // Revolutionary World Evolution AI Agent for Persistent Consequences
 // Tracks and evolves the world based on player actions across sessions
 
-import { gameState } from './state.js?cb=014';
-import * as Config from './config.js?cb=014';
-import * as ThemeIntelligence from './themeIntelligence.js?cb=014';
-import { generateId, getRandomInt, getRandomElement } from './utils.js?cb=014';
-import { gemmaHT } from './gemmaHyperthreading.js?cb=014';
-import { gemmaContextOptimizer } from './gemmaContextOptimizer.js?cb=014';
+import { gameState } from './state.js';
+import * as Config from './config.js';
+import * as ThemeIntelligence from './themeIntelligence.js';
+import { generateId, getRandomInt, getRandomElement } from './utils.js';
+import { gemmaHT } from './gemmaHyperthreading.js';
+import { gemmaContextOptimizer } from './gemmaContextOptimizer.js';
 
 /**
  * World Evolution Agent - Manages persistent world changes and consequences
@@ -321,7 +321,7 @@ Focus on realistic, theme-appropriate consequences that create interesting futur
 
         try {
             // Show loading indicator for AI processing
-            const UI = await import('./ui.js?cb=014');
+            const UI = await import('./ui.js');
             UI.showLoading(true, 'Analyzing world consequences...');
             
             const response = await gemmaHT.processWithHyperthreading(prompt, 'world_evolution');
@@ -337,7 +337,7 @@ Focus on realistic, theme-appropriate consequences that create interesting futur
         } finally {
             // Hide loading indicator
             try {
-                const UI = await import('./ui.js?cb=014');
+                const UI = await import('./ui.js');
                 UI.showLoading(false);
             } catch (e) {
                 // Ignore UI import errors

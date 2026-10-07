@@ -2,13 +2,13 @@
 // Revolutionary Dynamic Enemy Generation System with Theme Intelligence
 // Replaces static enemy databases with intelligent, context-aware generation
 
-import { gameState, buildGameContextBlock } from './state.js?cb=014';
-import * as Config from './config.js?cb=014';
-import * as ThemeIntelligence from './themeIntelligence.js?cb=014';
-import * as AdaptiveAbilities from './adaptiveAbilities.js?cb=014';
-import { generateId, getRandomInt, getRandomElement } from './utils.js?cb=014';
-import { gemmaHT } from './gemmaHyperthreading.js?cb=014';
-import { gemmaContextOptimizer } from './gemmaContextOptimizer.js?cb=014';
+import { gameState, buildGameContextBlock } from './state.js';
+import * as Config from './config.js';
+import * as ThemeIntelligence from './themeIntelligence.js';
+import * as AdaptiveAbilities from './adaptiveAbilities.js';
+import { generateId, getRandomInt, getRandomElement } from './utils.js';
+import { gemmaHT } from './gemmaHyperthreading.js';
+import { gemmaContextOptimizer } from './gemmaContextOptimizer.js';
 
 /**
  * Dynamic Enemy Registry - Generates contextually perfect enemies for infinite themes
@@ -272,7 +272,7 @@ export class DynamicEnemyRegistry {
      */
     async callEnemyAgent(prompt, generationType) {
         try {
-            const API = await import('./api_new.js?cb=014');
+            const API = await import('./api_new.js');
             const messages = [
                 { role: 'system', content: 'You are a game data generator. Return only valid JSON matching the requested schema. No prose.' },
                 { role: 'user', content: prompt }

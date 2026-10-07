@@ -5,8 +5,8 @@
 // agnostic and never references a specific model name.
 
 // --- Module Imports ---
-import { gameState } from './state.js?cb=014';
-import { getLocalAIResponse, getLocalAIJSONResponse } from './localAI.js?cb=014';
+import { gameState } from './state.js';
+import { getLocalAIResponse, getLocalAIJSONResponse } from './localAI.js';
 
 /**
  * Main API handler - uses local AI server exclusively
@@ -63,16 +63,17 @@ export async function testLocalAI() {
     const log = window.displayVisualError || console.log;
     log('Testing local AI server connectivity...');
 
-    const Config = await import('./config.js?cb=014');
+    const Config = await import('./config.js');
     const backend = Config.getActiveBackendConfig();
 
     // litert (on-device, Capacitor) — defer to the bridge's health check.
     if (backend.isLiteRT) {
         try {
-            const Bridge = await import('./liteRTBridge.js?cb=014');
+            const Bridge = await import('./liteRTBridge.js');
             const h = await Bridge.checkHealth();
             const ok = h.status === 'healthy' || h.status === 'pending';
             log(`LiteRT bridge: ${h.status}${h.reason ? ' (' + h.reason + ')' : ''}`);
+            if (!ok) throw new Error(h.reason || 'On-device AI unavailable. Open AI Settings and pick Cloud AI.');
             return ok;
         } catch (e) {
             log(`LiteRT bridge test failed: ${e.message}`);
@@ -83,7 +84,7 @@ export async function testLocalAI() {
     // cloud — no health endpoint; presence of API key is the contract.
     if (backend.isCloud) {
         const key = Config.getCloudApiKey();
-        if (!key) throw new Error('Cloud backend requires an API key — paste one in the Local AI Status panel.');
+        if (!key) throw new Error('Cloud backend requires an API key — open "AI Settings" on the main menu and paste your free key.');
         log(`Cloud backend (${backend.providerName || backend.modelName}) configured with API key — first request will verify reachability.`);
         return true;
     }

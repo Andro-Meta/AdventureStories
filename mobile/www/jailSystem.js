@@ -29,7 +29,7 @@
 // jailEscape.activated is true and have used up all attempts. This makes
 // the jail the consequence of dying, not just an inconvenience.
 
-import { gameState } from './state.js?cb=014';
+import { gameState } from './state.js';
 
 /**
  * Theme-specific jail flavor. Each entry provides a name + description that

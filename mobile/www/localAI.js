@@ -3,8 +3,8 @@
 // Speaks the OpenAI-compatible /v1/chat/completions shape; the active backend
 // is selected by config.LLM_BACKEND ('llama-cpp' or 'minicpm-python').
 
-import { gameState } from './state.js?cb=014';
-import * as Config from './config.js?cb=014';
+import { gameState } from './state.js';
+import * as Config from './config.js';
 
 // Use Config.LOCAL_AI_CONFIG from config.js to avoid duplication
 
@@ -23,6 +23,7 @@ export class LocalAIClient {
         this.baseUrl = backend.url;
         this.backendDefaults = backend.defaultParams;
         this.modelName = backend.modelName;
+        this.fallbackModels = backend.fallbackModels || [];
         this.backendId = backend.id || 'unknown';
         this.isCloud = backend.isCloud === true;
         this.isLiteRT = backend.isLiteRT === true;
@@ -56,10 +57,11 @@ export class LocalAIClient {
         this.apiKey = key || null;
         try {
             if (typeof window !== 'undefined') {
+                const name = Config.cloudKeyStorageName(Config.resolveCloudProvider());
                 if (key) {
-                    window.localStorage.setItem('adv.apiKey', key);
+                    window.localStorage.setItem(name, key);
                 } else {
-                    window.localStorage.removeItem('adv.apiKey');
+                    window.localStorage.removeItem(name);
                 }
             }
         } catch (_) { /* localStorage unavailable — runtime-only key */ }
@@ -78,13 +80,19 @@ export class LocalAIClient {
         }
         this.baseUrl = provider.baseUrl;
         this.modelName = provider.model;
+        this.fallbackModels = provider.fallbackModels || [];
         this.isCloud = true;
+        this.supportsJsonSchema = false;
+        this.jsonSchemaShape = null;
+        this.supportsTopK = false;
+        this.supportsCachePrompt = false;
         try {
             if (typeof window !== 'undefined') {
                 window.localStorage.setItem('adv.cloudProvider', providerKey);
                 window.localStorage.setItem('adv.llmBackend', 'cloud');
             }
         } catch (_) { /* persistence best-effort */ }
+        this.apiKey = Config.getCloudApiKey(); // keys are per provider host
         this.checkHealth();
     }
 
@@ -218,7 +226,7 @@ export class LocalAIClient {
         // triggers initialize() and any failure surfaces there.
         if (this.baseUrl === 'litert://local') {
             try {
-                const Bridge = await import('./liteRTBridge.js?cb=014');
+                const Bridge = await import('./liteRTBridge.js');
                 const h = await Bridge.checkHealth();
                 this.isAvailable = h.status !== 'unavailable';
                 this.isHealthy   = h.status === 'healthy' || h.status === 'pending';
@@ -321,6 +329,11 @@ export class LocalAIClient {
         if (this.modelName) {
             requestData.model = this.modelName;
         }
+        // OpenRouter server-side failover: tries each model in order on
+        // rate-limit / downtime / errors, all inside one request.
+        if (this.isCloud && this.fallbackModels.length && this.baseUrl.includes('openrouter')) {
+            requestData.models = [this.modelName, ...this.fallbackModels];
+        }
 
         // BUG-13 fix: previously top_k + cache_prompt were sent to *every*
         // non-cloud backend. Ollama's OpenAI endpoint ignores top_k (harmless)
@@ -391,6 +404,10 @@ export class LocalAIClient {
             }
         }
 
+        if (this.isCloud && !this.apiKey) {
+            throw new Error('No AI key saved yet. Open "AI Settings" on the main menu and paste your free key.');
+        }
+
         // If server is not healthy, queue the request
         if (!this.isHealthy) {
             return new Promise((resolve, reject) => {
@@ -414,7 +431,7 @@ export class LocalAIClient {
         // errors, not network ones.
         if (this.baseUrl === 'litert://local') {
             try {
-                const Bridge = await import('./liteRTBridge.js?cb=014');
+                const Bridge = await import('./liteRTBridge.js');
                 const result = await Bridge.chatCompletion(requestData);
                 if (result?.choices?.[0]?.message?.content != null) {
                     return result.choices[0].message.content;
@@ -424,14 +441,17 @@ export class LocalAIClient {
                 const msg = e?.message || String(e);
                 console.error(`LocalAI[litert]: ${msg}`);
                 // Surface a user-friendly error instead of a raw stack trace
-                if (msg.includes('ModelDownload plugin not found') || msg.includes('failed to load')) {
-                    throw new Error('On-device AI plugin not available. Go to Settings and switch to Cloud AI.');
+                if (msg.includes('CapgoLLM plugin not registered') || msg.includes('plugin not registered')) {
+                    throw new Error('On-device AI plugin not loaded. Go to Settings and switch to Cloud AI.');
                 }
                 if (msg.includes('AUTH_REQUIRED') || msg.includes('HuggingFace')) {
-                    throw new Error('Model download requires a HuggingFace token. Go to Settings → On-Device AI for instructions.');
+                    throw new Error('This model is gated by HuggingFace. Open Settings → On-Device AI and switch to a non-gated model (Qwen2.5 1.5B).');
                 }
-                if (msg.includes('model not yet loaded') || msg.includes('not yet loaded')) {
-                    throw new Error('AI model is still downloading. Check the progress in Settings → On-Device AI.');
+                if (msg.includes('model not yet') || msg.includes('not yet loaded') || msg.includes('Model not ready')) {
+                    throw new Error('AI model is still loading. First launch can take 30–60 seconds — try again in a moment.');
+                }
+                if (msg.includes('failed to load') || msg.includes('redownload')) {
+                    throw new Error(msg);
                 }
                 throw e;
             }
@@ -483,6 +503,13 @@ export class LocalAIClient {
                 const err = new Error(`HTTP ${response.status}: ${response.statusText}${body ? ' — ' + body : ''}`);
                 err.httpStatus = response.status;
                 err.retryable = response.status >= 500 || response.status === 429; // 5xx + rate-limit
+                if (response.status === 429 && /per[- ]day/i.test(body)) {
+                    // Daily free quota, not a burst limit: retrying can't help.
+                    err.retryable = false;
+                    err.message = "Today's free AI requests are used up (OpenRouter allows 50/day, or 1000/day once an account has bought $10 of credits). Try again tomorrow or switch provider in AI Settings.";
+                } else if (response.status === 401) {
+                    err.message = 'The AI key was rejected. Open AI Settings and paste a fresh key.';
+                }
                 throw err;
             }
             

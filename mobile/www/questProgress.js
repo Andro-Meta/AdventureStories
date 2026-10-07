@@ -1,8 +1,8 @@
 // questProgress.js
 // Manages quest progression, milestones, objectives, and player feedback
 
-import { gameState } from './state.js?cb=014';
-import * as UI from './ui.js?cb=014';
+import { gameState } from './state.js';
+import * as UI from './ui.js';
 
 /**
  * Quest Progress Manager - Handles structured progression tracking

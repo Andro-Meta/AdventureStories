@@ -5,7 +5,7 @@
   "bundledWebRuntime": false,
   "android": {
     "minWebViewVersion": 60,
-    "webContentsDebuggingEnabled": false,
+    "webContentsDebuggingEnabled": true,
     "allowMixedContent": false,
     "captureInput": true,
     "buildOptions": {
@@ -15,12 +15,6 @@
     }
   },
   "plugins": {
-    "CapacitorLLM": {
-      "modelAssetPath": "Gemma3-1B-IT_multi-prefill-seq_q8_ekv4096.task",
-      "maxTokens": 4096,
-      "topK": 40,
-      "temperature": 0.7
-    },
     "SplashScreen": {
       "launchShowDuration": 2000,
       "backgroundColor": "#1a1a2e",

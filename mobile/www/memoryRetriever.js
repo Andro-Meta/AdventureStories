@@ -12,7 +12,7 @@
 // that TF-IDF over short summaries is brittle vs cosine over real
 // embeddings; that's a Phase 2.5 upgrade when we can ship EmbeddingGemma.
 
-import { gameState } from './state.js?cb=014';
+import { gameState } from './state.js';
 
 // ---- Tokenizer + stop-words -------------------------------------------------
 // Tiny stop-word list — enough that "the/a/of/and/to" don't dominate scores.

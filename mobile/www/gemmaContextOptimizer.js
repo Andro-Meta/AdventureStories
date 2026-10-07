@@ -5,10 +5,10 @@
 // runs with a 32k window — acceptable here because we aggressively compress
 // before approaching the limit.
 
-import { gameState } from './state.js?cb=014';
-import * as Config from './config.js?cb=014';
-import { contextManager } from './contextManager.js?cb=014';
-import { generateId } from './utils.js?cb=014';
+import { gameState } from './state.js';
+import * as Config from './config.js';
+import { contextManager } from './contextManager.js';
+import { generateId } from './utils.js';
 
 /**
  * Local AI Context Optimizer — manages context windows for the active local

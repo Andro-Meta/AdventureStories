@@ -10,7 +10,9 @@
     "open:android": "npx cap open android",
     "build:debug": "cd android && ./gradlew assembleDebug",
     "build:release": "cd android && ./gradlew bundleRelease",
-    "run:android": "npx cap run android"
+    "run:android": "npx cap run android",
+    "postinstall": "node patches/apply.js",
+    "patches:apply": "node patches/apply.js"
   },
   "dependencies": {
     "@capacitor/android": "^8.0.0",

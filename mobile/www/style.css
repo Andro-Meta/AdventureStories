@@ -2971,3 +2971,16 @@ footer { margin-top: 2rem; text-align: center; }
 .status-message.warning {
     color: #ffaa44;
 }
+
+/* ============================================================
+ * Android APK overrides - applied when mobile-bootstrap.js sets
+ * <html data-platform="android">. Hides desktop-only paths and
+ * dev instructions that should never reach a phone user.
+ * ============================================================ */
+html[data-platform="android"] #localModeLabel,
+html[data-platform="android"] #localConfigSection {
+    display: none !important;
+}
+html[data-platform="android"] #litertModeLabel {
+    display: flex !important;
+}

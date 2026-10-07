@@ -18,7 +18,7 @@
 //  - CACHE_VERSION is bumped by `_bump_cb.mjs` along with cb=N queries so
 //    cache + module versions move together.
 
-const CACHE_VERSION = 'adv-cb-014';        // bumped by _bump_cb.mjs
+const CACHE_VERSION = 'adv-cb-015';        // bumped by _bump_cb.mjs
 const STATIC_ASSETS = [
     './',
     './index.html',

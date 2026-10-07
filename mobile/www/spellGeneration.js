@@ -2,11 +2,11 @@
 // AI-Driven Dynamic Spell Generation System
 // Phase 3: Magic System Implementation
 
-import { gameState, buildGameContextBlock } from './state.js?cb=014';
-import * as Spells from './spells.js?cb=014';
-import * as Config from './config.js?cb=014';
-import * as AI from './aiHandler.js?cb=014';
-import * as AdaptiveAbilities from './adaptiveAbilities.js?cb=014';
+import { gameState, buildGameContextBlock } from './state.js';
+import * as Spells from './spells.js';
+import * as Config from './config.js';
+import * as AI from './aiHandler.js';
+import * as AdaptiveAbilities from './adaptiveAbilities.js';
 
 /**
  * Spell Generation Templates - Base structures for different spell types
@@ -182,7 +182,7 @@ export async function generateDynamicSpell(school, type, level, context = {}) {
         const prompt = buildSpellGenerationPrompt(school, type, level, context, schoolTheme, template);
         
         // Use schema-constrained JSON — narrative pipeline returns prose, not spell JSON
-        const API = await import('./api_new.js?cb=014');
+        const API = await import('./api_new.js');
         const messages = [
             { role: 'system', content: 'You are a game data generator. Return only valid JSON matching the requested schema. No prose.' },
             { role: 'user', content: prompt }

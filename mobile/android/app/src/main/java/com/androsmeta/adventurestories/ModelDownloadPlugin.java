@@ -73,7 +73,7 @@ public class ModelDownloadPlugin extends Plugin {
                 }
 
                 if (code == 401 || code == 403) {
-                    call.reject("AUTH_REQUIRED: Accept the Gemma license on huggingface.co and set LITERT_CONFIG.MODEL_HF_TOKEN in config.js");
+                    call.reject("AUTH_REQUIRED: This model is gated. The default Qwen2.5 model is NOT gated - switch to it in Settings, or paste an HF token in config.js MODEL_HF_TOKEN to keep using a Gemma model.");
                     return;
                 }
                 if (code != 200 && code != 206) {

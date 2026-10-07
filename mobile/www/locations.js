@@ -2,9 +2,9 @@
 // Handles location definitions, progression, and context for different adventure themes
 
 // --- Module Imports ---
-import { gameState } from './state.js?cb=014';
-import { getRandomElement, getRandomInt } from './utils.js?cb=014';
-import * as DynamicLocations from './dynamicLocations.js?cb=014';
+import { gameState } from './state.js';
+import { getRandomElement, getRandomInt } from './utils.js';
+import * as DynamicLocations from './dynamicLocations.js';
 
 /**
  * Location system manager

@@ -2,13 +2,13 @@
 // Revolutionary Story Continuity AI Agent for Narrative Memory and Thread Weaving
 // Creates coherent, memorable story experiences with long-term consequences
 
-import { gameState, buildGameContextBlock } from './state.js?cb=014';
-import { renderMemoryBlock } from './memoryRetriever.js?cb=014';
-import * as Config from './config.js?cb=014';
-import * as ThemeIntelligence from './themeIntelligence.js?cb=014';
-import * as AdaptiveAbilities from './adaptiveAbilities.js?cb=014';
-import { generateId, getRandomInt, getRandomElement } from './utils.js?cb=014';
-import { gemmaHT } from './gemmaHyperthreading.js?cb=014';
+import { gameState, buildGameContextBlock } from './state.js';
+import { renderMemoryBlock } from './memoryRetriever.js';
+import * as Config from './config.js';
+import * as ThemeIntelligence from './themeIntelligence.js';
+import * as AdaptiveAbilities from './adaptiveAbilities.js';
+import { generateId, getRandomInt, getRandomElement } from './utils.js';
+import { gemmaHT } from './gemmaHyperthreading.js';
 
 /**
  * Story Continuity Agent - Maintains narrative coherence and memory
@@ -690,7 +690,7 @@ Create a continuation that feels natural and connected. Respond with ONLY a JSON
 
     async callStoryContinuityAgent(prompt, generationType) {
         try {
-            const API = await import('./api_new.js?cb=014');
+            const API = await import('./api_new.js');
             const messages = [
                 { role: 'system', content: 'You are a game data generator. Return only valid JSON matching the requested schema. No prose.' },
                 { role: 'user', content: prompt }

@@ -41,7 +41,7 @@ export class InitializationManager {
             timeout: 5000,
             critical: true,
             action: async () => {
-                const { gameState, resetGameState, initializeGameState } = await import('./state.js?cb=014');
+                const { gameState, resetGameState, initializeGameState } = await import('./state.js');
                 resetGameState();
                 await initializeGameState();
 
@@ -52,7 +52,7 @@ export class InitializationManager {
                 // dependent feature degrades gracefully (logs a warning,
                 // sets the manager to null so call sites can ?.-guard).
                 try {
-                    const { godModeManager } = await import('./godMode.js?cb=014');
+                    const { godModeManager } = await import('./godMode.js');
                     gameState.godModeManager = godModeManager || null;
                 } catch (e) {
                     this.log(`InitManager: godMode load failed — feature disabled: ${e.message}`);
@@ -65,7 +65,7 @@ export class InitializationManager {
                 // "Beginning 0%" panel never updates and god mode never
                 // unlocks. Phase 0 audit P1 #6.
                 try {
-                    const { questProgressManager } = await import('./questProgress.js?cb=014');
+                    const { questProgressManager } = await import('./questProgress.js');
                     gameState.questProgressManager = questProgressManager || null;
                     if (questProgressManager?.initializeQuestProgress) {
                         try {
@@ -94,7 +94,7 @@ export class InitializationManager {
                 // persisted on gameState so the initial-story prompt can
                 // anchor on it and saves preserve it across reloads.
                 try {
-                    const storyHooksMod = await import('./storyHooks.js?cb=014');
+                    const storyHooksMod = await import('./storyHooks.js');
                     if (storyHooksMod?.pickStoryHook) {
                         gameState.storyHook = storyHooksMod.pickStoryHook(
                             gameState.adventureTheme,
@@ -129,35 +129,10 @@ export class InitializationManager {
             timeout: 15000, // 15s: health check (3s) + wait (3s) + retry (3s) + margin
             critical: true, // AI IS CRITICAL - we need it to work
             action: async () => {
-                const localAI = await import('./localAI.js?cb=014');
+                const localAI = await import('./localAI.js');
                 
-                // First, check if the server is even running
-                try {
-                    this.log('InitManager: Checking AI server connectivity...');
-                    const health = await this.checkLocalAIHealth();
-                    this.log(`InitManager: AI server is healthy and ready!`);
-                    return { localAI, healthy: true, modelInfo: health };
-                } catch (error) {
-                    this.log(`InitManager: AI server check failed: ${error.message}`);
-                    
-                    // If it's a timeout, the server might be starting up
-                    if (error.message.includes('timed out')) {
-                        this.log('InitManager: AI server appears to be starting up. Waiting a bit more...');
-                        
-                        // Wait 3 more seconds and try once more
-                        await new Promise(resolve => setTimeout(resolve, 3000));
-                        
-                        try {
-                            const health = await this.checkLocalAIHealth();
-                            this.log(`InitManager: AI server is now ready after waiting!`);
-                            return { localAI, healthy: true, modelInfo: health };
-                        } catch (secondError) {
-                            throw new Error(`AI server not responding: ${secondError.message}. Make sure start_game.py launched the configured LLM_BACKEND server.`);
-                        }
-                    } else {
-                        throw new Error(`AI server error: ${error.message}. Make sure start_game.py launched the configured LLM_BACKEND server.`);
-                    }
-                }
+                const health = await this.checkLocalAIHealth(); // throws a player-readable reason
+                return { localAI, healthy: true, modelInfo: health };
             },
             description: 'Verify local AI server is running and ready'
         });
@@ -170,9 +145,9 @@ export class InitializationManager {
             timeout: 15000,
             critical: true,
             action: async (context) => {
-                const { gameState, createNewPlayer } = await import('./state.js?cb=014');
-                const Items = await import('./items.js?cb=014');
-                const Combat = await import('./combat.js?cb=014');
+                const { gameState, createNewPlayer } = await import('./state.js');
+                const Items = await import('./items.js');
+                const Combat = await import('./combat.js');
                 
                 // Create all players first
                 gameState.players = [];
@@ -210,8 +185,8 @@ export class InitializationManager {
             timeout: 30000,
             critical: false, // Non-critical - can use fallbacks
             action: async (context) => {
-                const { gameState } = await import('./state.js?cb=014');
-                const Spells = await import('./spells.js?cb=014');
+                const { gameState } = await import('./state.js');
+                const Spells = await import('./spells.js');
                 
                 // Initialize spellcasting for each player
                 const results = [];
@@ -248,10 +223,10 @@ export class InitializationManager {
             timeout: 20000,
             critical: false,
             action: async (context) => {
-                const { gameState } = await import('./state.js?cb=014');
+                const { gameState } = await import('./state.js');
                 
                 try {
-                    const dynamicItems = await import('./dynamicItems.js?cb=014');
+                    const dynamicItems = await import('./dynamicItems.js');
                     gameState.shopItems = await dynamicItems.generateDynamicShopItems(8, gameState.turn);
                     return { shopItems: gameState.shopItems.length, dynamic: true };
                 } catch (error) {
@@ -270,10 +245,10 @@ export class InitializationManager {
             timeout: 15000,
             critical: false,
             action: async () => {
-                const { initializeLocationSystem } = await import('./locations.js?cb=014');
+                const { initializeLocationSystem } = await import('./locations.js');
                 // B2: pass the actual chosen theme so locations.js doesn't log
                 // "theme: undefined" and fall back to a generic fantasy default.
-                const { gameState } = await import('./state.js?cb=014');
+                const { gameState } = await import('./state.js');
                 const theme = gameState.adventureTheme || 'fantasy';
                 await initializeLocationSystem(theme);
                 return { locationsInitialized: true, theme };
@@ -291,7 +266,7 @@ export class InitializationManager {
                 const results = {};
                 
                 try {
-                    const DynamicSpells = await import('./dynamicSpells.js?cb=014');
+                    const DynamicSpells = await import('./dynamicSpells.js');
                     results.dynamicSpells = !!DynamicSpells.dynamicSpellRegistry;
                 } catch (error) {
                     results.dynamicSpells = false;
@@ -310,7 +285,7 @@ export class InitializationManager {
             timeout: 120000,
             critical: true,
             action: async () => {
-                const { makeAICallForSystemAction } = await import('./aiHandler.js?cb=014');
+                const { makeAICallForSystemAction } = await import('./aiHandler.js');
                 await makeAICallForSystemAction('start_adventure', null);
                 return { storyGenerated: true };
             },
@@ -328,9 +303,9 @@ export class InitializationManager {
             timeout: 30000,
             critical: false, // degraded gracefully with theme fallback
             action: async () => {
-                const { gameState } = await import('./state.js?cb=014');
-                const API = await import('./api_new.js?cb=014');
-                const UI = await import('./ui.js?cb=014');
+                const { gameState } = await import('./state.js');
+                const API = await import('./api_new.js');
+                const UI = await import('./ui.js');
 
                 // Skip if the AI already set a real goal via a diff op during start_adventure.
                 if (gameState.adventureGoal && gameState.adventureGoal !== 'Not set yet.') {
@@ -421,8 +396,8 @@ Respond with ONLY a JSON object: {"goal": "Your specific goal sentence here."}`;
             timeout: 5000,
             critical: true,
             action: async (context) => {
-                const UI = await import('./ui.js?cb=014');
-                const { loadingManager } = await import('./loadingManager.js?cb=014');
+                const UI = await import('./ui.js');
+                const { loadingManager } = await import('./loadingManager.js');
                 
                 UI.renderPlayerCards();
                 UI.showScreen('gameScreen');
@@ -600,48 +575,12 @@ Respond with ONLY a JSON object: {"goal": "Your specific goal sentence here."}`;
      * Check local AI server health
      */
     async checkLocalAIHealth() {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
-
-        try {
-            const Config = await import('./config.js?cb=014');
-            const backend = Config.getActiveBackendConfig();
-            const healthPath = backend.healthPath || '/health';
-            const url = backend.url + healthPath;
-            const response = await fetch(url, {
-                method: 'GET',
-                signal: controller.signal,
-                headers: { 'Content-Type': 'application/json' }
-            });
-
-            clearTimeout(timeoutId);
-
-            if (!response.ok) {
-                throw new Error(`Local AI server health check failed: ${response.status}`);
-            }
-
-            const health = await response.json();
-            // MiniCPM Python: {status:"healthy", model_loaded:true}
-            // llama-server:   {status:"ok"}
-            // Ollama /api/tags: {models:[...]} — any non-empty response = healthy
-            const ok = health.status === 'ok'
-                    || health.model_loaded === true
-                    || health.status === 'healthy'
-                    || Array.isArray(health.models); // Ollama
-            if (!ok) {
-                throw new Error('Local AI server reports not ready: ' + JSON.stringify(health));
-            }
-
-            this.log(`InitManager: AI server healthy at ${url} (${JSON.stringify(health).slice(0, 120)})`);
-            return health;
-
-        } catch (error) {
-            clearTimeout(timeoutId);
-            if (error.name === 'AbortError') {
-                throw new Error('AI server health check timed out - server may be starting up');
-            }
-            throw error;
-        }
+        // One health check for every backend (cloud = key present, litert =
+        // bridge, local = health path). Cloud providers have no /health URL.
+        const { testLocalAI } = await import('./api_new.js');
+        await testLocalAI();
+        this.log('InitManager: AI backend ready');
+        return { status: 'ok' };
     }
 
     /**
@@ -737,7 +676,7 @@ Respond with ONLY a JSON object: {"goal": "Your specific goal sentence here."}`;
      */
     async initializeLoadingTips() {
         try {
-            const { loadingTips } = await import('./loadingTips.js?cb=014');
+            const { loadingTips } = await import('./loadingTips.js');
             this.loadingTips = loadingTips;
             this.log('InitManager: Loading tips system initialized');
         } catch (error) {

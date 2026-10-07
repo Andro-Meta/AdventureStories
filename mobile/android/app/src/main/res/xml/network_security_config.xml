@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Network security policy for Adventure Stories (Capacitor APK).
+
+    cleartextTrafficPermitted=false everywhere — every cloud AI endpoint we
+    call is HTTPS, including the WebView assets server (https://localhost,
+    set via capacitor.config.json server.androidScheme="https"). This blocks
+    accidental downgrades / man-in-the-middle on hostile Wi-Fi.
+
+    No domain-overrides are needed — the WebView fetches we make are all to
+    well-known TLS endpoints, and we deliberately don't ship a CA bundle.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!-- Domain-specific overrides for the AI endpoints, only here as
+         documentation that we know what we talk to. Could be tightened
+         further with cert pinning if we ever add it. -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">openrouter.ai</domain>
+        <domain includeSubdomains="true">api.groq.com</domain>
+        <domain includeSubdomains="true">generativelanguage.googleapis.com</domain>
+        <domain includeSubdomains="true">huggingface.co</domain>
+        <domain includeSubdomains="true">cdn-lfs.huggingface.co</domain>
+        <domain includeSubdomains="true">cdn-lfs-us-1.hf.co</domain>
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </domain-config>
+</network-security-config>
