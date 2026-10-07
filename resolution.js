@@ -2,20 +2,19 @@
 // Handles specific game state resolutions: combat victory, party wipe, goal completion.
 
 // --- Static Imports ---
-import { gameState, getCurrentPlayer } from './state.js?cb=014';
-import * as Config from './config.js?cb=014';
-import * as UI from './ui.js?cb=014';
-import * as Combat from './combat.js?cb=014';
-import * as Items from './items.js?cb=014'; // Needed for goal completion rewards
-import { generateId, getRandomElement } from './utils.js?cb=014'; // Added getRandomElement
+import { gameState, getCurrentPlayer } from './state.js';
+import * as Config from './config.js';
+import * as UI from './ui.js';
+import * as Combat from './combat.js';
+import * as Items from './items.js'; // Needed for goal completion rewards
+import { generateId, getRandomElement } from './utils.js'; // Added getRandomElement
 // Import functions from aiHandler statically
-import { makeAICallForSystemAction } from './aiHandler.js?cb=014';
+import { makeAICallForSystemAction } from './aiHandler.js';
 // Import determineContext function
-import { determineContext } from './state.js?cb=014';
+import { determineContext } from './state.js';
 // Import local AI orchestrator for enhanced resolution processing
-import { localAIOrchestrator } from './localAIOrchestrator.js?cb=014';
 // Phase 2: jail mechanic — replaces the old "soft revive at 1 HP same location" flow
-import { transitionToJail, recordFailedEscape, getJailForTheme } from './jailSystem.js?cb=014';
+import { transitionToJail, recordFailedEscape, getJailForTheme } from './jailSystem.js';
 
 
 /**
@@ -51,35 +50,9 @@ Environment: ${determineContext(getCurrentPlayer()).environment}
 
 Describe the scene after the victorious battle, mentioning the state of the defeated foes and the surrounding area. Then provide appropriate choices for what to do next.]`;
 
-    // Use local AI orchestrator for enhanced victory processing
-    // BUG-19/22 fix: handleCombatVictory used to trigger TWO advanceTurn calls
-    // when victory landed via the orchestrator path AND another via the
-    // fallback's makeAICallForSystemAction(false). Status effects ticked twice
-    // on every win, downedTurns incremented twice, the round potentially
-    // advanced twice. Now: orchestrator path skips the explicit advance (the
-    // outer turnManager.advanceTurn that detected victory will continue), and
-    // the fallback path passes preventTurnAdvance=true so the AI call doesn't
-    // fire a second one.
-    try {
-        const result = await localAIOrchestrator.orchestrateAgents('victory_processing', {
-            situationType: 'combat_victory',
-            context: victoryPrompt
-        });
-        if (result && result.narrative && result.choices) {
-            UI.updateNarrative(result.narrative);
-            gameState.currentChoices = result.choices;
-            UI.renderChoices(result.choices);
-            // Do NOT call advanceTurn here — the outer turnManager.advanceTurn
-            // that detected victory is still running and will continue once
-            // we return.
-            return;
-        }
-    } catch (error) {
-        console.log('Victory processing: Local AI orchestrator failed, using fallback:', error);
-    }
-
-    // Fallback path: pass preventTurnAdvance=true so the AI call does NOT
-    // fire its own advanceTurn — the outer caller already owns that.
+    // preventTurnAdvance=true: the caller (advanceTurn or a status-tick kill)
+    // owns the turn advance. The old orchestrator branch here checked a field
+    // the orchestrator never returns, so it only added wasted AI calls.
     await makeAICallForSystemAction(victoryPrompt, true);
     console.log("handleCombatVictory finished.");
     displayVisualError("handleCombatVictory finished.");
@@ -117,7 +90,7 @@ export async function handlePartyWipe() {
         const exhausted = recordFailedEscape();
         if (exhausted) {
             try {
-                const ui = await import('./ui.js?cb=014');
+                const ui = await import('./ui.js');
                 if (typeof ui.showGameOverScreen === 'function') {
                     gameState.handlingPartyWipe = false;
                     ui.showGameOverScreen({

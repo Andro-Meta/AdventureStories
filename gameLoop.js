@@ -2,13 +2,12 @@
 // Central game loop controller that manages game flow, state transitions, and event processing
 
 // --- Module Imports ---
-import { gameState, getCurrentPlayer, canCurrentPlayerAct, syncTurnStates } from './state.js?cb=014';
-import * as UI from './ui.js?cb=014';
-import { advanceTurn } from './turnManager.js?cb=014';
-import { advanceCombatTurn } from './combat.js?cb=014';
-import { checkAndProcessEncounter } from './encounters.js?cb=014';
-import { advanceToNextLocation, getCurrentLocationContext } from './locations.js?cb=014';
-import { makeAICallForSystemAction } from './aiHandler.js?cb=014';
+import { gameState, getCurrentPlayer, canCurrentPlayerAct, syncTurnStates } from './state.js';
+import * as UI from './ui.js';
+import { advanceTurn } from './turnManager.js';
+import { advanceCombatTurn } from './combat.js';
+import { advanceToNextLocation, getCurrentLocationContext } from './locations.js';
+import { makeAICallForSystemAction } from './aiHandler.js';
 
 /**
  * Central game loop controller
@@ -86,27 +85,11 @@ export class GameLoop {
             // Check for location progression based on action type
             await this.checkLocationProgression(actionType, actionText);
 
-            // A8: When the new engine path is in use (Phase 1+ architecture),
-            // the narrator proposes encounters via diff ops (/enemies/-,
-            // /inCombat). Running the legacy random-encounter system in
-            // parallel races the engine and drifts state (smoke #4 saw 2
-            // Stone Guardians spawn from both paths and gs.combat fall out
-            // of sync). Skip the legacy check on llama-cpp backend.
-            const Config = await import('./config.js?cb=014');
-            const usingEngine = Config?.LLM_BACKEND === 'llama-cpp';
-            let encounterOccurred = false;
-            if (!usingEngine) {
-                encounterOccurred = await checkAndProcessEncounter();
-            }
-
-            if (encounterOccurred && gameState.inCombat) {
-                log("GameLoop: Encounter started combat, switching to combat mode");
-                return true;
-            }
-
-            // Process exploration-specific effects
-            await this.processExplorationEffects(actionType, actionText);
-            
+            // Encounters come from the narrator's diff ops (/enemies/-, /inCombat)
+            // on every backend now. The legacy random-encounter roll raced the
+            // engine and started fights the narrator never heard about, and
+            // processExplorationEffects re-rolled the HP/coin outcome that
+            // actionHandler had already applied this turn.
             return true;
             
         } catch (error) {

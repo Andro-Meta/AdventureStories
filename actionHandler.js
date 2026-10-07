@@ -2,26 +2,25 @@
 // Handles player-initiated actions like choices, item use, special moves, etc.
 
 // --- Static Imports ---
-import { gameState, determineContext, getCurrentPlayer, canCurrentPlayerAct, calculateContextModifiers } from './state.js?cb=014';
-import * as Config from './config.js?cb=014';
-import * as UI from './ui.js?cb=014';
-import * as Combat from './combat.js?cb=014';
-import * as Items from './items.js?cb=014';
-import * as API from './api_new.js?cb=014'; // May not be needed if all calls go through aiHandler
-import { generateId, getRandomElement, getRandomInt, clamp } from './utils.js?cb=014';
+import { gameState, determineContext, getCurrentPlayer, canCurrentPlayerAct, calculateContextModifiers } from './state.js';
+import * as Config from './config.js';
+import * as UI from './ui.js';
+import * as Combat from './combat.js';
+import * as Items from './items.js';
+import * as API from './api_new.js'; // May not be needed if all calls go through aiHandler
+import { generateId, getRandomElement, getRandomInt, clamp } from './utils.js';
 // Import aiHandler functions statically
-import { makeAICallForSystemAction, processEnhancedAIResponse } from './aiHandler.js?cb=014';
-import { localAIOrchestrator } from './localAIOrchestrator.js?cb=014';
+import { makeAICallForSystemAction } from './aiHandler.js';
 // Import turnManager functions statically
-import { advanceTurn } from './turnManager.js?cb=014';
+import { advanceTurn } from './turnManager.js';
 // Import encounter system
-import { checkAndProcessEncounter } from './encounters.js?cb=014';
+import { checkAndProcessEncounter } from './encounters.js';
 // Import game loop
-import { processPlayerAction as gameLoopProcessAction } from './gameLoop.js?cb=014';
+import { processPlayerAction as gameLoopProcessAction } from './gameLoop.js';
 // Import reputation system
-import { calculateChoiceReputationEffects, calculatePriceModifiers, getContextualizedFactions, getTrustDifficultyModifiers } from './reputationContextualizer.js?cb=014';
+import { calculateChoiceReputationEffects, calculatePriceModifiers, getContextualizedFactions, getTrustDifficultyModifiers } from './reputationContextualizer.js';
 // Import intelligent compression helpers
-import { recordPlayerChoice, recordStoryBeat, recordRelationshipChange, recordWorldStateChange } from './state.js?cb=014';
+import { recordPlayerChoice, recordStoryBeat, recordRelationshipChange, recordWorldStateChange } from './state.js';
 
 
 /**
@@ -87,6 +86,10 @@ export async function handlePlayerChoice(actionType, choiceText) {
             return;
         }
 
+        // Turn lock: held until this turn's AI calls have actually finished
+        // (released in finally), so a slow reply can't overlap the next turn.
+        gameState.isLoading = true;
+
         // Show loading indicator and disable choices to prevent multiple clicks
         UI.showLoading(true, 'Processing your choice...');
         if (typeof UI.disableChoices === 'function') {
@@ -133,6 +136,11 @@ export async function handlePlayerChoice(actionType, choiceText) {
             // hang happens. Remove these markers once the bug is identified.
             const cbStep = (n, extra) => log(`[CB-${n}] ${actionType} ${extra || ''}`);
             cbStep(1, 'enter combat branch');
+            gameState.combatRoundInProgress = true; // cleared in finally
+
+            // Special-move cooldowns count down once per combat action
+            // (turnManager only ticks them on exploration turns).
+            (currentPlayer.specialMoves || []).forEach(m => { if (m && m.currentCooldown > 0) m.currentCooldown--; });
 
             // Master timeout: if the entire combat branch takes >180s, render
             // fallback choices and bail. This is a final safety net beyond
@@ -175,9 +183,13 @@ export async function handlePlayerChoice(actionType, choiceText) {
                     }
 
                     case 'Special': {
-                        const move = (currentPlayer.specialMoves || []).find(m => (m.currentCooldown || 0) <= 0);
+                        const ready = (currentPlayer.specialMoves || []).filter(m => (m.currentCooldown || 0) <= 0);
+                        const lowerChoice = String(choiceText || '').toLowerCase();
+                        const move = ready.find(m => m.name && lowerChoice.includes(m.name.toLowerCase())) || ready[0];
                         if (!move) {
                             combatLog = `${currentPlayer.name} tries a special move but none are ready.`;
+                        } else if ((move.mpCost || 0) > (currentPlayer.mp || 0)) {
+                            combatLog = `${currentPlayer.name} reaches for ${move.name} but doesn't have enough MP.`;
                         } else {
                             // Generic special: 1.5x weapon damage + status if move declares one.
                             const r = Combat.executeWeaponAttack(currentPlayer, target, {
@@ -243,6 +255,13 @@ export async function handlePlayerChoice(actionType, choiceText) {
                         combatLog = `${currentPlayer.name} acts: ${choiceText}.`;
                 }
 
+                // Loot + coins for anything the player's action just killed.
+                for (const e of (gameState.enemies || [])) {
+                    if (e && (e.isDefeated || e.hp <= 0) && !e.defeatProcessed) {
+                        try { await Combat.handleEnemyDefeat(e.id); } catch (err) { log(`handleEnemyDefeat failed: ${err.message}`); }
+                    }
+                }
+
                 cbStep(4, 'switch done, calling showPopup + combat log');
                 try { UI.showPopup(combatLog, 'combat', 4000); } catch(e) { cbStep(4, `showPopup THREW: ${e?.message}`); }
                 // P4: stream mechanical event to in-game combat log strip
@@ -264,19 +283,31 @@ export async function handlePlayerChoice(actionType, choiceText) {
                     cbStep(8, 'all enemies defeated, exiting combat');
                     gameState.inCombat = false;
                     if (gameState.combat) gameState.combat.isActive = false;
-                } else if (Combat.isPartyWiped()) {
-                    cbStep(8, 'party wiped, deferring to turn manager');
-                } else if (gameState.inCombat) {
-                    cbStep(8, 'calling advanceCombatTurn (15s timeout)');
+                } else if (gameState.inCombat && !Combat.isPartyWiped()) {
+                    cbStep(8, 'calling advanceCombatTurn (enemy phase)');
                     try {
-                        await Promise.race([
-                            Combat.advanceCombatTurn(),
-                            new Promise((_, rej) => setTimeout(() => rej(new Error('advanceCombatTurn timed out (15s)')), 15000))
-                        ]);
+                        await Combat.advanceCombatTurn();
                         cbStep(9, 'advanceCombatTurn returned ok');
                     } catch (e) {
                         cbStep(9, `advanceCombatTurn caught: ${e?.message || e}`);
                     }
+                }
+
+                // Party wiped (now or during the enemy phase): hand over to the
+                // jail / game-over flow, which runs its own narration. Before,
+                // this waited for advanceTurn, which never runs in combat, so a
+                // solo game got stuck on "Cannot act now".
+                if (Combat.isPartyWiped()) {
+                    cbStep(8, 'party wiped -> handlePartyWipe');
+                    gameState.inCombat = false;
+                    if (gameState.combat) gameState.combat.isActive = false;
+                    const { handlePartyWipe } = await import('./resolution.js');
+                    await handlePartyWipe();
+                    return;
+                }
+                if (!gameState.inCombat) {
+                    gameState.consecutiveWipes = 0;
+                    try { UI.clearCombatLog?.(); } catch (_) {}
                 }
                 cbStep(10, `building combatActionLog (deadline left: ${COMBAT_BRANCH_DEADLINE - Date.now()}ms)`);
 
@@ -294,12 +325,23 @@ Narrate this combat round in vivid second-person voice. Then provide ${gameState
                 cbStep(11, 'showLoading + AI call');
                 UI.showLoading(true, 'Combat unfolding...');
                 let renderedChoices = false;
-                const callWithTimeout = (p, ms = 90000) => Promise.race([
-                    p,
-                    new Promise((_, rej) => setTimeout(() => rej(new Error(`combat AI call timed out after ${ms}ms`)), ms))
-                ]);
                 try {
-                    const aiResponse = await callWithTimeout(makeAICallForSystemAction(combatActionLog, true));
+                    // Advance the turn only when this round ended the fight.
+                    const inCombatBeforeCall = gameState.inCombat;
+                    const aiResponse = await makeAICallForSystemAction(combatActionLog, inCombatBeforeCall);
+                    // The narrator's diff can also finish enemies off (or end the
+                    // fight). Pay out their loot too, and advance the turn the
+                    // call above skipped because combat was still on.
+                    for (const e of (gameState.enemies || [])) {
+                        if (e && (e.isDefeated || e.hp <= 0) && !e.defeatProcessed) {
+                            try { await Combat.handleEnemyDefeat(e.id); } catch (err) { log(`handleEnemyDefeat failed: ${err.message}`); }
+                        }
+                    }
+                    if (inCombatBeforeCall && (!gameState.inCombat || Combat.areAllEnemiesDefeated())) {
+                        gameState.inCombat = false;
+                        if (gameState.combat) gameState.combat.isActive = false;
+                        await advanceTurn();
+                    }
                     cbStep(12, `AI call returned, choices=${aiResponse?.choices?.length || 0}`);
                     const choices = aiResponse?.choices;
                     if (Array.isArray(choices) && choices.length > 0) {
@@ -340,26 +382,6 @@ Narrate this combat round in vivid second-person voice. Then provide ${gameState
             }
             return; // combat branch is fully handled here
         } else {
-            // Determine if this action should use enhanced AI processing
-            const shouldUseEnhanced = shouldUseEnhancedProcessing(actionType, choiceText, context);
-            
-            if (shouldUseEnhanced) {
-                // Use enhanced multi-agent processing for complex actions —
-                // wrapped in a hard timeout so the legacy multi-agent path
-                // can't deadlock the UI. If it times out, we fall through
-                // to the standard processing below as a recovery.
-                const enhancedTimeoutMs = 90000;
-                try {
-                    return await Promise.race([
-                        handleEnhancedAction(actionType, choiceText, context, currentPlayer),
-                        new Promise((_, rej) => setTimeout(() => rej(new Error(`handleEnhancedAction timed out after ${enhancedTimeoutMs}ms`)), enhancedTimeoutMs))
-                    ]);
-                } catch (e) {
-                    log(`Enhanced action path failed (${e?.message || e}) — falling back to standard processing.`);
-                    // Fall through to standard processing below
-                }
-            }
-            
             // Handle exploration/story action with standard processing
             outcomeSet = determineActionOutcomes(actionType, context);
             if (!outcomeSet || !outcomeSet.outcomes) {
@@ -612,13 +634,9 @@ Narrate the outcome of this action and provide appropriate choices for what happ
         // Trigger AI for Narrative — wrap with hard 90s timeout so a stalled
         // llama-server can't deadlock the UI.
         UI.showLoading(true, 'Processing choice...');
-        const callWithTimeout = (p, ms = 90000) => Promise.race([
-            p,
-            new Promise((_, rej) => setTimeout(() => rej(new Error(`AI call timed out after ${ms}ms`)), ms))
-        ]);
         let aiResponse = null;
         try {
-            aiResponse = await callWithTimeout(makeAICallForSystemAction(actionLog, false));
+            aiResponse = await makeAICallForSystemAction(actionLog, false);
         } catch (e) {
             log(`Exploration AI call failed: ${e?.message || e}`);
         }
@@ -655,7 +673,9 @@ Narrate the outcome of this action and provide appropriate choices for what happ
         // subsequent click is silently rejected. UI shows fallback choices
         // but nothing responds. Clearing here covers that path.
         gameState.isLoading = false;
+        gameState.combatRoundInProgress = false;
         UI.showLoading(false);
+        try { UI.updateQuickActions(); } catch (_) { /* inventory/shop buttons were disabled by the lock */ }
 
         // FINAL SAFETY NET — guarantee the UI never hangs.
         // If the choices container is empty OR every button is disabled,
@@ -1025,7 +1045,7 @@ function extractGodModeDiffOps(text) {
             // from the live game state (top-import not available here; the
             // file's existing imports include gameState).
             try {
-                const { gameState } = require('./state.js?cb=014');
+                const { gameState } = require('./state.js');
                 const current = gameState.players?.[0]?.coins || 0;
                 n = Math.min(99999, current + n);
             } catch (_) {
@@ -1316,7 +1336,7 @@ export async function handleCustomAction() {
     const preApplied = [];
     if (gameState.isGoalComplete) {
         try {
-            const { applyDiff } = await import('./engine.js?cb=014');
+            const { applyDiff } = await import('./engine.js');
             const ops = extractGodModeDiffOps(actionText);
             if (ops.length > 0) {
                 const summaries = applyDiff(ops, { strict: false });
@@ -1465,251 +1485,6 @@ Otherwise: HONOR the player's intent. Persist consequences. They earned this.`;
 
     log("handleCustomAction finished.");
 }
-
-/**
- * Determine if action should use enhanced multi-agent processing
- */
-function shouldUseEnhancedProcessing(actionType, choiceText, context) {
-    // Use enhanced processing for complex action types
-    const complexActionTypes = ['Investigative', 'Social', 'Creative'];
-    if (complexActionTypes.includes(actionType)) return true;
-    
-    // Use enhanced processing for actions that mention multiple elements
-    const complexKeywords = [
-        'explore', 'investigate', 'search', 'examine', 'discover',
-        'talk', 'negotiate', 'persuade', 'convince', 'interact',
-        'create', 'build', 'craft', 'make', 'construct',
-        'magic', 'spell', 'ability', 'power', 'enchant',
-        'quest', 'mission', 'objective', 'goal'
-    ];
-    
-    const textLower = choiceText.toLowerCase();
-    const keywordMatches = complexKeywords.filter(keyword => textLower.includes(keyword)).length;
-    
-    // Use enhanced processing if multiple keywords match
-    if (keywordMatches >= 2) return true;
-    
-    // Use enhanced processing if context suggests complexity
-    if (context.needsMultipleAgents || context.useOrchestration) return true;
-    
-    // Use enhanced processing for quest-related actions
-    if (gameState.questProgress && gameState.questProgress.currentPhase !== 'beginning') {
-        return true;
-    }
-    
-    return false;
-}
-
-/**
- * Handle complex actions using enhanced multi-agent processing
- */
-async function handleEnhancedAction(actionType, choiceText, context, currentPlayer) {
-    const log = window.displayVisualError || console.log;
-    log(`Processing enhanced action: ${actionType} - ${choiceText}`);
-    
-    try {
-        // Determine request type and context for orchestration
-        const requestType = determineRequestType(actionType, choiceText);
-        const enhancedContext = buildEnhancedContext(actionType, choiceText, context, currentPlayer);
-        
-        // Use enhanced AI processing with orchestration
-        const enhancedResult = await processEnhancedAIResponse(
-            `Player ${currentPlayer.name} chooses: ${choiceText}`,
-            requestType,
-            enhancedContext
-        );
-        
-        // Process the enhanced result
-        await processEnhancedResult(enhancedResult, actionType, currentPlayer);
-        
-        log(`Enhanced action processing completed successfully`);
-        
-    } catch (error) {
-        log(`Enhanced action processing failed: ${error.message}`);
-        
-        // Graceful degradation to standard processing
-        log('Falling back to standard action processing...');
-        return await handleStandardAction(actionType, choiceText, context, currentPlayer);
-    }
-}
-
-/**
- * Determine request type for orchestration based on action
- */
-function determineRequestType(actionType, choiceText) {
-    const textLower = choiceText.toLowerCase();
-    
-    // Encounter-related actions
-    if (textLower.includes('meet') || textLower.includes('talk') || textLower.includes('npc') || 
-        textLower.includes('character') || actionType === 'Social') {
-        return 'encounter_creation';
-    }
-    
-    // Location-related actions
-    if (textLower.includes('explore') || textLower.includes('go') || textLower.includes('enter') ||
-        textLower.includes('location') || textLower.includes('place')) {
-        return 'location_creation';
-    }
-    
-    // Quest-related actions
-    if (textLower.includes('quest') || textLower.includes('mission') || textLower.includes('objective') ||
-        textLower.includes('goal') || actionType === 'Investigative') {
-        return 'quest_progression';
-    }
-    
-    // Complex story actions
-    if (actionType === 'Creative' || textLower.includes('create') || textLower.includes('magic')) {
-        return 'comprehensive_response';
-    }
-    
-    // Default to story generation
-    return 'story_generation';
-}
-
-/**
- * Build enhanced context for orchestration
- */
-function buildEnhancedContext(actionType, choiceText, context, currentPlayer) {
-    return {
-        ...context,
-        actionType,
-        choiceText,
-        currentPlayer: {
-            name: currentPlayer.name,
-            level: currentPlayer.level,
-            class: currentPlayer.class,
-            hp: currentPlayer.hp,
-            maxHp: currentPlayer.maxHp,
-            mp: currentPlayer.mp,
-            maxMp: currentPlayer.maxMp
-        },
-        includeEncounters: choiceText.toLowerCase().includes('meet') || 
-                          choiceText.toLowerCase().includes('talk') ||
-                          actionType === 'Social',
-        includeItems: choiceText.toLowerCase().includes('find') || 
-                     choiceText.toLowerCase().includes('search') ||
-                     choiceText.toLowerCase().includes('loot'),
-        needsAbilities: choiceText.toLowerCase().includes('magic') || 
-                       choiceText.toLowerCase().includes('spell') ||
-                       choiceText.toLowerCase().includes('ability'),
-        needsLocations: choiceText.toLowerCase().includes('explore') || 
-                       choiceText.toLowerCase().includes('go') ||
-                       choiceText.toLowerCase().includes('enter'),
-        trackProgress: true, // Always track progress for enhanced actions
-        useOrchestration: true
-    };
-}
-
-/**
- * Process enhanced AI result and apply effects
- */
-async function processEnhancedResult(enhancedResult, actionType, currentPlayer) {
-    const log = window.displayVisualError || console.log;
-    
-    // Update narrative
-    if (enhancedResult.narrative) {
-        gameState.currentNarrative = enhancedResult.narrative;
-    }
-    
-    // (Removed dead `AI.processEmbeddedCommands(...)` block. Both the `AI`
-    // symbol and the `processEmbeddedCommands` function are undefined in
-    // this codebase — the call always threw a ReferenceError on Investigative
-    // actions, which was caught here and logged but accomplished nothing.
-    // Phase 0 audit P0 #3.)
-    
-    // Apply any physical effects (simplified for enhanced processing)
-    if (enhancedResult.metadata && enhancedResult.metadata.qualityScore > 0.7) {
-        // High quality results might grant small bonuses
-        const bonusHp = Math.floor(Math.random() * 3);
-        if (bonusHp > 0) {
-            currentPlayer.hp = Math.min(currentPlayer.maxHp, currentPlayer.hp + bonusHp);
-            UI.showPopup(`Enhanced action grants ${bonusHp} HP!`, 'healing');
-        }
-    }
-    
-    // Update UI with choices
-    if (enhancedResult.choices && enhancedResult.choices.length > 0) {
-        UI.renderChoices(enhancedResult.choices, null);
-    }
-    
-    // Show metadata if available
-    if (enhancedResult.metadata && enhancedResult.metadata.orchestrated) {
-        log(`Enhanced processing used ${enhancedResult.metadata.agentContributions?.length || 0} agents`);
-        log(`Quality score: ${enhancedResult.metadata.qualityScore?.toFixed(2) || 'unknown'}`);
-    }
-    
-    // Update UI (was UI.updateGameState which doesn't exist; correct name
-    // is updateGameUI per ui.js:328. Phase 0 audit P0 #2.)
-    UI.updateGameUI();
-}
-
-/**
- * Handle standard action processing (fallback)
- */
-async function handleStandardAction(actionType, choiceText, context, currentPlayer) {
-    const log = window.displayVisualError || console.log;
-    log('Processing action with standard method...');
-    
-    // Use existing standard processing logic
-    const outcomeSet = determineActionOutcomes(actionType, context);
-    if (!outcomeSet || !outcomeSet.outcomes) {
-        throw new Error(`Failed to determine outcomes for action type: ${actionType}`);
-    }
-    
-    const success = determineActionSuccess(outcomeSet.successChance);
-    
-    // Store outcome in narrative context
-    gameState.narrativeContext.lastOutcome = {
-        success,
-        effects: outcomeSet,
-        context: context
-    };
-
-    // Apply physical outcomes (existing logic)
-    if (outcomeSet.outcomes.physical) {
-        if (outcomeSet.outcomes.physical.hpChange) {
-            const [min, max] = outcomeSet.outcomes.physical.hpChange;
-            const hpChange = getRandomInt(min, max);
-            if (hpChange !== 0) {
-                currentPlayer.hp = clamp(
-                    currentPlayer.hp + hpChange,
-                    0,
-                    currentPlayer.maxHp
-                );
-                if (hpChange < 0) {
-                    UI.showPopup(`Lost ${Math.abs(hpChange)} HP!`, 'damage');
-                } else {
-                    UI.showPopup(`Gained ${hpChange} HP!`, 'heal');
-                }
-            }
-        }
-    }
-
-    // Apply resource outcomes (existing logic)
-    if (outcomeSet.outcomes.resources) {
-        if (outcomeSet.outcomes.resources.mpChange) {
-            const [min, max] = outcomeSet.outcomes.resources.mpChange;
-            const mpChange = getRandomInt(min, max);
-            if (mpChange !== 0) {
-                currentPlayer.mp = clamp(
-                    currentPlayer.mp + mpChange,
-                    0,
-                    currentPlayer.maxMp
-                );
-                if (mpChange < 0) {
-                    UI.showPopup(`Lost ${Math.abs(mpChange)} MP!`, 'damage');
-                } else {
-                    UI.showPopup(`Gained ${mpChange} MP!`, 'heal');
-                }
-            }
-        }
-    }
-
-    // Trigger AI for narrative continuation
-    const actionLog = `${currentPlayer.name} chooses: ${choiceText}`;
-    await makeAICallForSystemAction(actionLog, false);
-}
-
 
 /**
  * Uses an item from the current player's inventory.

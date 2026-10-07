@@ -2,9 +2,9 @@
 // Defines the central game state object and related helper functions/types.
 
 // --- Module Imports ---
-import * as Config from './config.js?cb=014'; // Needs config for initial values
-import { generateId } from './utils.js?cb=014'; // Needs ID generation
-import { ChoiceOutcomeConfig } from './config.js?cb=014';
+import * as Config from './config.js'; // Needs config for initial values
+import { generateId } from './utils.js'; // Needs ID generation
+import { ChoiceOutcomeConfig } from './config.js';
 // Note: getCurrentPlayer moved to avoid circular dependency
 
 /**
@@ -679,7 +679,7 @@ export function resetGameState() {
             relationshipChanges: [], environmentalChanges: []
         },
         // Hierarchical memory (Tier 3) — referenced by aiHandler/memoryRetriever.
-        arcMemory: { summaries: [], lastSummarizedTurn: 0 },
+        arcMemory: { summaries: [], lastSummarizedTurn: 0, nextSummaryAtTurn: 5 }, // same as initial state; was missing, so the first summary call fired on turn 2
         entityMemory: { npcs: {}, locations: {}, items: {} },
         // Reputation + jail — referenced by reputationContextualizer + jailSystem.
         reputationSystem: {
@@ -865,7 +865,7 @@ export async function initializeGameState() {
     // Initialize reputation system contextualized factions
     if (gameState.reputationSystem && !gameState.reputationSystem.contextualizedFactions) {
         try {
-            const { getContextualizedFactions, calculatePriceModifiers } = await import('./reputationContextualizer.js?cb=014');
+            const { getContextualizedFactions, calculatePriceModifiers } = await import('./reputationContextualizer.js');
             gameState.reputationSystem.contextualizedFactions = getContextualizedFactions();
             gameState.reputationSystem.priceModifiers = calculatePriceModifiers(gameState.reputationSystem.factions);
             log("State: Reputation system contextualized factions initialized for theme:", gameState.adventureTheme);
