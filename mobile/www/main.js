@@ -492,15 +492,6 @@ function setupEventListeners(UI, setup, actionHandler, saveLoad) { // Added acti
     UI.initializeQuestProgressUI();
     displayVisualError("main.js: Quest progress UI initialized.");
     
-    // Initialize Local AI Orchestrator
-    import('./localAIOrchestrator.js')
-        .then(({ localAIOrchestrator }) => {
-            displayVisualError("main.js: Local AI Orchestrator initialized and ready for multi-agent coordination.");
-        })
-        .catch(error => {
-            displayVisualError(`main.js: Local AI Orchestrator initialization failed: ${error.message}`);
-        });
-
     displayVisualError("setupEventListeners: Listener attachment process finished.");
 }
 

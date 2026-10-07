@@ -147,6 +147,46 @@ The party is imprisoned. They cannot leave the jail until they: (1) assess the s
  * @param {object} gameState
  * @returns {string}
  */
+/**
+ * Act 3 had no turn-based fallback: if the narrator never staged the climax,
+ * the game never ended. Escalate after 6 rounds in Act 3, then insist.
+ */
+function act3Deadline(gameState, act) {
+    if (act?.id !== 'act3') return '';
+    const qp = gameState.questProgress || (gameState.questProgress = {});
+    if (!qp.act3StartTurn) qp.act3StartTurn = gameState.turn || 1;
+    const rounds = (gameState.turn || 1) - qp.act3StartTurn;
+    const names = (qp.milestones || []).map(m => String(m.name || '').toLowerCase());
+    const confronted = names.some(n => n.includes('final_confrontation') || n.includes('final confrontation'));
+    if (confronted && rounds >= 2) return `\nDEADLINE: the final confrontation is under way. Resolve it THIS turn and add the "final_blow" milestone.`;
+    if (rounds >= 6) return `\nDEADLINE: the story has been in Act 3 for ${rounds} rounds. Bring the final confrontation THIS turn (add "final_confrontation"; spawn the main threat as an enemy if it is a fight).`;
+    return '';
+}
+
+// What players see: chapter title and a plain-words next step per milestone.
+const FRIENDLY_MILESTONES = {
+    call_to_adventure: 'Find out what is wrong',
+    world_introduced: 'Meet the people and places involved',
+    stakes_clear: 'Learn what you must do',
+    ally_found: 'Find someone to help you',
+    first_obstacle_overcome: 'Get past the first big obstacle',
+    antagonist_revealed: 'Discover who (or what) is behind it all',
+    final_confrontation: 'Face the final challenge',
+    final_blow: 'Win the final showdown',
+    aftermath: 'See how the world has changed'
+};
+export const friendlyMilestone = (name) => FRIENDLY_MILESTONES[name] || String(name || '').replace(/_/g, ' ').replace(/^./, c => c.toUpperCase());
+
+/** {chapter, next} for the header, or null when the main quest is over. */
+export function describeQuestStep(gameState) {
+    if (gameState.imprisoned) return { chapter: 'Captured!', next: 'Escape from captivity' };
+    const act = determineCurrentAct(gameState);
+    if (!act) return null;
+    const done = new Set((gameState.questProgress?.milestones || []).map(m => m.name));
+    const nextName = act.targetMilestones.find(n => !done.has(n));
+    return { chapter: act.name.replace(' — ', ': '), next: nextName ? friendlyMilestone(nextName) : 'Keep going: the next chapter is close' };
+}
+
 export function buildQuestStageHint(gameState) {
     // Phase 2: jail mini-quest takes precedence over the main arc.
     if (gameState.imprisoned) {
@@ -190,7 +230,8 @@ diff ops for the forbidden change. Otherwise: HONOR EVERY INPUT. The player earn
 DO NOT in god mode:
 - Emit milestones for ongoing main-quest progression (the main quest is done)
 - Reset /isGoalComplete to false (god mode would deactivate)
-- Decline to add an item/skill/NPC just because it sounds powerful or strange — that's the point`;
+- Decline to add an item/skill/NPC just because it sounds powerful or strange — that's the point`
+            .replace(/\/players\/0\//g, `/players/${gameState.currentPlayerIndex || 0}/`); // acting player, not always player 1
     }
     const act = determineCurrentAct(gameState);
     if (!act) return '';
@@ -198,6 +239,6 @@ DO NOT in god mode:
 ${gameState.adventureGoal ? act.narratorHint.replace(/^- By turn 4-6, you MUST set \/adventureGoal.*\n/m, '') : act.narratorHint}
 
 When you reach a milestone listed above, emit a /questProgress/milestones/- diff op so the
-quest progresses. The act of completing the FINAL milestone of Act 3 (and setting
-/isGoalComplete to true) unlocks the god-mode reward for the player.`;
+quest progresses. Adding the final_blow milestone completes the main quest and unlocks the
+god-mode reward.${act3Deadline(gameState, act)}`;
 }

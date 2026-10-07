@@ -53,6 +53,7 @@ export class InitializationManager {
                 // sets the manager to null so call sites can ?.-guard).
                 try {
                     const { godModeManager } = await import('./godMode.js');
+                    godModeManager?.resetForNewGame?.(); // a won game in this tab must not unlock the next one
                     gameState.godModeManager = godModeManager || null;
                 } catch (e) {
                     this.log(`InitManager: godMode load failed — feature disabled: ${e.message}`);

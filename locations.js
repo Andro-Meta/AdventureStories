@@ -4,7 +4,6 @@
 // --- Module Imports ---
 import { gameState } from './state.js';
 import { getRandomElement, getRandomInt } from './utils.js';
-import * as DynamicLocations from './dynamicLocations.js';
 
 /**
  * Location system manager
@@ -32,6 +31,7 @@ export class LocationSystem {
         
         try {
             // Use revolutionary dynamic location generation
+            const DynamicLocations = await import('./dynamicLocations.js');
             const startingLocation = await DynamicLocations.generateDynamicStartingLocation(theme);
             
             if (startingLocation) {

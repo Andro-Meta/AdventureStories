@@ -5,7 +5,6 @@
 import { gameState, buildGameContextBlock } from './state.js';
 import * as Config from './config.js';
 import { generateId } from './utils.js';
-import { gemmaHT } from './gemmaHyperthreading.js';
 
 /**
  * Dynamic Item Registry - Stores learned patterns and contextual items for this game session

@@ -121,7 +121,7 @@ ${prompt}`;
 Reply with ONE JSON object with all three keys, and nothing else:
 {"narration":"...","ops":[],"choices":[${types.map(t => `{"type":"${t}","text":"..."}`).join(',')}]}
 
-NARRATION: ${words} words, third person, naming the hero who acted. Show what happens because of the action, then end on a moment that invites the next decision. No choices or bracket tokens inside the narration.
+NARRATION: ${words} words (at least ${wc.min}; replies under that are too thin), in 2 short paragraphs, third person, naming the hero who acted. Show what happens because of the action, then end on a moment that invites the next decision. No choices or bracket tokens inside the narration.
 
 ${nextActor && (gameState.players || []).length > 1 ? `NEXT TO ACT: ${nextActor.name}. Write the choices for ${nextActor.name}${nextActor.specialMoves?.length ? ` (special moves: ${nextActor.specialMoves.map(m => m.name).join(', ')})` : ''} and end the narration by turning to them.
 
@@ -195,13 +195,13 @@ ${buildDiffInstructions(pIdx)}`;
     }
 }
 
-/** Small fallback call: choices for an already-written scene. */
-async function requestChoicesOnly(narrative, inCombat) {
+/** Small call: choices for an already-written scene (optionally for a named hero). */
+export async function requestChoicesOnly(narrative, inCombat, forHero = null) {
     const types = inCombat ? COMBAT_CHOICE_TYPES : EXPLORATION_CHOICE_TYPES;
     const enemies = inCombat ? `\nEnemies: ${(gameState.enemies || []).filter(e => !e.isDefeated).map(e => e.name).join(', ')}` : '';
     const payload = await API.getAIResponseJSON([
         { role: 'system', content: `You write the player choices for a ${getThemeName()} text adventure. Reply with one JSON object only.` },
-        { role: 'user', content: `SCENE:\n${narrative}${enemies}\n\n${buildChoiceInstructions(types, inCombat)}\n\nReply exactly as {"choices":[${types.map(t => `{"type":"${t}","text":"..."}`).join(',')}]}` }
+        { role: 'user', content: `SCENE:\n${narrative}${enemies}\n\n${forHero ? `Write the choices for ${forHero}, who acts next.\n` : ''}${buildChoiceInstructions(types, inCombat)}\n\nReply exactly as {"choices":[${types.map(t => `{"type":"${t}","text":"..."}`).join(',')}]}` }
     ], getChoiceSchema(inCombat), { jsonSchemaName: inCombat ? 'combat_choices' : 'exploration_choices', max_tokens: 600, temperature: 0.7 });
     return validateChoicesPayload(payload, inCombat);
 }
@@ -788,7 +788,7 @@ Use names, people, places and props native to this theme (no village elders in c
     if (gameState.adventureGoal) parts.push(`CURRENT GOAL: ${gameState.adventureGoal}`);
 
     const context = determineContext(currentPlayer);
-    let scene = `SCENE: ${context.situation}; ${context.environment}; ${context.timeOfDay}; weather ${context.weather}.`;
+    let scene = `SCENE: ${context.situation}; ${context.environment}; ${context.timeOfDay}; weather ${context.weather} (interpret for the setting: indoors or in space it means the conditions there).`;
     if (currentPlayer) {
         const moves = (currentPlayer.specialMoves || []).map(m => m.name).filter(Boolean);
         const status = (currentPlayer.statusEffects || []).map(s => s.name).filter(Boolean);
@@ -825,6 +825,14 @@ Use names, people, places and props native to this theme (no village elders in c
  * into gameState.entityMemory keyed by name, with LRU eviction past the
  * per-category cap. Both data structures persist in the save file.
  */
+/** Existing key in an entityMemory bucket that names the same thing, or null. */
+export function findEntityKey(bucket, name) {
+    const norm = (n) => String(n || '').toLowerCase().replace(/^(the|a|an)\s+/, '').replace(/[^a-z0-9]+/g, ' ').trim();
+    const target = norm(name);
+    if (!target) return null;
+    return Object.keys(bucket || {}).find(k => norm(k) === target) ?? null;
+}
+
 export async function refreshArcMemory() {
     const log = window.displayVisualError || console.log;
     if (!gameState.arcMemory) {
@@ -860,7 +868,7 @@ export async function refreshArcMemory() {
             [
                 { role: 'system', content: 'You are an editor distilling a tabletop adventure transcript. Output ONLY a JSON object — no prose, no commentary. Use the EXACT field names below. Names should be specific (e.g. "Mira" not "the player"). ' },
                 { role: 'user', content:
-`Summarize turns ${lastSummaryTurn + 1}-${gameState.turn} and extract any new named entities. Respond with ONLY this JSON shape (use empty arrays where nothing applies):
+`Summarize turns ${lastSummaryTurn + 1}-${gameState.turn} and extract any new named entities. Already known (reuse these exact names, do not rename or re-list them): ${['npcs', 'locations', 'items'].map(c => Object.keys(gameState.entityMemory?.[c] || {}).join(', ')).filter(Boolean).join('; ') || 'none'}. Respond with ONLY this JSON shape (use empty arrays where nothing applies):
 
 {
   "summary": "1-2 sentences capturing WHO did WHAT and the LASTING CONSEQUENCE.",
@@ -891,7 +899,9 @@ ${recentWindow}` }
         // get their description refreshed and lastSeenTurn bumped.
         const mergeEntities = (bucket, fresh) => {
             for (const e of fresh) {
-                const existing = bucket[e.name];
+                // Match loosely so "the Grand Foyer" / "Grand foyer" update the
+                // existing entry instead of becoming a second place.
+                const existing = bucket[findEntityKey(bucket, e.name) ?? e.name];
                 if (existing) {
                     existing.description = e.description;
                     existing.lastSeenTurn = gameState.turn;
@@ -1206,9 +1216,6 @@ This opening may run up to half again the READING LEVEL length. Use second-perso
         }
 
         log("AI Call Wrapper finished successfully.");
-
-        try { (await import('./saveLoad.js')).autosave(); }
-        catch (e) { log(`Autosave failed: ${e.message}`); }
 
         // Tier 3 hierarchical memory: kick off a non-blocking arc-memory
         // refresh after each successful turn. The summary call only fires

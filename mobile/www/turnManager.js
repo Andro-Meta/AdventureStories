@@ -16,6 +16,15 @@ import { handlePartyWipe, handleCombatVictory } from './resolution.js';
  * handles cooldowns/timers, and selects the next active player.
  * Calls relevant UI updates EXCEPT for rendering choices.
  */
+// Time and weather were fixed at "day, clear" for every scene.
+const TIMES_OF_DAY = ['morning', 'midday', 'afternoon', 'dusk', 'night', 'late night'];
+const WEATHER = ['clear', 'clear', 'clear', 'windy', 'foggy', 'rainy', 'stormy'];
+export function advanceWorldClock() {
+    const t = gameState.turn || 1;
+    gameState.timeOfDay = TIMES_OF_DAY[Math.floor((t - 1) / 2) % TIMES_OF_DAY.length]; // one step per 2 rounds
+    if (t % 3 === 0) gameState.weather = WEATHER[Math.floor(Math.random() * WEATHER.length)];
+}
+
 export async function advanceTurn() {
     const log = window.displayVisualError || console.log; // Use logger
     log(`--- Advancing Turn (End of Turn ${gameState.turn}) ---`);
@@ -184,6 +193,7 @@ export async function advanceTurn() {
     if (wrappedAround && canAnyoneAct) { // Only increment if someone can actually take the new turn
         gameState.turn++;
         log(`--- Starting Turn ${gameState.turn} ---`);
+        advanceWorldClock();
         // Refresh shop periodically
          if (gameState.turn > 1 && gameState.turn % 5 === 0) {
              gameState.shopItems = Items.generateShopItems(gameState.adventureTheme, gameState.turn);

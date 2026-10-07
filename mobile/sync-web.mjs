@@ -15,20 +15,16 @@ const INCLUDE_FILES = [
   'main.js', 'setup.js', 'state.js', 'engine.js', 'config.js', 'ui.js',
   'aiHandler.js', 'actionHandler.js', 'gameLoop.js', 'turnManager.js',
   'combat.js', 'resolution.js', 'questProgress.js', 'questDefinitions.js',
-  'storyHooks.js', 'storyContinuity.js', 'storyVariations.js',
+  'storyHooks.js',
   'godMode.js', 'memoryRetriever.js', 'schemas.js', 'localAI.js',
-  'liteRTBridge.js', 'saveLoad.js', 'storage.js', 'utils.js',
-  'initializationManager.js', 'spellUI.js', 'spells.js', 'spellGeneration.js',
-  'spellCasting.js', 'jailSystem.js', 'items.js', 'bosses.js',
-  'encounters.js', 'characterDevelopment.js', 'difficultyAdaptation.js',
+  'liteRTBridge.js', 'saveLoad.js', 'utils.js',
+  'initializationManager.js', 'spellUI.js', 'spells.js',
+  'spellCasting.js', 'jailSystem.js', 'items.js',
   'adaptiveAbilities.js', 'ageAppropriateReading.js', 'api_new.js',
-  'contextManager.js', 'dynamicBosses.js', 'dynamicChoices.js',
-  'dynamicEncounters.js', 'dynamicEnemies.js', 'dynamicItems.js',
-  'dynamicLocations.js', 'dynamicSpells.js', 'gemmaContextOptimizer.js',
-  'gemmaHyperthreading.js', 'inputCache.js', 'loadingManager.js',
-  'loadingTips.js', 'localAIOrchestrator.js', 'locations.js',
-  'reputationContextualizer.js', 'themeIntelligence.js',
-  'worldEvolution.js'
+  'contextManager.js', 'dynamicItems.js',
+  'dynamicLocations.js', 'dynamicSpells.js', 'inputCache.js', 'loadingManager.js',
+  'loadingTips.js', 'locations.js',
+  'reputationContextualizer.js', 'themeIntelligence.js'
 ];
 
 await mkdir(WWW, { recursive: true });

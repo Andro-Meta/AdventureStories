@@ -422,6 +422,8 @@ export async function completeSetupAndStartGameIntelligent() {
         
         if (result.success) {
             log("Setup: Intelligent initialization completed successfully!");
+            gameState.gameId = Date.now().toString(36); // names this game's autosave slot
+            try { (await import('./saveLoad.js')).autosave(); } catch (_) { /* first autosave is best-effort */ }
             log("Setup: Results:", result.results);
             
             // Show success message

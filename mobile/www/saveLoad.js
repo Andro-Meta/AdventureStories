@@ -234,9 +234,31 @@ export function saveGameToLocalStorage(slotName) {
  */
 export function autosave() {
     if (!gameState.players?.length) return;
+    // One autosave per game: a single shared slot meant starting a new game
+    // overwrote the previous game's only copy.
+    if (!gameState.gameId) gameState.gameId = Date.now().toString(36);
+    const names = gameState.players.map(p => p?.name).filter(Boolean).join(' & ').replace(/[\\/:*?"<>|]/g, '').slice(0, 40);
+    const slot = `Autosave ${names} (${gameState.adventureTheme || 'adventure'}) ${gameState.gameId}`;
     const ownSlot = gameState.currentSaveSlot;
-    try { saveGameToLocalStorage('Autosave'); }
+    try { saveGameToLocalStorage(slot); }
     finally { gameState.currentSaveSlot = ownSlot; }
+    pruneAutosaves(5);
+}
+
+/** Keep the newest `keep` autosaves; manual saves are never touched. */
+function pruneAutosaves(keep) {
+    try {
+        const autos = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (k && k.startsWith(Config.SAVE_GAME_PREFIX + 'Autosave ')) {
+                let date = 0;
+                try { date = JSON.parse(localStorage.getItem(k))?.saveDate || 0; } catch (_) {}
+                autos.push([k, date]);
+            }
+        }
+        autos.sort((a, b) => b[1] - a[1]).slice(keep).forEach(([k]) => localStorage.removeItem(k));
+    } catch (_) { /* storage unavailable: nothing to prune */ }
 }
 
 export async function continueLastGame() {
@@ -414,6 +436,7 @@ export async function loadGame(slotName) {
         // Phase 0 audit P1 #15.
         try {
             const { godModeManager } = await import('./godMode.js');
+            godModeManager.resetForNewGame?.(); // restoreFromJSON / isGoalComplete below re-unlock only won saves
             gameState.godModeManager = godModeManager;
             // BUG-26 fix: restore the Map-backed manager state from the
             // snapshot saved in saveGameToLocalStorage. Without this every

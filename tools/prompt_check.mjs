@@ -8,6 +8,7 @@ const { gameState, resetGameState } = await import('../state.js');
 const AI = await import('../aiHandler.js');
 const { validateChoicesPayload, validateNarrativeTurnPayload } = await import('../schemas.js');
 const Engine = await import('../engine.js');
+const { formatTurnRecap } = await import('../actionHandler.js');
 
 resetGameState();
 gameState.adventureTheme = 'pirate';
@@ -55,6 +56,19 @@ Engine.applyDiff([
 ], { strict: false });
 const init = gameState.combat?.initiative || [];
 check(gameState.inCombat && init.some(id => String(id).startsWith('enemy')), `inCombat-before-enemy ops still put the enemy in the turn order (${init.length} entries)`);
+
+// One-line turn recap.
+const before = [{ name: 'Vincent', hp: 100, coins: 50, items: ['Grog'] }, { name: 'Ava', hp: 80, coins: 5, items: [] }];
+const after = [{ name: 'Vincent', hp: 88, coins: 69, items: ['Grog', 'Rusty Cutlass'] }, { name: 'Ava', hp: 80, coins: 5, items: [] }];
+const recap = formatTurnRecap(before, after, 'Vincent');
+check(recap === 'Vincent: −12 HP, +19 coins, found Rusty Cutlass', `recap reads "${recap}"`);
+check(formatTurnRecap(after, after, 'Ava') === 'Ava: no change', 'unchanged actor shows "no change"');
+
+// Entity names: loose matching keeps one entry per place.
+gameState.entityMemory = { npcs: {}, locations: { 'Grand Foyer': { name: 'Grand Foyer' } }, items: {} };
+Engine.applyDiff([{ op: 'add', path: '/entityMemory/locations/the grand foyer', value: { name: 'the grand foyer', description: 'dusty' } }], { strict: false });
+check(Object.keys(gameState.entityMemory.locations).length === 1 && gameState.entityMemory.locations['Grand Foyer'].description === 'dusty', 'renamed place updates the existing entity');
+check(AI.findEntityKey({ 'Grand Foyer': {} }, 'The grand-foyer') === 'Grand Foyer', 'summarizer merge matches "The grand-foyer" to "Grand Foyer"');
 
 console.log(failed ? `✗ ${failed} PROMPT CHECK FAILURE(S)` : '✓ prompt checks pass');
 process.exit(failed ? 1 : 0);

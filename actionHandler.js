@@ -13,8 +13,6 @@ import { generateId, getRandomElement, getRandomInt, clamp } from './utils.js';
 import { makeAICallForSystemAction } from './aiHandler.js';
 // Import turnManager functions statically
 import { advanceTurn } from './turnManager.js';
-// Import encounter system
-import { checkAndProcessEncounter } from './encounters.js';
 // Import game loop
 import { processPlayerAction as gameLoopProcessAction } from './gameLoop.js';
 // Import reputation system
@@ -74,9 +72,40 @@ if (typeof window !== 'undefined') {
     window.handleGodModeChoice = handleGodModeChoice;
 }
 
+/** HP, coins and item names per player, to diff before/after a turn. */
+function snapshotParty() {
+    return (gameState.players || []).map(p => ({
+        name: p.name, hp: p.hp ?? 0, coins: p.coins ?? 0,
+        items: (p.inventory || []).map(i => i?.name).filter(Boolean)
+    }));
+}
+
+/**
+ * "Vincent: -12 HP, +19 coins, found Rusty Cutlass" for the acting player,
+ * plus any other player whose numbers changed this turn ("·"-separated).
+ */
+export function formatTurnRecap(before, after, actorName) {
+    const parts = [];
+    after.forEach((a, i) => {
+        const b = before[i] || { hp: a.hp, coins: a.coins, items: a.items };
+        const bits = [];
+        const dHp = a.hp - b.hp, dCoins = a.coins - b.coins;
+        if (dHp) bits.push(`${dHp > 0 ? '+' : '\u2212'}${Math.abs(dHp)} HP`);
+        if (dCoins) bits.push(`${dCoins > 0 ? '+' : '\u2212'}${Math.abs(dCoins)} coins`);
+        const remaining = [...b.items];
+        const gained = a.items.filter(n => { const k = remaining.indexOf(n); if (k >= 0) { remaining.splice(k, 1); return false; } return true; });
+        if (gained.length) bits.push(`found ${gained.join(', ')}`);
+        if (remaining.length) bits.push(`used ${remaining.join(', ')}`);
+        if (bits.length) parts.push(`${a.name}: ${bits.join(', ')}`);
+        else if (a.name === actorName) parts.push(`${a.name}: no change`);
+    });
+    return parts.join(' \u00b7 ');
+}
+
 export async function handlePlayerChoice(actionType, choiceText) {
     const log = window.displayVisualError || console.log;
     log(`Handling player choice: ${actionType} - ${choiceText}`);
+    let recapBefore = null, recapActor = null; // set once the turn actually starts
 
     try {
         if (gameState.isLoading || !canCurrentPlayerAct()) {
@@ -89,6 +118,8 @@ export async function handlePlayerChoice(actionType, choiceText) {
         // Turn lock: held until this turn's AI calls have actually finished
         // (released in finally), so a slow reply can't overlap the next turn.
         gameState.isLoading = true;
+        recapBefore = snapshotParty();
+        recapActor = getCurrentPlayer()?.name;
 
         // Show loading indicator and disable choices to prevent multiple clicks
         UI.showLoading(true, 'Processing your choice...');
@@ -348,7 +379,18 @@ Narrate this combat round in vivid second-person voice. Then provide ${gameState
                     if (inCombatBeforeCall && (!gameState.inCombat || Combat.areAllEnemiesDefeated())) {
                         gameState.inCombat = false;
                         if (gameState.combat) gameState.combat.isActive = false;
+                        const fighter = gameState.currentPlayerIndex;
                         await advanceTurn();
+                        // The reply's choices were written for the fighter; with 2+
+                        // players the turn has just passed to someone else.
+                        if (gameState.players.length > 1 && gameState.currentPlayerIndex !== fighter) {
+                            try {
+                                const { requestChoicesOnly } = await import('./aiHandler.js');
+                                const fresh = await requestChoicesOnly(gameState.currentNarrative, false, getCurrentPlayer()?.name);
+                                gameState.currentChoices = fresh;
+                                UI.renderChoices(fresh);
+                            } catch (err) { log(`Post-fight choices for next hero failed: ${err.message}`); }
+                        }
                     }
                     cbStep(12, `AI call returned, choices=${aiResponse?.choices?.length || 0}`);
                     const choices = aiResponse?.choices;
@@ -362,6 +404,15 @@ Narrate this combat round in vivid second-person voice. Then provide ${gameState
                 } finally {
                     UI.showLoading(false);
                     cbStep('11-finally', 'showLoading(false)');
+                }
+                // Winning the fight after the final confrontation began IS the
+                // final blow, even if the narrator forgot the milestone.
+                if (!gameState.inCombat && !gameState.isGoalComplete) {
+                    const names = (gameState.questProgress?.milestones || []).map(m => String(m.name || ''));
+                    if (names.includes('final_confrontation') && !names.includes('final_blow')) {
+                        const { applyDiff } = await import('./engine.js');
+                        applyDiff([{ op: 'add', path: '/questProgress/milestones/-', value: { name: 'final_blow', description: 'The final foe is defeated.' } }], { strict: false });
+                    }
                 }
                 // SMOKE-FIX: never leave the player with no choices. If the
                 // narrator call failed, timed out, or returned an empty list,
@@ -681,6 +732,10 @@ Result: ${gameState.narrativeContext.lastOutcome?.success ? 'it works out' : 'it
         // but nothing responds. Clearing here covers that path.
         gameState.isLoading = false;
         gameState.combatRoundInProgress = false;
+        if (recapBefore) {
+            try { UI.showTurnRecap(formatTurnRecap(recapBefore, snapshotParty(), recapActor)); } catch (_) {}
+            try { (await import('./saveLoad.js')).autosave(); } catch (e) { log(`Autosave failed: ${e.message}`); }
+        }
         UI.showLoading(false);
         try { UI.updateQuickActions(); } catch (_) { /* inventory/shop buttons were disabled by the lock */ }
 
@@ -1053,14 +1108,14 @@ function extractGodModeDiffOps(text) {
             // file's existing imports include gameState).
             try {
                 const { gameState } = require('./state.js');
-                const current = gameState.players?.[0]?.coins || 0;
+                const current = getCurrentPlayer()?.coins || 0;
                 n = Math.min(99999, current + n);
             } catch (_) {
                 // gameState not synchronously importable in browser ESM —
                 // fall back to relying on the surrounding actionHandler scope
                 // which has gameState via static import.
                 if (typeof gameState !== 'undefined') {
-                    const current = gameState.players?.[0]?.coins || 0;
+                    const current = getCurrentPlayer()?.coins || 0;
                     n = Math.min(99999, current + n);
                 }
             }
@@ -1283,6 +1338,8 @@ export async function handleCustomAction() {
          return;
     }
 
+    const recapBefore = snapshotParty(), recapActor = getCurrentPlayer()?.name; // god-mode turns get the recap too
+
     // Check if custom actions are allowed
     if (!gameState.allowCustomActions) {
          log("Custom action blocked: Goal not complete.");
@@ -1344,7 +1401,8 @@ export async function handleCustomAction() {
     if (gameState.isGoalComplete) {
         try {
             const { applyDiff } = await import('./engine.js');
-            const ops = extractGodModeDiffOps(actionText);
+            const pi = gameState.currentPlayerIndex || 0; // the parser writes /players/0; target the declarer
+            const ops = extractGodModeDiffOps(actionText).map(o => ({ ...o, path: o.path.replace(/^\/players\/0\//, `/players/${pi}/`) }));
             if (ops.length > 0) {
                 const summaries = applyDiff(ops, { strict: false });
                 preApplied.push(...summaries);
@@ -1363,116 +1421,12 @@ export async function handleCustomAction() {
     // the world. Treat their input as canon unless age-tier policy forbids.
     // Every tangible consequence MUST be persisted via diff ops; otherwise
     // the change is just narration and disappears next turn.
-    const actionLog = `[CREATIVE MODE — player wields divine authorial power]
-Player: ${currentPlayer.name}
-Player input: "${actionText}"${refLine}${preAppliedNote}
-
-The player has earned full authorial authority. Honor what they declare.
-NARRATE the world's response in vivid second-person voice (200-400 words),
-THEN emit diff ops to persist every tangible consequence.
-
-DEFAULTING POLICY when the player is vague:
-• Item without stats → assign reasonable stats for the implied power level. A "Singing Sword"
-  → {atk:18, effect:"strikes hum a chord that staggers foes for 1 turn"}. A "godslayer" weapon
-  → {atk:60, effect:"deals double damage to bosses"}. Use Special tier unless player says otherwise.
-• Skill/spell without mechanics → cooldown:3, mpCost:10, plain mechanics. A "Time Stop" spell
-  → {cooldown:8, mpCost:30, mechanics:{stunAllEnemies:1}}. A "Heal" spell → {cooldown:2, mpCost:5, mechanics:{healSelf:30}}.
-• NPC without details → friendly/neutral relationship, traits=["companion"], description from prose.
-• Boss without stats → hp:300-800, atk:30-60, def:20-40 scaled to drama.
-• Quantities ("a lot of gold") → 10000. ("infinite") → 99999 (engine cap).
-
-EXAMPLES — copy the diff shapes verbatim:
-
-"I have a million gold."
-{"diff":{"ops":[
-  {"op":"replace","path":"/players/0/coins","value":99999}
-]}}
-
-"Give me a Singing Sword that stuns enemies."
-{"diff":{"ops":[
-  {"op":"add","path":"/players/0/inventory/-","value":{
-    "name":"Singing Sword","type":"Weapon","tier":"Special",
-    "effect":"strikes hum a chord that briefly staggers foes",
-    "stats":{"atk":24}}},
-  {"op":"add","path":"/entityMemory/items/Singing Sword","value":{
-    "name":"Singing Sword","description":"a blade that resonates with bound music"}}
-]}}
-
-"I'm wearing the Aegis of the Dawn (player did NOT specify stats)."
-{"diff":{"ops":[
-  {"op":"add","path":"/players/0/inventory/-","value":{
-    "name":"Aegis of the Dawn","type":"Armor","tier":"Special",
-    "effect":"glows with first-light radiance, repelling shadow",
-    "stats":{"def":22}}}
-]}}
-
-"I learn the Time Stop spell."
-{"diff":{"ops":[
-  {"op":"add","path":"/players/0/specialMoves/-","value":{
-    "name":"Time Stop","description":"freeze the moment for one turn",
-    "cooldown":8,"mpCost":30,"usageContext":"both",
-    "mechanics":{"stunAllEnemies":1}}}
-]}}
-
-"I summon Ember the phoenix as my familiar."
-{"diff":{"ops":[
-  {"op":"add","path":"/entityMemory/npcs/Ember","value":{
-    "name":"Ember","description":"a phoenix companion, feathers of living flame",
-    "traits":["familiar","loyal","fiery"],"relationship":"bonded"}},
-  {"op":"add","path":"/players/0/specialMoves/-","value":{
-    "name":"Ember's Aid","description":"call Ember to scorch a single foe",
-    "cooldown":4,"mpCost":15,"usageContext":"combat",
-    "mechanics":{"directDamage":40}}}
-]}}
-
-"I increase my max HP to 500 and gain 30 attack."
-{"diff":{"ops":[
-  {"op":"replace","path":"/players/0/maxHp","value":500},
-  {"op":"replace","path":"/players/0/hp","value":500},
-  {"op":"replace","path":"/players/0/atk","value":30}
-]}}
-
-"I summon the Hollow King as a new boss for me to fight."
-{"diff":{"ops":[
-  {"op":"add","path":"/enemies/-","value":{
-    "name":"The Hollow King","hp":600,"maxHp":600,"atk":45,"def":25,
-    "abilities":["Voidstrike","Echoing Curse","Dread Aura"]}},
-  {"op":"replace","path":"/inCombat","value":true},
-  {"op":"add","path":"/entityMemory/npcs/The Hollow King","value":{
-    "name":"The Hollow King","description":"a crowned silhouette where a soul should be",
-    "traits":["antagonist","void-touched"],"relationship":"hostile"}}
-]}}
-
-"I declare a new quest: find the seven Sun Hearts before winter ends."
-{"diff":{"ops":[
-  {"op":"replace","path":"/adventureGoal","value":"Find the seven Sun Hearts before winter's end."},
-  {"op":"replace","path":"/questProgress/completionPercentage","value":0},
-  {"op":"add","path":"/questProgress/milestones/-","value":{
-    "name":"new_quest_declared","description":"The Sun Heart quest begins."}}
-]}}
-(Note: do NOT flip /isGoalComplete back to false — the player keeps god mode.
-A new quest in creative mode is its own thing; the original main quest stays
-"complete" forever. Just reset completionPercentage and reuse the milestones list.)
-
-"I create a new location: the Crystal Spires of Ashveil."
-{"diff":{"ops":[
-  {"op":"replace","path":"/currentLocation","value":{
-    "name":"Crystal Spires of Ashveil","type":"sanctuary",
-    "dangerLevel":0.2,
-    "description":"a dawn-lit lattice of singing crystal towers above a sea of ash"}},
-  {"op":"add","path":"/entityMemory/locations/Crystal Spires of Ashveil","value":{
-    "name":"Crystal Spires of Ashveil","description":"player-summoned sanctuary above the ashlands",
-    "traits":["sanctuary","crystal","dawn"]}}
-]}}
-
-REFUSAL RULES (rare):
-• If the input violates the active age-tier content policy, do NOT carry it out.
-  Instead, write a DIEGETIC refusal — the world itself resists, in character —
-  with no fourth-wall break, and emit no diff ops for the forbidden change.
-• "Anti-fun" requests like "I delete the player" or "the universe ends" — narrate
-  the cosmos shrugging it off, no diff ops.
-
-Otherwise: HONOR the player's intent. Persist consequences. They earned this.`;
+    // The god-mode rules (declaration -> op mapping, defaults, examples) are
+    // in every turn prompt (buildDiffInstructions + the GOD MODE quest block),
+    // targeted at the acting player. This used to repeat ~100 lines of them
+    // with /players/0 paths, second person and 200-400 words.
+    const actionLog = `[God mode] ${currentPlayer.name} declares: "${actionText}"${refLine}${preAppliedNote}
+Honor the declaration (age policy permitting): narrate the world's response and persist every tangible change with ops.`;
 
     log(`Custom action prompt (creative mode${matchedNames.length ? `, refs: ${matchedNames.join(', ')}` : ', novel'}): ${actionText.slice(0, 80)}...`);
 
@@ -1488,6 +1442,8 @@ Otherwise: HONOR the player's intent. Persist consequences. They earned this.`;
         throw new Error(`Custom action processing failed: ${error.message}`);
     } finally {
         UI.showLoading(false);
+        try { UI.showTurnRecap(formatTurnRecap(recapBefore, snapshotParty(), recapActor)); } catch (_) {}
+        try { (await import('./saveLoad.js')).autosave(); } catch (_) {}
     }
 
     log("handleCustomAction finished.");

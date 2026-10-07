@@ -9,6 +9,7 @@ import * as Spells from './spells.js';
 import * as SpellUI from './spellUI.js';
 // Import specific utils needed
 import { sanitizeText, shuffleArray } from './utils.js';
+import { describeQuestStep, friendlyMilestone } from './questDefinitions.js';
 // Import functions from other new modules
 import { getCurrentPlayer, canCurrentPlayerAct } from './state.js';
 // Import themedItemData directly if it's exported from items.js
@@ -104,6 +105,7 @@ export const elements = {
     enemiesDisplay: document.getElementById('enemiesDisplay'),
     storyCard: document.getElementById('storyCard'),
     storyText: document.getElementById('storyText'),
+    turnRecap: document.getElementById('turnRecap'),
     // toggleStoryBtn: document.getElementById('toggleStoryBtn'), // REMOVED
     choicesCard: document.getElementById('choicesCard'),
     choicesContainer: document.getElementById('choicesContainer'),
@@ -652,6 +654,13 @@ export function updateGameHeader() {
     const hasRealGoal = gameState.adventureGoal && gameState.adventureGoal !== 'Not set yet.';
     if (elements.adventureGoal) elements.adventureGoal.textContent = String(hasRealGoal ? gameState.adventureGoal : 'Setting your quest...');
     if (elements.turnCounter) elements.turnCounter.textContent = gameState.turn;
+    // Players never saw what to do next: chapter + next beat, kid-friendly.
+    const step = describeQuestStep(gameState);
+    const chapterEl = document.getElementById('questChapter'), nextEl = document.getElementById('questNextStep');
+    if (chapterEl && nextEl) {
+        chapterEl.textContent = gameState.isGoalComplete ? 'Quest complete!' : (step?.chapter || '');
+        nextEl.textContent = gameState.isGoalComplete ? '· God mode: type anything to shape the world' : (step ? `· Next: ${step.next}` : '');
+    }
 
     // Update custom action visibility based on game state
     if (elements.customActionContainer) {
@@ -1638,6 +1647,13 @@ globalThis.addEventListener?.('adv:ai-status', (e) => {
     }
 });
 
+/** Show (or hide, with empty text) the one-line result of the last turn. */
+export function showTurnRecap(text) {
+    if (!elements.turnRecap) return;
+    elements.turnRecap.textContent = text || '';
+    elements.turnRecap.classList.toggle('hidden', !text);
+}
+
 export function showLoading(isLoading, message = 'Loading...') {
     const loadingIndicator = elements.loadingIndicator;
     const loadingMessage = elements.loadingMessage;
@@ -1799,11 +1815,12 @@ function updateMilestonesList(milestones) {
             
             const nameSpan = document.createElement('span');
             nameSpan.className = 'milestone-name';
-            nameSpan.textContent = String(milestone.name);
+            nameSpan.textContent = friendlyMilestone(milestone.name) || String(milestone.displayName || milestone.name);
             
             const turnSpan = document.createElement('span');
             turnSpan.className = 'milestone-turn';
-            turnSpan.textContent = `Turn ${milestone.completedTurn}`;
+            // The engine stores `turn`; the old UI read `completedTurn` ("Turn undefined").
+            turnSpan.textContent = `Turn ${milestone.turn ?? milestone.completedTurn ?? '?'}`;
             
             div.appendChild(nameSpan);
             div.appendChild(turnSpan);

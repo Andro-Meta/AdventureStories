@@ -288,7 +288,9 @@ const PATHS = [
         },
         apply: (m, value, gs) => {
             const category = m[1];
-            const key = (value.name || m[2]).trim();
+            const rawKey = (value.name || m[2]).trim();
+            const norm = (n) => String(n || '').toLowerCase().replace(/^(the|a|an)\s+/, '').replace(/[^a-z0-9]+/g, ' ').trim();
+            const key = Object.keys(gs.entityMemory?.[category] || {}).find(k => norm(k) === norm(rawKey)) || rawKey;
             gs.entityMemory = gs.entityMemory || { npcs: {}, locations: {}, items: {} };
             gs.entityMemory[category] = gs.entityMemory[category] || {};
             gs.entityMemory[category][key] = {
@@ -298,7 +300,8 @@ const PATHS = [
                 relationship: value.relationship || (category === 'npcs' ? 'neutral' : undefined),
                 lastSeenTurn: gs.turn,
                 createdInGodMode: !!gs.isGoalComplete,
-                ...value
+                ...value,
+                name: key // keep the stored key's spelling
             };
             return `entityMemory.${category}["${key}"] set`;
         }
@@ -726,6 +729,13 @@ const PATHS = [
             // false → true: unlock god mode (the original Phase 3 reward).
             if (value && !wasComplete) {
                 gs.allowCustomActions = true;
+                gs.questProgress = gs.questProgress || {};
+                gs.questProgress.completionPercentage = 100;
+                if (!gs.questRewardsGranted) {
+                    gs.questRewardsGranted = true; // once per main quest
+                    import('./resolution.js').then(r => r.handleGoalCompletionRewards())
+                        .catch(e => (window.displayVisualError || console.log)(`Quest rewards failed: ${e.message}`));
+                }
                 if (gs.godModeManager) {
                     try {
                         gs.godModeManager.checkUnlockConditions();
@@ -743,6 +753,7 @@ const PATHS = [
             // the omnipotent UI goes away.
             if (!value && wasComplete) {
                 gs.allowCustomActions = false;
+                gs.questRewardsGranted = false; // a new main quest can pay out again
                 if (gs.godModeManager) {
                     try {
                         if (typeof gs.godModeManager.deactivateGodMode === 'function') {
@@ -769,6 +780,7 @@ const PATHS = [
  */
 export function normalizeOp(op) {
     if (!op || typeof op.path !== 'string') return op;
+    if (op.op === 'replace' && op.path.endsWith('/-')) op = { ...op, op: 'add' }; // live: a milestone was dropped this way
     const m = op.path.match(/^\/entityMemory\/(npcs|locations|items)\/-$/);
     if (m && op.value && typeof op.value.name === 'string' && op.value.name.trim()) {
         const key = op.value.name.trim().replace(/[^a-zA-Z0-9 _'-]/g, '').slice(0, 60);

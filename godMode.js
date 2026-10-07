@@ -229,6 +229,13 @@ export class GodModeManager {
     /**
      * Deactivate God Mode (return to normal play)
      */
+    /** Fresh state for a new or loaded game (this object is shared per tab). */
+    resetForNewGame() {
+        if (this.isActive) { try { this.deactivateGodMode(); } catch (_) {} }
+        this.isUnlocked = false;
+        this.isActive = false;
+    }
+
     deactivateGodMode() {
         const log = window.displayVisualError || console.log;
         
@@ -502,11 +509,18 @@ export class GodModeManager {
      *      milestone literally named final_blow. Earlier code looked
      *      for `adventureGoal.includes('completed')` which never fires.
      */
+    completeQuestViaEngine() {
+        import('./engine.js').then(E => {
+            if (!gameState.isGoalComplete) E.applyDiff([{ op: 'replace', path: '/isGoalComplete', value: true }], { strict: false });
+        }).catch(() => {});
+    }
+
     checkMainQuestlineCompletion() {
         if (gameState.isGoalComplete === true) return true;
         if (gameState.questProgressManager
             && typeof gameState.questProgressManager.shouldCompleteQuest === 'function'
             && gameState.questProgressManager.shouldCompleteQuest()) {
+            this.completeQuestViaEngine();
             return true;
         }
         const milestones = gameState.questProgress?.milestones || [];

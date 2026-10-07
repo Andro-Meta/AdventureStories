@@ -672,6 +672,7 @@ export function resetGameState() {
             milestones: [], currentObjectives: [], sideQuests: [],
             discoveredSecrets: [], keyEvents: [], progressHistory: []
         },
+        timeOfDay: 'morning', weather: 'clear', recentTurns: [], // advanced per round by turnManager.advanceWorldClock
         // Same shape as the initial gameState above; actionHandler reads these arrays on turn 1.
         narrativeContext: {
             lastAction: null, lastOutcome: null,

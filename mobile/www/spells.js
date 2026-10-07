@@ -507,9 +507,7 @@ export async function generateDynamicSpell(school, type, level, context = {}) {
         const log = window.displayVisualError || console.log;
         log(`Spells: Dynamic generation failed, using fallback: ${error.message}`);
         
-        // Fallback to basic generation
-        const SpellGeneration = await import('./spellGeneration.js');
-        return await SpellGeneration.generateDynamicSpell(school, type, level, context);
+        return null; // callers already fall back to built-in spells
     }
 }
 

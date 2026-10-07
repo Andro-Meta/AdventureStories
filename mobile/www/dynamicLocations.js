@@ -7,7 +7,6 @@ import * as Config from './config.js';
 import * as ThemeIntelligence from './themeIntelligence.js';
 import * as AdaptiveAbilities from './adaptiveAbilities.js';
 import { generateId, getRandomInt, getRandomElement } from './utils.js';
-import { gemmaHT } from './gemmaHyperthreading.js';
 
 /**
  * Dynamic Location Registry - Generates contextually perfect locations for infinite themes

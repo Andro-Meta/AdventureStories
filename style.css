@@ -2742,6 +2742,20 @@ footer { margin-top: 2rem; text-align: center; }
     background: linear-gradient(90deg, #9c27b0, #7b1fa2);
 }
 /* Phase 3.5 P4 — combat log strip */
+/* Chapter + next step under the goal, e.g. "Act 2: The Trial · Next: Find someone to help you". */
+.quest-step { font-size: 0.9rem; opacity: 0.9; margin-top: 0.2rem; }
+.quest-step #questChapter { font-weight: 600; }
+
+/* One-line result of the last turn, e.g. "Vincent: -12 HP, +19 coins". */
+.turn-recap {
+    margin: 0.75rem 0 0;
+    padding: 0.4rem 0.7rem;
+    border-left: 3px solid var(--accent-color);
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+    font-size: 0.95rem;
+}
+
 .combat-log-strip {
     max-height: 180px;
     overflow-y: auto;

@@ -9,14 +9,9 @@ import { getRandomInt, getRandomElement, clamp, generateId } from './utils.js';
 // Import item functions needed for enemy loot generation
 import { generateThemedItem, generateLootDrop } from './items.js';
 import * as AdaptiveAbilities from './adaptiveAbilities.js';
-import * as DynamicEnemies from './dynamicEnemies.js';
 import { getTrustDifficultyModifiers } from './reputationContextualizer.js';
 // Import UI function for popups and potentially updating UI after combat actions
 import { showPopup, renderPlayerCards, renderEnemyCards, updateContextHeaders, renderInventory } from './ui.js'; // Added renderInventory
-// Import Gemma hyperthreading for enhanced combat AI
-import { gemmaHT } from './gemmaHyperthreading.js';
-// Import boss system for enhanced boss encounters
-import * as Bosses from './bosses.js';
 
 // --- Enemy Generation & Scaling ---
 
@@ -1493,17 +1488,6 @@ export async function handleEnemyTurn(enemyId) {
 
     log(`Enemy Turn: ${enemy.name} is acting...`);
     
-    // Check for boss phase transitions
-    if (enemy.isBoss && Bosses.checkBossPhaseTransition(enemy)) {
-        Bosses.triggerBossPhaseTransition(enemy);
-        await new Promise(resolve => setTimeout(resolve, 2000)); // Extra pause for phase transition
-    }
-    
-    // Update boss ability cooldowns
-    if (enemy.isBoss) {
-        Bosses.updateBossAbilityCooldowns(enemy);
-    }
-    
     // Wait a moment before enemy acts for better UX
     await new Promise(resolve => setTimeout(resolve, 1000));
 
@@ -1512,25 +1496,6 @@ export async function handleEnemyTurn(enemyId) {
     if (validTargets.length === 0) {
         log(`No valid targets for ${enemy.name}`);
         return;
-    }
-
-    // Boss enemies have a chance to use special abilities
-    if (enemy.isBoss && Math.random() < 0.6) { // 60% chance for boss ability
-        const abilityResult = await Bosses.executeBossAbility(enemy, validTargets);
-        if (abilityResult.success) {
-            log(`${enemy.name} used boss ability: ${abilityResult.ability}`);
-            
-            // Process any post-action effects
-            if (enemy.statusEffects?.length > 0) {
-                await processStatusEffectTicks(enemy);
-            }
-            
-            // Advance the turn after boss ability (awaited so the whole enemy
-            // phase lands before the narrator is told the round's result)
-            await advanceCombatTurn();
-            return;
-        }
-        // If boss ability failed, fall through to normal attack
     }
 
     // Select action based on enemy's abilities and state
