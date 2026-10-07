@@ -260,7 +260,9 @@ function resolveBackendUrl(defaultUrl) {
 // CLOUD MODEL IDs — re-verified 2026-10-07 against openrouter.ai/api/v1/models
 // and with a live game-shaped JSON prompt (narration + diff + 5 typed choices):
 //   nemotron-3-super-120b:free   ~10 s, valid JSON, 5/5 choice types
-//   openrouter/free (router)     ~8 s,  valid JSON, 5/5 choice types
+//   openrouter/free (router)     ~8 s on the bench, but in a live game it routed
+//                                to code models and a safety classifier ("User
+//                                Safety: safe" became the story). Never list it.
 //   nemotron-3-ultra-550b:free   ~25 s, valid JSON, richest narration
 //   gemma-4-31b / 26b :free      429 "rate-limited upstream" at test time
 //   inkling(-small):free         403 "only available on agentic harnesses"
@@ -279,17 +281,17 @@ export const CLOUD_PROVIDERS = {
         name: 'OpenRouter — Free models (auto-fallback) ★ recommended',
         baseUrl: 'https://openrouter.ai/api/v1',
         model: 'nvidia/nemotron-3-super-120b-a12b:free',
-        fallbackModels: ['openrouter/free', 'nvidia/nemotron-3-ultra-550b-a55b:free'],
+        fallbackModels: ['nvidia/nemotron-3-ultra-550b-a55b:free', 'google/gemma-4-31b-it:free'],
         signupUrl: 'https://openrouter.ai/settings/keys',
         contextWindow: 262144,
         rateLimit: OPENROUTER_FREE_LIMITS,
-        notes: "Nemotron 3 Super 120B, failing over to OpenRouter's free router, then Nemotron 3 Ultra."
+        notes: 'Nemotron 3 Super 120B, failing over to Nemotron 3 Ultra, then Gemma 4 31B.'
     },
     openrouter_ultra: {
         name: 'OpenRouter — Nemotron 3 Ultra 550B (Free, richest, slower)',
         baseUrl: 'https://openrouter.ai/api/v1',
         model: 'nvidia/nemotron-3-ultra-550b-a55b:free',
-        fallbackModels: ['nvidia/nemotron-3-super-120b-a12b:free', 'openrouter/free'],
+        fallbackModels: ['nvidia/nemotron-3-super-120b-a12b:free', 'google/gemma-4-31b-it:free'],
         signupUrl: 'https://openrouter.ai/settings/keys',
         contextWindow: 1000000,
         rateLimit: OPENROUTER_FREE_LIMITS,
@@ -299,7 +301,7 @@ export const CLOUD_PROVIDERS = {
         name: 'OpenRouter — Gemma 4 31B (Free, often rate-limited)',
         baseUrl: 'https://openrouter.ai/api/v1',
         model: 'google/gemma-4-31b-it:free',
-        fallbackModels: ['nvidia/nemotron-3-super-120b-a12b:free', 'openrouter/free'],
+        fallbackModels: ['nvidia/nemotron-3-super-120b-a12b:free', 'nvidia/nemotron-3-ultra-550b-a55b:free'],
         signupUrl: 'https://openrouter.ai/settings/keys',
         contextWindow: 262144,
         rateLimit: OPENROUTER_FREE_LIMITS,

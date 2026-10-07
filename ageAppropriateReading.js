@@ -10,15 +10,18 @@ import { gameState } from './state.js';
  * Reading level specifications based on actual children's and adult literature
  * Calibrated to real book page lengths and vocabulary complexity
  */
+// Lengths are per game TURN (read aloud to a group, then everyone picks), not
+// per book page: long turns made play slow and output-heavy. Book comparisons
+// still set the voice.
 const READING_SPECIFICATIONS = {
     // Early Elementary (Ages 6-8) - Picture books transitioning to chapter books
     early_elementary: {
         ageRange: [6, 8],
-        targetWordCount: { min: 150, max: 250 },
+        targetWordCount: { min: 70, max: 120 },
         sentenceLength: { min: 8, max: 15 },
-        paragraphCount: { min: 2, max: 3 },
+        paragraphCount: { min: 1, max: 2 },
         vocabularyLevel: 'simple',
-        readingTime: '2-3 minutes',
+        readingTime: 'about 30-45 seconds',
         bookComparison: 'Like a page from "Magic Tree House" or "Junie B. Jones"',
         characteristics: [
             'Short, clear sentences',
@@ -32,11 +35,11 @@ const READING_SPECIFICATIONS = {
     // Late Elementary (Ages 9-12) - Chapter books and early middle grade
     late_elementary: {
         ageRange: [9, 12],
-        targetWordCount: { min: 300, max: 450 },
+        targetWordCount: { min: 110, max: 170 },
         sentenceLength: { min: 12, max: 20 },
-        paragraphCount: { min: 3, max: 4 },
+        paragraphCount: { min: 2, max: 2 },
         vocabularyLevel: 'intermediate',
-        readingTime: '3-4 minutes',
+        readingTime: 'about 1 minute',
         bookComparison: 'Like a page from "Harry Potter" early books or "Diary of a Wimpy Kid"',
         characteristics: [
             'More complex sentence structures',
@@ -50,11 +53,11 @@ const READING_SPECIFICATIONS = {
     // Middle School (Ages 13-15) - Young adult literature
     middle_school: {
         ageRange: [13, 15],
-        targetWordCount: { min: 400, max: 600 },
+        targetWordCount: { min: 130, max: 200 },
         sentenceLength: { min: 15, max: 25 },
-        paragraphCount: { min: 4, max: 5 },
+        paragraphCount: { min: 2, max: 3 },
         vocabularyLevel: 'advanced',
-        readingTime: '4-5 minutes',
+        readingTime: 'about 1 minute',
         bookComparison: 'Like a page from "Percy Jackson" or "The Hunger Games"',
         characteristics: [
             'Complex narrative structures',
@@ -68,11 +71,11 @@ const READING_SPECIFICATIONS = {
     // High School (Ages 16-17) - Advanced young adult
     high_school: {
         ageRange: [16, 17],
-        targetWordCount: { min: 500, max: 750 },
+        targetWordCount: { min: 150, max: 230 },
         sentenceLength: { min: 18, max: 30 },
-        paragraphCount: { min: 4, max: 6 },
+        paragraphCount: { min: 2, max: 3 },
         vocabularyLevel: 'sophisticated',
-        readingTime: '5-6 minutes',
+        readingTime: 'about 1 minute',
         bookComparison: 'Like a page from "The Book Thief" or "1984"',
         characteristics: [
             'Literary techniques and symbolism',
@@ -86,11 +89,11 @@ const READING_SPECIFICATIONS = {
     // Young Adult (Ages 18-25) - College level and contemporary fiction
     young_adult: {
         ageRange: [18, 25],
-        targetWordCount: { min: 600, max: 900 },
+        targetWordCount: { min: 150, max: 230 },
         sentenceLength: { min: 20, max: 35 },
-        paragraphCount: { min: 5, max: 7 },
+        paragraphCount: { min: 2, max: 3 },
         vocabularyLevel: 'college',
-        readingTime: '6-7 minutes',
+        readingTime: 'about 1 minute',
         bookComparison: 'Like a page from "The Night Circus" or "Ready Player One"',
         characteristics: [
             'Complex narrative techniques',
@@ -104,11 +107,11 @@ const READING_SPECIFICATIONS = {
     // Adult (Ages 26-40) - Literary fiction and popular novels
     adult: {
         ageRange: [26, 40],
-        targetWordCount: { min: 600, max: 900 },
+        targetWordCount: { min: 150, max: 230 },
         sentenceLength: { min: 22, max: 40 },
-        paragraphCount: { min: 5, max: 7 },
+        paragraphCount: { min: 2, max: 3 },
         vocabularyLevel: 'professional',
-        readingTime: '6-7 minutes',
+        readingTime: 'about 1 minute',
         bookComparison: 'Like a page from "The Goldfinch" or "Gone Girl"',
         characteristics: [
             'Layered storytelling',
@@ -122,11 +125,11 @@ const READING_SPECIFICATIONS = {
     // Mature Adult (Ages 41+) - Literary fiction and complex narratives
     mature_adult: {
         ageRange: [41, 100],
-        targetWordCount: { min: 600, max: 900 },
+        targetWordCount: { min: 150, max: 230 },
         sentenceLength: { min: 25, max: 45 },
-        paragraphCount: { min: 5, max: 7 },
+        paragraphCount: { min: 2, max: 3 },
         vocabularyLevel: 'literary',
-        readingTime: '6-7 minutes',
+        readingTime: 'about 1 minute',
         bookComparison: 'Like a page from "The Night Circus" or "Circe"',
         characteristics: [
             'Literary sophistication',
@@ -144,6 +147,9 @@ const READING_SPECIFICATIONS = {
  * @returns {object} The reading specification object
  */
 export function getReadingSpecification(age) {
+    if (age < READING_SPECIFICATIONS.early_elementary.ageRange[0]) {
+        return { level: 'early_elementary', ...READING_SPECIFICATIONS.early_elementary }; // under-6s got the adult tier
+    }
     // Find the appropriate reading level
     for (const [level, spec] of Object.entries(READING_SPECIFICATIONS)) {
         if (age >= spec.ageRange[0] && age <= spec.ageRange[1]) {
@@ -193,7 +199,7 @@ export function generateNarrativeGuidelines(age) {
  */
 function generateAIInstructions(spec, age) {
     const instructions = {
-        length: `Write EXACTLY ${spec.targetWordCount.min}-${spec.targetWordCount.max} words. This should feel like reading one page from a ${spec.bookComparison.toLowerCase()}.`,
+        length: `Write ${spec.targetWordCount.min}-${spec.targetWordCount.max} words in the voice of ${spec.bookComparison.replace(/^Like a page from /i, '')}.`,
         
         structure: `Organize into ${spec.paragraphCount.min}-${spec.paragraphCount.max} well-developed paragraphs. Each paragraph should advance the story meaningfully.`,
         

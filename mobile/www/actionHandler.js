@@ -1475,7 +1475,7 @@ Otherwise: HONOR the player's intent. Persist consequences. They earned this.`;
         await makeAICallForSystemAction(actionLog, false); // Let turn advance normally after AI response
     } catch (error) {
         log(`CRITICAL ERROR in handleCustomAction: ${error.message}`);
-        UI.showPopup(`Custom Action Failed: ${error.message}. The AI could not process your custom action. Please try a different action or restart the local AI server.`, 'error', 8000);
+        UI.showPopup(`Custom Action Failed: ${error.message}. The AI could not process your custom action. Please try a different action.`, 'error', 8000);
         
         // Re-throw error - no silent failures
         throw new Error(`Custom action processing failed: ${error.message}`);

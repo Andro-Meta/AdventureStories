@@ -143,7 +143,7 @@
                         <ol id="localAISetupSteps">
                             <li>Configure <code>LLM_BACKEND</code> in <code>config.js</code> (<code>llama-cpp</code> recommended).</li>
                             <li>Run <code>python setup_local_ai.py --backend &lt;backend&gt;</code> once to prepare directories and dependencies.</li>
-                            <li>Launch with <code>python start_game.py</code> — it boots the configured AI backend and the static web server.</li>
+                            <li>Start the model server yourself (e.g. <code>python start_llama_server.py</code>), then <code>python server.py</code>.</li>
                         </ol>
                     </div>
                 </div>
@@ -464,7 +464,7 @@
             <h1>About Adventure Stories</h1>
             <div class="card about-content">
                  <p>Adventure Stories is an AI-powered, text-based RPG where your choices shape the narrative, guided by an AI storyteller.</p>
-                 <p>Create characters, explore themed worlds, battle monsters, find items, and complete your adventure goal! The game uses a local MiniCPM-2B-128k AI model to power the storyteller (no API keys required).</p>
+                 <p>Create characters, explore themed worlds, battle monsters, find items, and complete your adventure goal! The storyteller is a free online AI (OpenRouter or Google AI Studio key, set in AI Settings); local models are optional.</p>
                  <p><strong>Features:</strong> Multiple themes, dynamic goals, combat, status effects, item tiers, AI-generated choices mapped to fixed action types (Good, Bad, Risky, Silly, Investigative) with implicit consequences, expandable story display, local saves, faction reputation system with trust-based difficulty.</p>
                  <hr>
                  <p><em>Made with ❤️ for Brookston, Vincent, Toby, and Katie by their Dad.</em></p>

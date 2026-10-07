@@ -282,6 +282,7 @@ const PATHS = [
         ops: ['add', 'replace'],
         validate: (m, value) => {
             if (!value || typeof value !== 'object') return 'entity must be an object';
+            if (m[2] === '-') return 'entity path needs a name, not "-"'; // normalizeOp rewrites /- when value.name exists
             if (!value.name && !m[2]) return 'entity needs a name';
             return null;
         },
@@ -749,7 +750,24 @@ const PATHS = [
  * Validate a single op against the path allowlist.
  * @returns {{ok: true, handler: object, match: RegExpMatchArray} | {ok: false, error: string}}
  */
+/**
+ * Repair common narrator slips before validation. Models often append
+ * entities with "/entityMemory/<cat>/-" (list style); the name is in the value,
+ * so key it there. Before this, "-" matched the name pattern and every such
+ * entity was stored under the key "-", overwriting the previous one.
+ */
+export function normalizeOp(op) {
+    if (!op || typeof op.path !== 'string') return op;
+    const m = op.path.match(/^\/entityMemory\/(npcs|locations|items)\/-$/);
+    if (m && op.value && typeof op.value.name === 'string' && op.value.name.trim()) {
+        const key = op.value.name.trim().replace(/[^a-zA-Z0-9 _'-]/g, '').slice(0, 60);
+        if (key) return { ...op, op: 'add', path: `/entityMemory/${m[1]}/${key}` };
+    }
+    return op;
+}
+
 export function validateOp(op) {
+    op = normalizeOp(op);
     if (!op || typeof op !== 'object') return { ok: false, error: 'op must be an object' };
     if (typeof op.op !== 'string') return { ok: false, error: 'op.op missing' };
     if (typeof op.path !== 'string') return { ok: false, error: 'op.path missing' };
@@ -789,7 +807,8 @@ export function applyDiff(ops, opts = {}) {
 
     // Two-phase commit: validate everything first, then apply.
     const planned = [];
-    for (const op of ops) {
+    for (const rawOp of ops) {
+        const op = normalizeOp(rawOp);
         const result = validateOp(op);
         if (!result.ok) {
             const msg = `engine.applyDiff rejected op: ${result.error}`;

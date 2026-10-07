@@ -22,7 +22,7 @@ export async function getAIResponse(messages, options = {}, retryAttempt = 0) {
         return await getLocalAIResponse(messages, options);
     } catch (error) {
         log(`CRITICAL ERROR: Local AI failed: ${error.message}`);
-        throw new Error(`Local AI server is not available: ${error.message}. Please ensure the configured LLM backend is running.`);
+        throw new Error(`AI not reachable: ${error.message}`);
     }
 }
 

@@ -591,7 +591,7 @@ Respond with a JSON object containing: name, effect, stats (object with relevant
             
             return this.parseItemResponse(response, tier, type);
         } catch (error) {
-            throw new Error(`Direct item generation failed: ${error.message}. Check local AI server and prompts.`);
+            throw new Error(`Direct item generation failed: ${error.message}..`);
         }
     }
 
@@ -1097,7 +1097,7 @@ function parseBatchItemResponse(response, itemRequests, theme) {
         
     } catch (error) {
         log(`CRITICAL ERROR: DynamicItems batch parsing failed: ${error.message}`);
-        throw new Error(`Dynamic item generation failed: ${error.message}. This indicates the AI is not generating valid JSON for items. Check local AI server and prompts.`);
+        throw new Error(`Dynamic item generation failed: ${error.message}. This indicates the AI is not generating valid JSON for items..`);
     }
 }
 

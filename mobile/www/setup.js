@@ -353,7 +353,7 @@ export async function completeSetupAndStartGame() {
     } catch (error) {
         log("Setup ERROR: Failed to generate initial story:", error);
         loadingManager.hideLoading();
-        UI.showPopup('Failed to start adventure. Please check that the local AI server is running.', 'error');
+        UI.showPopup('Failed to start adventure. Check AI Settings (key and provider) and try again.', 'error');
         UI.showScreen('mainMenuScreen');
     }
 }

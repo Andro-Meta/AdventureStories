@@ -134,7 +134,7 @@ export class StoryContinuityAgent {
 
         } catch (error) {
             log(`Story continuity analysis failed: ${error.message}`);
-            throw new Error(`Story continuity analysis failed: ${error.message}. The AI system must analyze story continuity correctly. Check local AI server and prompts.`);
+            throw new Error(`Story continuity analysis failed: ${error.message}. The AI system must analyze story continuity correctly..`);
         }
     }
 
@@ -195,7 +195,7 @@ export class StoryContinuityAgent {
 
         } catch (error) {
             log(`Story continuation generation failed: ${error.message}`);
-            throw new Error(`Story continuation generation failed: ${error.message}. The AI system must generate story continuations correctly. Check local AI server and prompts.`);
+            throw new Error(`Story continuation generation failed: ${error.message}. The AI system must generate story continuations correctly..`);
         }
     }
 

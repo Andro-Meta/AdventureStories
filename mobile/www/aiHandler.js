@@ -6,11 +6,11 @@ import { gameState } from './state.js';
 import * as Config from './config.js';
 import * as UI from './ui.js';
 import * as API from './api_new.js';
-import { getChoiceSchema, validateChoicesPayload, arcMemorySchema, validateArcMemoryPayload, narrativeTurnSchema, validateNarrativeTurnPayload, EXPLORATION_CHOICE_TYPES, COMBAT_CHOICE_TYPES } from './schemas.js';
+import { getChoiceSchema, validateChoicesPayload, arcMemorySchema, validateArcMemoryPayload, storyTurnSchema, validateNarrativeTurnPayload, EXPLORATION_CHOICE_TYPES, COMBAT_CHOICE_TYPES } from './schemas.js';
 import { applyDiff, describeAllowedPaths } from './engine.js';
 import { renderMemoryBlock } from './memoryRetriever.js';
 import { buildQuestStageHint } from './questDefinitions.js';
-import { generateNarrativeGuidelines } from './ageAppropriateReading.js';
+import { generateNarrativeGuidelines, getReadingSpecification } from './ageAppropriateReading.js';
 import * as Combat from './combat.js';
 import * as Items from './items.js';
 import { generateId, clamp } from './utils.js';
@@ -25,603 +25,173 @@ import { determineContext } from './state.js';
 // Import context management (using local AI orchestration)
 import { contextManager } from './contextManager.js';
 // Import reputation system
-import { getContextualizedFactions, getTrustDifficultyModifiers } from './reputationContextualizer.js';
-import { dynamicChoiceGenerator } from './dynamicChoices.js';
-import { localAIOrchestrator } from './localAIOrchestrator.js';
 // Note: Intelligent compression recording is handled in actionHandler.js
 
 // FALLBACK FUNCTION REMOVED - AI must work correctly or fail clearly
 
-/**
- * Enhanced AI processing using Local AI Orchestrator for complex requests
- * @param {string} prompt - The initial prompt
- * @param {string} requestType - Type of request (story_generation, encounter_creation, etc.)
- * @param {object} context - Additional context for the request
- * @returns {Promise<{narrative: string, choices: Array, metadata: object}>} Enhanced AI response
- */
-export async function processEnhancedAIResponse(prompt, requestType = 'story_generation', context = {}) {
-    const log = window.displayVisualError || console.log;
-    log(`Processing enhanced AI response for ${requestType}...`);
+const CHOICE_TYPE_MEANINGS = {
+    Good: 'the sensible, careful option',
+    Bad: 'a tempting but clearly foolish option',
+    Risky: 'a bold gamble that could pay off big or go wrong',
+    Silly: 'something genuinely funny for this age group that might just work',
+    Investigative: 'look closer, ask questions, or search for clues',
+    Attack: 'a specific strike at a named enemy',
+    Special: "use one of the hero's special moves or abilities",
+    Item: 'use something from the inventory',
+    Run: 'escape using something in the surroundings'
+};
 
-    try {
-        // Determine if this request should use multi-agent orchestration
-        const shouldUseOrchestrator = shouldUseMultiAgentOrchestration(requestType, context);
-        
-        if (shouldUseOrchestrator) {
-            log('Using multi-agent orchestration for enhanced processing...');
-            
-            // Use the orchestrator for complex, multi-faceted requests
-            const orchestratedResult = await localAIOrchestrator.orchestrateAgents(
-                requestType, 
-                { ...context, originalPrompt: prompt },
-                getRequiredCapabilities(requestType, context)
-            );
-            
-            // Process orchestrated result into narrative and choices
-            const processedResult = await processOrchestratedResult(orchestratedResult, requestType);
-            
-            return {
-                narrative: processedResult.narrative,
-                choices: processedResult.choices,
-                metadata: {
-                    orchestrated: true,
-                    agentContributions: orchestratedResult.metadata.agentContributions,
-                    confidenceScore: orchestratedResult.metadata.confidenceScore,
-                    qualityScore: orchestratedResult.metadata.qualityScore,
-                    processingTime: orchestratedResult.metadata.processingTime
-                }
-            };
-        } else {
-            log('Using standard AI processing for simple request...');
-            // Fall back to standard processing for simple requests
-            return await processAIResponse(prompt);
-        }
-        
-    } catch (error) {
-        log(`Enhanced AI processing failed: ${error.message}, falling back to standard processing`);
-        // Graceful degradation to standard processing
-        const fallbackResult = await processAIResponse(prompt);
-        return {
-            ...fallbackResult,
-            metadata: {
-                orchestrated: false,
-                fallbackUsed: true,
-                originalError: error.message
-            }
-        };
+/**
+ * Instructions for the turn's state-change ops. The player index is the
+ * acting player's, so multiplayer changes land on the right hero (the old
+ * prompt hard-coded /players/0/, so every narrator HP/item change hit player 1).
+ */
+export function buildDiffInstructions(pIdx) {
+    const P = `/players/${pIdx}`;
+    const isGodMode = !!gameState.isGoalComplete;
+    const rules = `OPS = the world changes this turn caused (the engine applies them; invalid ones are dropped):
+- "add" only on list paths ending in "/-" (e.g. ${P}/inventory/-, /enemies/-, /questProgress/milestones/-).
+- "replace" for single values (hp, coins, currentLocation, adventureGoal, inCombat), always with the new full value, never a delta.
+- entityMemory entries are keyed by name: /entityMemory/npcs/<Name>, /entityMemory/locations/<Name>, /entityMemory/items/<Name>. Never "/-" there.
+- "remove" only on ${P}/inventory/<itemId>.
+ALLOWED PATHS:
+${describeAllowedPaths().replace(/\/players\/0\//g, `${P}/`)}`;
+
+    if (isGodMode) {
+        return `${rules}
+
+GOD MODE: the player has authorial authority. Their input is a DECLARATION; persist every tangible change with ops or it vanishes next turn.
+- "I have N gold" -> replace ${P}/coins (cap 99999). "I wield/wear X" -> add ${P}/inventory/- (give reasonable stats).
+- "I learn X" -> add ${P}/specialMoves/- (cooldown 3, mpCost 10). "I summon/befriend X" -> add /entityMemory/npcs/<Name>.
+- "I go to/create X" -> replace /currentLocation + add /entityMemory/locations/<Name>. "I face X" -> add /enemies/- + replace /inCombat true.
+- "New quest: X" -> replace /adventureGoal + replace /questProgress/completionPercentage 0. Never touch /isGoalComplete.
+Defaults when vague: items tier "Special" with atk or def 18-30; bosses hp 300-800, atk 30-60, def 20-40; "a lot" = 10000.
+Example: {"op":"add","path":"${P}/inventory/-","value":{"name":"Singing Sword","type":"Weapon","tier":"Special","effect":"its hum staggers foes","stats":{"atk":24}}}`;
     }
+    return `${rules}
+
+ALREADY HANDLED BY THE GAME (do not emit): the small HP/coin/reputation results of the chosen action. Only change HP or coins when the narration describes a specific, meaningful event ("the fireball strikes you").
+YOURS TO EMIT when the story makes them happen:
+- A named new place the players enter: replace /currentLocation AND add /entityMemory/locations/<Name>.
+- New named NPCs or notable items: add /entityMemory/npcs/<Name> or /entityMemory/items/<Name>; items the hero picks up: add ${P}/inventory/-.
+- A fight starts: add /enemies/- (hp, maxHp, atk, def, abilities) AND replace /inCombat true.
+- Status effects with narrative weight (Poison, Burn, Stun, Fear, Regen, Shield...): add ${P}/statusEffects/- {name, duration}.
+- Quest beats: add /questProgress/milestones/- using the EXACT names from the MAIN QUEST STAGE block, plus replace /questProgress/completionPercentage. Favors or rumors: add /questProgress/sideQuests/- {name, description, reward}.
+- Set /adventureGoal once early (turn 4-6). Main quest truly finished: replace /isGoalComplete true.
+If the narration says the hero picked something up, met someone named, arrived somewhere named, or a fight began, the matching op MUST be in "ops". An empty list is only for a turn where nothing in the world changed.
+Examples:
+{"op":"add","path":"/entityMemory/locations/The Crystal Hall","value":{"name":"The Crystal Hall","description":"a vaulted chamber of humming crystals"}}
+{"op":"add","path":"/enemies/-","value":{"name":"Stone Guardian","hp":40,"maxHp":40,"atk":7,"def":4,"abilities":["Slam"]}}
+{"op":"add","path":"/questProgress/milestones/-","value":{"name":"call_to_adventure","description":"The locket whispers the hero's name."}}`;
+}
+
+export function buildChoiceInstructions(types, inCombat) {
+    const list = types.map(t => `- ${t}: ${CHOICE_TYPE_MEANINGS[t]}`).join('\n');
+    return `CHOICES: exactly ${types.length}, one of each type:
+${list}
+Each choice: under 160 characters, starts with a verb, names something specific from the narration, and never states its type (no "safely", "risky", "silly").${inCombat ? ' Attack must name the enemy it targets.' : ' Make the five genuinely different from each other.'}`;
 }
 
 /**
- * Determine if request should use multi-agent orchestration
- */
-function shouldUseMultiAgentOrchestration(requestType, context) {
-    // Use orchestration for complex requests
-    const complexRequestTypes = [
-        'comprehensive_response',
-        'encounter_creation',
-        'location_creation',
-        'quest_progression'
-    ];
-    
-    // Use orchestration if explicitly requested
-    if (context.useOrchestration) return true;
-    
-    // Use orchestration for complex request types
-    if (complexRequestTypes.includes(requestType)) return true;
-    
-    // Use orchestration if multiple capabilities are needed
-    if (context.needsMultipleAgents) return true;
-    
-    // Use orchestration for story generation with special requirements
-    if (requestType === 'story_generation' && (
-        context.includeEncounters || 
-        context.includeItems || 
-        context.trackProgress ||
-        context.needsAbilities
-    )) return true;
-    
-    return false;
-}
-
-/**
- * Get required capabilities for request type
- */
-function getRequiredCapabilities(requestType, context) {
-    const capabilities = [];
-    
-    // Add capabilities based on context
-    if (context.includeEncounters) capabilities.push('encounter_design', 'npc_generation');
-    if (context.includeItems) capabilities.push('item_generation', 'contextual_items');
-    if (context.needsAbilities) capabilities.push('spell_generation', 'ability_adaptation');
-    if (context.needsEnemies) capabilities.push('enemy_generation', 'combat_design');
-    if (context.needsLocations) capabilities.push('location_generation', 'environment_design');
-    if (context.trackProgress) capabilities.push('progress_tracking', 'milestone_detection');
-    
-    return capabilities;
-}
-
-/**
- * Process orchestrated result into narrative and choices format
- */
-async function processOrchestratedResult(orchestratedResult, requestType) {
-    const log = window.displayVisualError || console.log;
-    
-    try {
-        const result = orchestratedResult.result;
-        
-        // Extract narrative from orchestrated result
-        let narrative = typeof result === 'string' ? result : 
-                       (result.narrative || result.story || result.response || String(result));
-        
-        // Ensure narrative is a string
-        if (typeof narrative !== 'string') {
-            narrative = 'The adventure continues...';
-        }
-        
-        // Generate choices using the dynamic choice generator with orchestrated context
-        const choiceContext = {
-            narrative: narrative,
-            requestType: requestType,
-            agentContributions: orchestratedResult.metadata?.agentContributions || [],
-            qualityScore: orchestratedResult.metadata?.qualityScore || 0.5
-        };
-        
-        const choices = await dynamicChoiceGenerator.generateContextualChoices(choiceContext);
-        
-        return {
-            narrative: narrative,
-            choices: choices || []
-        };
-        
-    } catch (error) {
-        log(`Error processing orchestrated result: ${error.message}`);
-        
-        // Fallback processing
-        const fallbackNarrative = typeof orchestratedResult.result === 'string' ? 
-                                  orchestratedResult.result : 'The adventure continues...';
-        
-        return {
-            narrative: fallbackNarrative,
-            choices: []
-        };
-    }
-}
-
-/**
- * Processes the story generation and choice creation using separate AI agents
- * @param {string} prompt - The initial prompt to generate the story
- * @returns {Promise<{narrative: string, choices: Array}>} The processed narrative and choices
+ * One turn = one AI call returning narration + state diff + choices as a
+ * single JSON object. A second, small choices-only call is made only when the
+ * choices in that reply are unusable.
  */
 export async function processAIResponse(prompt) {
     const log = window.displayVisualError || console.log;
-    log("Processing AI response using dual agents...");
-
-    // EXTERNAL API CODE REMOVED - Using local MiniCPM AI only
-    // Local AI uses direct processing without complex hyperthreading
-    // Check if this is initial story setup
     const isInitialSetup = prompt.includes("Please provide a rich, detailed story introduction in three parts");
-    
-    // First AI call - Generate the narrative
-    const narrativePrompt = isInitialSetup ? prompt : `[System Note: You are the Story AI Agent. Your role is to generate the next part of the story based on the current context. Focus ONLY on the narrative description - do NOT generate any choices or actions. Keep your response concise and engaging.
+    const inCombat = !!gameState.inCombat;
+    const types = inCombat ? COMBAT_CHOICE_TYPES : EXPLORATION_CHOICE_TYPES;
+    const pIdx = gameState.currentPlayerIndex || 0;
+    const actor = gameState.players?.[pIdx]?.name || 'the hero';
+    const ages = (gameState.players || []).map(p => p.age).filter(a => typeof a === 'number' && a > 0);
+    const wc = getReadingSpecification(ages.length ? Math.round(ages.reduce((a, b) => a + b, 0) / ages.length) : 25).targetWordCount;
+    const words = isInitialSetup ? `${wc.min}-${Math.round(wc.max * 1.5)}` : `${wc.min}-${wc.max}`;
 
-Current Game State:
-- Theme: ${gameState.adventureTheme}
-- Player(s): ${gameState.players.map(p => p.name).join(', ')}
-- Current Location: ${getCurrentLocationContext()}
-- Situation: ${gameState.inCombat ? 'Combat' : 'Exploration'}
-- Turn: ${gameState.turn}
-- Goal: ${gameState.adventureGoal}
+    const scene = isInitialSetup ? prompt : `PREVIOUS SCENE:
+${gameState.currentNarrative || '(the story is just beginning)'}
 
-Previous Narrative:
-${gameState.currentNarrative}
+WHAT ${actor.toUpperCase()} JUST DID:
+${prompt}`;
 
-Generate ONLY the narrative description of what happens next in response to this action:
-${prompt}]`;
+    const userPrompt = `${scene}
+
+Reply with ONE JSON object with all three keys, and nothing else:
+{"narration":"...","ops":[],"choices":[${types.map(t => `{"type":"${t}","text":"..."}`).join(',')}]}
+
+NARRATION: ${words} words, second person. Show what happens because of the action, then end on a moment that invites the next decision. No choices or bracket tokens inside the narration.
+
+${buildChoiceInstructions(types, inCombat)}
+
+${buildDiffInstructions(pIdx)}`;
+
+    const messages = [
+        { role: 'system', content: generateSystemPrompt() },
+        { role: 'user', content: userPrompt }
+    ];
 
     try {
-        // ----- Phase 1: Structured narration + state-diff (preferred path) -----
-        // Ask the narrator for both prose AND a JSON-Patch-style description
-        // of what changed in the world this turn. The engine validates and
-        // applies. Falls back to legacy text-only narrative on failure so we
-        // never regress.
-        let cleanNarrative = '';
-        let appliedDiff = null;
+        let payload;
         try {
-            const opRulesAndPaths = `== OP RULES (read carefully — bad ops are silently rejected) ==
-• Use \`add\` ONLY for paths ending in \`/-\` (appending to a list). Examples: \`/players/0/inventory/-\`, \`/enemies/-\`, \`/questProgress/milestones/-\`, \`/players/0/statusEffects/-\`, \`/players/0/specialMoves/-\`.
-• Use \`replace\` for ALL scalar paths (HP, coins, location, adventureGoal, isGoalComplete, inCombat). Never \`add\` to a scalar.
-• Use \`add\` or \`replace\` for \`/entityMemory/<category>/<NAME>\` keyed entries.
-• Use \`remove\` only on \`/players/0/inventory/<id>\` to drop an item by id.
-• Use ABSOLUTE values for replace (new full value), not deltas.
-
-== ALLOWED PATHS (the engine rejects anything else) ==
-
-${describeAllowedPaths()}`;
-
-            // Branch the prompt on god mode. In normal play we suppress
-            // narrator-emitted HP/coin ops to avoid double-counting with the
-            // outcome system. In god mode that suppression is the bug — the
-            // narrator MUST emit ops to make the player's authorial power real.
-            const isGodMode = !!gameState.isGoalComplete;
-            const turnGuidance = isGodMode
-                ? `== GOD MODE TURN — player has authorial authority ==
-The player's input is a DECLARATION about the world. You MUST persist every
-tangible change they assert via diff ops; otherwise the change disappears
-next turn and god-mode feels broken.
-
-DECLARATION → REQUIRED DIFF (use these whenever the input matches):
-• "I have <N> gold/coins/money" → /players/0/coins replace with N (cap 99999).
-• "I have/wield/wear <ITEM>" → /players/0/inventory/- add (with reasonable {atk}/{def}/effect if not specified).
-• "I learn/cast/know <SKILL>" → /players/0/specialMoves/- add (cooldown:3, mpCost:10 default).
-• "I summon/befriend <CREATURE>" → /entityMemory/npcs/<NAME> add (and /players/0/specialMoves/- if combat ally).
-• "I create/visit <PLACE>" → /currentLocation replace + /entityMemory/locations/<NAME> add.
-• "I face <NEW BOSS>" → /enemies/- add + /inCombat replace true + /entityMemory/npcs/<NAME>.
-• "New quest: <GOAL>" → /adventureGoal replace + /questProgress/completionPercentage replace 0. Do NOT touch /isGoalComplete.
-• "My <STAT> is <N>" → /players/0/<atk|def|maxHp|maxMp|level> replace.
-
-DEFAULTING — fill in reasonable values when the player is vague:
-• Item without stats → tier "Special", {atk:18-30} for weapons or {def:18-30} for armor, evocative effect.
-• Skill without mechanics → cooldown:3, mpCost:10, plain mechanics object.
-• Boss without stats → hp:300-800, atk:30-60, def:20-40 scaled to drama.
-• "A lot" → 10000. "Infinite" → 99999.
-
-The "small HP/coin drops are already handled" rule from normal play does NOT
-apply here — in god mode you MUST emit the coin/HP/stat ops the player declares.`
-                : `== STATE THAT'S ALREADY HANDLED — DO NOT EMIT THESE OPS ==
-• Small statistical HP / coin / item drops from Good/Bad/Risky/Silly/Investigative actions are already applied by the game's outcome system. Do NOT propose HP or coin replace ops unless the prose describes a SPECIFIC, NARRATIVELY-MEANINGFUL change (e.g. "the fireball strikes you" → yes; "you carefully cross the bridge" → no).
-• Random reputation tweaks are already handled. Don't emit them.
-
-== STATE THAT'S YOURS TO PROPOSE ==
-• New entities the player encounters (NPCs, named locations, magical items) — these only exist if you create them.
-• Combat starts (spawn an enemy + flip /inCombat to true).
-• Quest milestones — use the EXACT snake_case names from the MAIN QUEST STAGE block below; NEVER paraphrase.
-• Location changes — the FIRST turn the player enters a named place, ALWAYS emit a /currentLocation replace op.
-• Status effects with narrative weight — when prose says "the goblin's bite poisons you", "the witch curses you", "you stagger from the blow", "the spider venom paralyzes you", emit the matching status via /players/0/statusEffects/- (player) or /enemies/<idx>/statusEffects/- (enemy). Catalog: Burn, Poison, Bleed, Frost (DoT); Stun, Paralysis, Sleep, Silence, Blind, Confusion, Fear, Curse (debuffs); Berserk, Regen, DefenseUp, AttackUp, Shield (buffs). Use {name:"Poison", duration:4} or include effectTickData like {hpPerTurn:-3} when stronger than catalog default.
-• Quest progress — every time you emit a milestone, ALSO emit /questProgress/completionPercentage with the new percentage.
-• Side quests — when an NPC asks for a favor, when a found note describes a hidden treasure, when a character pleads for help, EMIT a side quest via /questProgress/sideQuests/- add. Shape: {name, description, giver?, reward?}. Mark a side quest complete via /questProgress/sideQuests/<id>/completed replace true. Side quests live alongside the main quest and are tracked in the UI's side-quest panel. Use them to add narrative texture and optional reward loops.
-• The overall /adventureGoal — set it once early (turn 4-6) with a clear sentence.
-• Goal completion (/isGoalComplete: true) — fires the god-mode unlock chain.`;
-
-            const examples = isGodMode
-                ? `== GOD MODE EXAMPLES ==
-
-Player: "I have a million gold pieces."
-  "diff": { "ops": [
-    {"op":"replace","path":"/players/0/coins","value":99999}
-  ]}
-
-Player: "I wield the Singing Sword that stuns foes."
-  "diff": { "ops": [
-    {"op":"add","path":"/players/0/inventory/-","value":{"name":"Singing Sword","type":"Weapon","tier":"Special","effect":"strikes hum a chord that briefly staggers foes","stats":{"atk":24}}},
-    {"op":"add","path":"/entityMemory/items/Singing Sword","value":{"name":"Singing Sword","description":"a blade resonating with bound music"}}
-  ]}
-
-Player: "I learn the Time Stop spell."
-  "diff": { "ops": [
-    {"op":"add","path":"/players/0/specialMoves/-","value":{"name":"Time Stop","description":"freeze the moment for one turn","cooldown":8,"mpCost":30,"usageContext":"both","mechanics":{"stunAllEnemies":1}}}
-  ]}
-
-Player: "I summon Ember the phoenix as my familiar."
-  "diff": { "ops": [
-    {"op":"add","path":"/entityMemory/npcs/Ember","value":{"name":"Ember","description":"a phoenix companion with feathers of living flame","traits":["familiar","loyal","fiery"],"relationship":"bonded"}},
-    {"op":"add","path":"/players/0/specialMoves/-","value":{"name":"Ember's Aid","description":"call Ember to scorch a foe","cooldown":4,"mpCost":15,"usageContext":"combat","mechanics":{"directDamage":40}}}
-  ]}
-
-Player: "I summon the Hollow King as a new boss to fight."
-  "diff": { "ops": [
-    {"op":"add","path":"/enemies/-","value":{"name":"The Hollow King","hp":600,"maxHp":600,"atk":45,"def":25,"abilities":["Voidstrike","Echoing Curse"]}},
-    {"op":"replace","path":"/inCombat","value":true},
-    {"op":"add","path":"/entityMemory/npcs/The Hollow King","value":{"name":"The Hollow King","description":"a crowned silhouette where a soul should be","traits":["antagonist","void-touched"],"relationship":"hostile"}}
-  ]}
-
-Player: "I declare a new quest: find the seven Sun Hearts before winter ends."
-  "diff": { "ops": [
-    {"op":"replace","path":"/adventureGoal","value":"Find the seven Sun Hearts before winter's end."},
-    {"op":"replace","path":"/questProgress/completionPercentage","value":0}
-  ]}`
-                : `== EXAMPLES ==
-
-Story-significant turn (player picks up an artifact, hits a quest beat):
-  "diff": { "ops": [
-    {"op":"add","path":"/players/0/inventory/-","value":{"name":"Tarnished Silver Locket","type":"Misc","tier":"Special","effect":"whispers ancient secrets when held to the ear"}},
-    {"op":"add","path":"/questProgress/milestones/-","value":{"name":"call_to_adventure","description":"The locket whispers the player's name; the threat is real."}},
-    {"op":"replace","path":"/questProgress/completionPercentage","value":15}
-  ]}
-
-Combat starts:
-  "diff": { "ops": [
-    {"op":"add","path":"/enemies/-","value":{"name":"Stone Guardian","hp":40,"maxHp":40,"atk":7,"def":4,"abilities":["Slam","Roar"]}},
-    {"op":"replace","path":"/inCombat","value":true}
-  ]}
-
-Moving to a new place:
-  "diff": { "ops": [
-    {"op":"replace","path":"/currentLocation","value":{"name":"The Crystal Hall","type":"ruins","dangerLevel":0.6,"description":"A vaulted chamber lined with humming crystals."}}
-  ]}
-
-Pure exposition (no state change):
-  "diff": { "ops": [] }
-
-The adventure's main goal becomes clear:
-  "diff": { "ops": [
-    {"op":"replace","path":"/adventureGoal","value":"Restore the Sunken Library before the Heart consumes it."}
-  ]}
-
-The main quest is finally complete (unlocks god mode):
-  "diff": { "ops": [
-    {"op":"replace","path":"/isGoalComplete","value":true},
-    {"op":"replace","path":"/questProgress/completionPercentage","value":100}
-  ]}`;
-
-            const diffPrompt = `${narrativePrompt}
-
-Respond with ONLY a JSON object of the shape:
-{
-  "narration": "1-3 paragraphs of vivid second-person prose describing what happens next. NO choices. NO bracketed action tokens.",
-  "diff": {
-    "ops": [
-      { "op": "add"|"remove"|"replace", "path": "...", "value": ... }
-    ]
-  }
-}
-
-The diff describes the NARRATIVELY SIGNIFICANT consequences of this turn — what changed in the world that the player would care about. Empty ops array is preferred when the turn is exposition-only.
-
-${opRulesAndPaths}
-
-${turnGuidance}
-
-${examples}`;
-
-            const turnPayload = await API.getAIResponseJSON(
-                [
-                    { role: 'system', content: generateSystemPrompt() + '\n\nReturn ONLY a JSON object matching the requested narrative-turn schema. /no_think' },
-                    { role: 'user', content: diffPrompt }
-                ],
-                narrativeTurnSchema,
-                { jsonSchemaName: 'narrative_turn', max_tokens: 1500, temperature: 0.7 }
-            );
-            const validated = validateNarrativeTurnPayload(turnPayload);
-            cleanNarrative = validated.narration
-                .replace(/<think>[\s\S]*?<\/think>/gi, '')
-                .replace(/```(?:\w+)?\n?([\s\S]*?)```/g, '$1')
-                .trim();
-            // Apply the diff in non-strict mode (skip bad ops, keep good ones).
-            appliedDiff = applyDiff(validated.diff.ops || [], { strict: false });
-            log(`narrative diff: applied ${appliedDiff.length}/${(validated.diff.ops || []).length} ops`);
-        } catch (jsonErr) {
-            log(`Narrative+diff JSON path failed (${jsonErr.message}); falling back to legacy text-only narrative.`);
-            const narrativeResponse = await API.getAIResponse([
-                { role: 'system', content: generateSystemPrompt() },
-                { role: 'user', content: narrativePrompt }
-            ]);
-            cleanNarrative = narrativeResponse
-                .replace(/<think>[\s\S]*?<\/think>/gi, '')
-                .replace(/```(?:\w+)?\n?([\s\S]*?)```/g, '$1')
-                .trim()
-                .split('\n')
-                .filter(line => !line.match(/\[Type=[A-Za-z]+\]/))
-                .filter(line => !line.match(/^\*\*.+\*\*$/))
-                .join('\n')
-                .trim();
+            payload = await API.getAIResponseJSON(messages, storyTurnSchema, { jsonSchemaName: 'story_turn', max_tokens: 2000, temperature: 0.8 });
+            validateNarrativeTurnPayload(payload);
+        } catch (firstErr) {
+            log(`Turn reply unusable (${firstErr.message}); retrying once.`);
+            payload = await API.getAIResponseJSON(messages, storyTurnSchema, { jsonSchemaName: 'story_turn', max_tokens: 2000, temperature: 0.6 });
         }
+        const validated = validateNarrativeTurnPayload(payload);
+        const cleanNarrative = validated.narration
+            .replace(/<think>[\s\S]*?<\/think>/gi, '')
+            .replace(/```(?:\w+)?\n?([\s\S]*?)```/g, '$1')
+            .trim();
+        const appliedDiff = applyDiff(validated.diff.ops || [], { strict: false });
+        log(`narrative diff: applied ${appliedDiff.length}/${(validated.diff.ops || []).length} ops`);
 
-        // Store the narrative in game state for context
         gameState.currentNarrative = cleanNarrative;
-
-        // Phase 2: jail escape auto-complete safety net. If the narrator
-        // describes the escape without firing the jail_escaped milestone,
-        // detect it heuristically so the player isn't stuck in the cell
-        // metadata while the prose says they're free. No-op if not imprisoned.
         try {
             if (gameState.imprisoned && typeof window !== 'undefined' && window.__jailSystem?.tryAutoCompleteEscape) {
                 window.__jailSystem.tryAutoCompleteEscape();
             }
         } catch (_) { /* don't break narrative update on jail-system errors */ }
 
-        // Update UI with narrative + any diff-applied state changes immediately
         UI.updateNarrative(gameState.currentNarrative);
         UI.renderPlayerCards();
         UI.renderEnemyCards();
         UI.updateContextHeaders();
 
-        // Second AI call - Generate the choices
-        const expectedChoiceCount = gameState.inCombat ? 4 : 5;
-        const validChoiceTypes = gameState.inCombat ? 
-            ['Attack', 'Special', 'Item', 'Run'] : 
-            ['Good', 'Bad', 'Risky', 'Silly', 'Investigative'];
-        
-        // ----- JSON-first choice generation (Tier 2) -----
-        // Try schema-constrained JSON output first. Falls back to the legacy
-        // bracket-format regex parser if JSON parse/validation fails so we
-        // never regress against backends that don't honor the schema field.
+        // The diff may have started or ended a fight; choices must match the mode now.
+        const nowInCombat = !!gameState.inCombat;
         let choices = null;
-        const choiceSchema = getChoiceSchema(gameState.inCombat);
-        const jsonChoicePrompt = `Generate exactly ${expectedChoiceCount} player choices for this adventure situation. Respond with ONLY a JSON object — no prose, no code fences.
-
-CURRENT NARRATIVE:
-${gameState.currentNarrative}
-
-GAME CONTEXT:
-- Theme: ${gameState.adventureTheme}
-- Combat Status: ${gameState.inCombat ? 'In Combat' : 'Exploring'}
-- Location: ${getCurrentLocationContext()}
-- Player: ${gameState.players[0]?.name || 'Player'}
-${gameState.inCombat ? `- Active Enemies: ${gameState.enemies.filter(e => !e.isDefeated).map(e => e.name).join(', ')}` : ''}
-
-Required JSON shape:
-{"choices":[${validChoiceTypes.map(t => `{"type":"${t}","text":"..."}`).join(',')}]}
-
-Rules:
-- Exactly ${expectedChoiceCount} entries, exactly one of each type listed above.
-- "text" is a specific contextually-relevant action under 240 characters.
-- Output the JSON object and nothing else.`;
-
-        try {
-            const payload = await API.getAIResponseJSON(
-                [
-                    { role: 'system', content: generateSystemPrompt() + '\n\nReturn ONLY a JSON object matching the requested schema. No markdown, no commentary. /no_think' },
-                    { role: 'user', content: jsonChoicePrompt }
-                ],
-                choiceSchema,
-                { jsonSchemaName: gameState.inCombat ? 'combat_choices' : 'exploration_choices', max_tokens: 512 }
-            );
-            choices = validateChoicesPayload(payload, gameState.inCombat);
-            log(`JSON path: parsed ${choices.length} valid choices.`);
-        } catch (jsonErr) {
-            log(`JSON choice path failed (${jsonErr.message}); falling back to legacy bracket parser.`);
-            choices = null;
+        if (nowInCombat === inCombat) {
+            try { choices = validateChoicesPayload(payload, nowInCombat); }
+            catch (e) { log(`Turn choices unusable (${e.message}); asking for choices only.`); }
         }
+        if (!choices) choices = await requestChoicesOnly(cleanNarrative, nowInCombat);
 
-        // ----- Legacy bracket-format fallback -----
-        if (!choices) {
-            const choicePrompt = `Generate exactly ${expectedChoiceCount} player choices for this adventure situation.
-
-CURRENT NARRATIVE:
-${gameState.currentNarrative}
-
-GAME CONTEXT:
-- Theme: ${gameState.adventureTheme}
-- Combat Status: ${gameState.inCombat ? 'In Combat' : 'Exploring'}
-- Location: ${getCurrentLocationContext()}
-- Player: ${gameState.players[0]?.name || 'Player'}
-${gameState.inCombat ? `- Active Enemies: ${gameState.enemies.filter(e => !e.isDefeated).map(e => e.name).join(', ')}` : ''}
-
-REQUIREMENTS:
-1. Generate EXACTLY ${expectedChoiceCount} choices
-2. Use ONLY these choice types: ${validChoiceTypes.join(', ')}
-3. Each choice must be specific and contextually relevant
-4. Format each choice as: [Type=X]Specific action description
-
-${gameState.inCombat ?
-`COMBAT CHOICE EXAMPLES:
-[Type=Attack]Strike the ${gameState.enemies.find(e => !e.isDefeated)?.name || 'enemy'} with your weapon
-[Type=Special]Use your special ability against the threat
-[Type=Item]Use a healing potion from your inventory
-[Type=Run]Attempt to escape from the dangerous situation` :
-`EXPLORATION CHOICE EXAMPLES:
-[Type=Good]Carefully examine the area for potential dangers
-[Type=Bad]Rush forward without checking for traps
-[Type=Risky]Try to climb the unstable-looking structure
-[Type=Silly]Start singing loudly to see what happens
-[Type=Investigative]Search thoroughly for clues or hidden passages`}
-
-Generate your ${expectedChoiceCount} choices now (one per line):`;
-
-            const choicesResponse = await API.getAIResponse([
-                { role: 'system', content: generateSystemPrompt() },
-                { role: 'user', content: choicePrompt }
-            ]);
-
-            // Strip Qwen3 think tags before parsing — otherwise [Type=X]
-            // tokens inside a <think> block get parsed as real choices.
-            const cleanedChoicesResponse = choicesResponse
-                .replace(/<think>[\s\S]*?<\/think>/gi, '')
-                .replace(/```(?:\w+)?\n?([\s\S]*?)```/g, '$1')
-                .trim();
-
-            // Process the choices with strict validation
-            choices = [];
-            const choiceLines = cleanedChoicesResponse.split('\n').filter(line => line.trim());
-
-            log(`AI Response for choices:\n${choicesResponse}`);
-            log(`Found ${choiceLines.length} lines to process`);
-
-            for (const line of choiceLines) {
-                const typeMatch = line.match(/\[Type=([A-Za-z]+)\]/);
-                if (typeMatch) {
-                    const rawType = typeMatch[1];
-                    const text = line.replace(/\[Type=[A-Za-z]+\]/, '').trim();
-                    if (text) {
-                        if (validChoiceTypes.includes(rawType)) {
-                            choices.push({ type: rawType, text });
-                            log(`Parsed choice: [${rawType}] ${text}`);
-                        } else {
-                            log(`REJECTED invalid choice type "${rawType}" - not in allowed types: ${validChoiceTypes.join(', ')}`);
-                        }
-                    }
-                }
-            }
-
-            // Strict validation - AI must provide exactly the right number of valid choices
-            if (choices.length !== expectedChoiceCount) {
-                log(`CRITICAL ERROR: AI provided ${choices.length} valid choices, expected ${expectedChoiceCount}`);
-                log(`Valid choice types required: ${validChoiceTypes.join(', ')}`);
-                log(`AI Response was:\n${choicesResponse}`);
-
-                throw new Error(`AI failed to generate ${expectedChoiceCount} valid choices. Got ${choices.length} valid choices. This indicates the AI is not following the prompt correctly.`);
-            }
-        }
-
-        // Additional validation: For exploration mode, ensure exactly one of each type
-        // (JSON-path output is already validated by validateChoicesPayload, but the
-        // legacy fallback path can produce duplicates/misses, so we re-check both.)
-        if (!gameState.inCombat) {
-            const requiredTypes = ['Good', 'Bad', 'Risky', 'Silly', 'Investigative'];
-            const typeCounts = {};
-
-            // Count occurrences of each type
-            choices.forEach(choice => {
-                typeCounts[choice.type] = (typeCounts[choice.type] || 0) + 1;
-            });
-
-            // Check for duplicates or missing types
-            const duplicateTypes = [];
-            const missingTypes = [];
-
-            requiredTypes.forEach(type => {
-                const count = typeCounts[type] || 0;
-                if (count === 0) {
-                    missingTypes.push(type);
-                } else if (count > 1) {
-                    duplicateTypes.push(`${type}(${count})`);
-                }
-            });
-
-            if (duplicateTypes.length > 0 || missingTypes.length > 0) {
-                log(`CHOICE TYPE VALIDATION FAILED:`);
-                if (duplicateTypes.length > 0) {
-                    log(`- Duplicate types: ${duplicateTypes.join(', ')}`);
-                }
-                if (missingTypes.length > 0) {
-                    log(`- Missing types: ${missingTypes.join(', ')}`);
-                }
-                log(`- Generated choices: ${choices.map(c => c.type).join(', ')}`);
-                log(`AI Response was:\n${choicesResponse}`);
-                
-                throw new Error(`AI failed to generate exactly one choice of each required type. Duplicates: [${duplicateTypes.join(', ')}], Missing: [${missingTypes.join(', ')}]. The AI must provide exactly one Good, Bad, Risky, Silly, and Investigative choice.`);
-            }
-        }
-
-        log(`SUCCESS: AI generated exactly ${choices.length} valid choices as required`);
-
-        // Randomize choice order for better gameplay variety
-        const shuffledChoices = [...choices];
-        for (let i = shuffledChoices.length - 1; i > 0; i--) {
+        const shuffled = [...choices];
+        for (let i = shuffled.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
-            [shuffledChoices[i], shuffledChoices[j]] = [shuffledChoices[j], shuffledChoices[i]];
+            [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
         }
-        
-        log(`Choices randomized for presentation: ${shuffledChoices.map(c => c.type).join(', ')}`);
-
-        // Store choices in game state and render them
-        gameState.currentChoices = shuffledChoices;
-        UI.renderChoices(shuffledChoices);
-        return { narrative: cleanNarrative, choices: shuffledChoices };
-
+        gameState.currentChoices = shuffled;
+        UI.renderChoices(shuffled);
+        return { narrative: cleanNarrative, choices: shuffled };
     } catch (error) {
-        log(`CRITICAL ERROR in processAIResponse: ${error.message}`);
-        
-        // Clear any loading indicators
+        log(`processAIResponse failed: ${error.message}`);
         UI.showLoading(false);
-        
-        // Show clear error message to user
-        UI.showPopup(`AI Generation Failed: ${error.message}. Make sure the configured LLM_BACKEND server is running (see start_game.py) or restart.`, 'error', 10000);
-        
-        // Re-throw the error - no fallbacks, system must work correctly
-        throw new Error(`AI processing failed: ${error.message}. This indicates a problem with the local AI server or prompts that needs to be fixed.`);
+        throw new Error(`AI processing failed: ${error.message}`);
     }
+}
+
+/** Small fallback call: choices for an already-written scene. */
+async function requestChoicesOnly(narrative, inCombat) {
+    const types = inCombat ? COMBAT_CHOICE_TYPES : EXPLORATION_CHOICE_TYPES;
+    const enemies = inCombat ? `\nEnemies: ${(gameState.enemies || []).filter(e => !e.isDefeated).map(e => e.name).join(', ')}` : '';
+    const payload = await API.getAIResponseJSON([
+        { role: 'system', content: `You write the player choices for a ${getThemeName()} text adventure. Reply with one JSON object only.` },
+        { role: 'user', content: `SCENE:\n${narrative}${enemies}\n\n${buildChoiceInstructions(types, inCombat)}\n\nReply exactly as {"choices":[${types.map(t => `{"type":"${t}","text":"..."}`).join(',')}]}` }
+    ], getChoiceSchema(inCombat), { jsonSchemaName: inCombat ? 'combat_choices' : 'exploration_choices', max_tokens: 600, temperature: 0.7 });
+    return validateChoicesPayload(payload, inCombat);
 }
 
 /**
@@ -1152,398 +722,81 @@ Recent Milestones: ${recentMilestones}
 export function generateSystemPrompt() {
     const log = window.displayVisualError || console.log;
     const currentPlayer = getCurrentPlayer();
-    // Average all players' ages so the reading level stays consistent across the
-    // whole party (spec requirement). Falls back to the current player's age for
-    // solo play, then 25 as a safe adult default if no ages are available yet.
+    // Average all players' ages so the reading level suits the whole party.
     const allAges = (gameState.players || []).map(p => p.age).filter(a => typeof a === 'number' && a > 0);
     const playerAge = allAges.length > 0
         ? Math.round(allAges.reduce((sum, a) => sum + a, 0) / allAges.length)
         : (currentPlayer?.age || 25);
 
-    // Phase 3.2: build the canonical state block FIRST so it's the first
-    // content the narrator sees after the role directive. This is appended
-    // to the prompt at the bottom of this function.
-    const canonicalStateBlock = buildCanonicalStateBlock();
+    let g = null;
+    try { g = generateNarrativeGuidelines(playerAge); }
+    catch (error) { log(`Failed to compute age-appropriate guidelines: ${error.message}`); }
 
-    // Age-appropriate guidelines (static import; this function must remain
-    // sync because pruneMessageHistory and several other call sites consume
-    // its return value as a string. Tier 2 audit caught the previous async
-    // version returning [object Promise] into the AI request body.)
-    let ageAppropriateGuidelines = null;
-    try {
-        ageAppropriateGuidelines = generateNarrativeGuidelines(playerAge);
-    } catch (error) {
-        log(`Failed to compute age-appropriate guidelines: ${error.message}`);
-    }
-    
-    // Get quest progress guidance — ONLY when not in god mode. Once the main
-    // quest is complete, the buildQuestStageHint block below takes over with
-    // authorial-authority instructions; the legacy quest-progress commands
-    // would compete with that and the narrator gets confused. When god mode
-    // is on, suppress them entirely.
-    let questGuidance = '';
+    const tier = playerAge < 10 ? 'L1 child' : playerAge < 15 ? 'L2 tween' : 'L3 teen/adult';
+    const policy = playerAge < 10
+        ? 'No gore, death, romance or slurs. Scary moments resolve quickly with reassurance; defeated foes flee, fall asleep or vanish in a puff of light.'
+        : playerAge < 15
+            ? 'Fantasy violence is fine (no gore or dismemberment); death described tastefully; romance no further than blushing; no slurs.'
+            : 'Mature themes allowed in service of the story (loss, moral ambiguity, fantasy violence); no explicit sexual content or gratuitous gore.';
+
+    // Pacing: every field here comes from one place (ageAppropriateReading.js)
+    // so the length the narrator is asked for is the same everywhere.
+    const reading = g ? `READING LEVEL (average party age ${playerAge}): ${g.bookComparison}.
+- Narration: ${g.wordCount.min}-${g.wordCount.max} words in ${g.paragraphCount.min}-${g.paragraphCount.max} short paragraphs. Keep the pace brisk; this is a game turn, not a chapter.
+- Style: ${g.characteristics.slice(0, 3).join('; ')}.
+- Vocabulary: ${g.contentGuidelines.vocabulary.description}.` : `READING LEVEL (average party age ${playerAge}): clear, vivid prose, 120-200 words.`;
+
+    const parts = [buildCanonicalStateBlock()];
+    parts.push(`You are the storyteller of a turn-based text adventure for 1-5 friends playing together. Each turn, continue the story from the chosen action and set up the next decision. Make it fun: surprises, humor, vivid details, NPCs with personality, and consequences that clearly follow from what the players chose. Stay in the story; never mention being an AI.
+
+${reading}
+
+CONTENT POLICY (${tier}): ${policy} If players ask for something off-policy, the world declines in-character.`);
+
     if (gameState.questProgressManager && !gameState.isGoalComplete) {
-        const guidance = gameState.questProgressManager.generateAIGuidance();
-        const progressSummary = gameState.questProgressManager.getProgressSummary();
-
-        questGuidance = `
-
-QUEST PROGRESS GUIDANCE:
-- Current Phase: ${progressSummary.phase} (${progressSummary.percentage}% complete)
-- Story Direction: ${guidance.storyDirection}
-- Urgency Level: ${guidance.urgency}
-- Active Objectives: ${progressSummary.activeObjectives.join(', ') || 'None'}
-- Recent Milestones: ${progressSummary.recentMilestones.map(m => m.name).join(', ') || 'None'}
-- Suggested Milestones: ${guidance.suggestedMilestones.join(', ') || 'Continue current progression'}
-
-QUEST PROGRESS COMMANDS (use these to track story progression):
-- Milestone:Type:Name:Description (Types: first_encounter, location_discovered, character_met, secret_revealed, obstacle_overcome, plot_twist, final_confrontation, goal_achieved)
-- Objective:Add:New objective text (add new objectives)
-- Objective:Complete:Completed objective text (mark objectives as done)
-- SideQuest:Add:Name:Description (create optional side quests)
-- Secret:Discovered secret text:Category (track lore discoveries)
-- Goal:Update:New main goal text (evolve the main quest)
-- Goal:Complete (when the adventure is truly finished)
-
-Use these commands to provide structured progression feedback to players!`;
-    }
-    
-    let prompt = `You are the AI storyteller for an adventure game. Your role is to narrate the story and provide meaningful, contextual choices that drive the narrative forward.${questGuidance}
-
-AGE-APPROPRIATE READING LEVEL (Average Party Age: ${playerAge}):
-${ageAppropriateGuidelines ? `
-READING LEVEL: ${ageAppropriateGuidelines.bookComparison}
-TARGET LENGTH: ${ageAppropriateGuidelines.wordCount.min}-${ageAppropriateGuidelines.wordCount.max} words (${ageAppropriateGuidelines.readingTime} reading time)
-PARAGRAPH STRUCTURE: ${ageAppropriateGuidelines.paragraphCount.min}-${ageAppropriateGuidelines.paragraphCount.max} well-developed paragraphs
-
-WRITING STYLE CHARACTERISTICS:
-${ageAppropriateGuidelines.characteristics.map(char => `- ${char}`).join('\n')}
-
-LENGTH REQUIREMENTS:
-${ageAppropriateGuidelines.aiInstructions.length}
-${ageAppropriateGuidelines.aiInstructions.structure}
-${ageAppropriateGuidelines.aiInstructions.sentences}
-${ageAppropriateGuidelines.aiInstructions.pacing}
-
-VOCABULARY GUIDELINES:
-- Level: ${ageAppropriateGuidelines.contentGuidelines.vocabulary.description}
-- Complexity: ${ageAppropriateGuidelines.contentGuidelines.vocabulary.wordComplexity}
-- New Words: ${ageAppropriateGuidelines.contentGuidelines.vocabulary.newWordsPerPage}
-- Context: ${ageAppropriateGuidelines.contentGuidelines.vocabulary.contextClues}
-
-NARRATIVE COMPLEXITY:
-- Plot: ${ageAppropriateGuidelines.contentGuidelines.complexity.plotElements}
-- Time: ${ageAppropriateGuidelines.contentGuidelines.complexity.timeStructure}
-- Perspective: ${ageAppropriateGuidelines.contentGuidelines.complexity.perspectives}
-- Subplots: ${ageAppropriateGuidelines.contentGuidelines.complexity.subplots}
-
-EMOTIONAL DEPTH:
-- Emotions: ${ageAppropriateGuidelines.contentGuidelines.emotional_depth.emotions}
-- Relationships: ${ageAppropriateGuidelines.contentGuidelines.emotional_depth.relationships}
-- Conflicts: ${ageAppropriateGuidelines.contentGuidelines.emotional_depth.conflicts}
-- Resolution: ${ageAppropriateGuidelines.contentGuidelines.emotional_depth.resolution}
-
-THEMES TO INCLUDE: ${ageAppropriateGuidelines.contentGuidelines.themes.join(', ')}
-ELEMENTS TO EMPHASIZE: ${ageAppropriateGuidelines.styleRequirements.emphasize.join(', ')}
-ELEMENTS TO AVOID: ${ageAppropriateGuidelines.styleRequirements.avoid.join(', ')}
-
-SPECIAL INSTRUCTIONS: ${ageAppropriateGuidelines.aiInstructions.special}
-
-CONTENT POLICY (age tier ${playerAge < 10 ? 'L1 — child' : playerAge < 15 ? 'L2 — tween' : 'L3 — teen/adult'}):
-${
-    playerAge < 10 ?
-`- NEVER depict gore, sexual content, hateful slurs, or graphic violence.
-- Scary moments resolve quickly with reassurance ("but you stand firm and the shadow flees").
-- Avoid death descriptions; defeated foes "flee", "fall asleep", or "vanish in a puff of light".
-- Stay in storybook voice. Never break the fourth wall ("As an AI…" is forbidden).
-- If the player asks for something off-policy, the world responds in-character (the friendly fox shakes its head and steers them somewhere safer).` :
-    playerAge < 15 ?
-`- Fantasy violence is allowed (sword strikes, magical battles); avoid gore, no dismemberment, no romance beyond hand-holding/blushing.
-- Death may be referenced but described tastefully; no torture or graphic suffering.
-- Themes of betrayal, loss, and courage are fine; no hateful slurs.
-- Never break the fourth wall. If the player asks for something off-policy, refuse in-character.` :
-`- Mature themes are permitted in service of the story (loss, moral ambiguity, fantasy violence).
-- Avoid explicit sexual content and gratuitous gore.
-- Never break the fourth wall. Decline off-policy requests as a diegetic outcome ("the dagger refuses your hand").`
-}
-
-CRITICAL: Write like an engaging page from a book that a ${playerAge}-year-old would love to read!
-` : `
-- For ages 6-12: Focus on wonder, discovery, and clear moral choices (2-3 paragraphs). No gore, no death, no romance.
-- For ages 13-17: Fantasy violence + moral ambiguity OK (3-4 paragraphs). No explicit content.
-- For ages 18+: Mature themes welcome but never explicit (4-5 paragraphs).
-- For ages 30+: Deeper philosophical and moral complexity (5-6 paragraphs).
-`}
-
-${(() => {
-    // Phase 3.5 P2: surface non-zero faction reputations so the narrator can
-    // shape NPC reactions ("the city guard salutes you" if authority>30, "the
-    // taverns whisper as you pass" if shadows<-30, etc.). Only includes
-    // factions that have moved off zero — silent factions stay invisible to
-    // keep prompt size lean.
-    const reps = gameState.reputationSystem?.factions || {};
-    const named = Object.entries(reps).filter(([, v]) => Math.abs(v) >= 5);
-    if (named.length === 0) return '';
-    const desc = (v) => v >= 50 ? 'revered' : v >= 25 ? 'liked' : v >= 5 ? 'neutral-positive' : v <= -50 ? 'hated' : v <= -25 ? 'disliked' : 'neutral-negative';
-    const lines = named.map(([f, v]) => `  • ${f}: ${v} (${desc(v)})`).join('\n');
-    return `
-
-REPUTATION CONTEXT (use this to shape NPC reactions, merchant prices, faction services):
-${lines}
-- High +reputation → faction NPCs greet warmly, offer discounts, share lore.
-- Low -reputation → faction NPCs are cold/hostile, refuse service, may attack.
-- When the player's choice clearly affects a faction (helping authority, robbing common-folk, defending nature, betraying scholars), emit a /reputationSystem/factions/<name> replace op with the new value (clamped -100..100, typical delta ±5 per significant action).
-`;
-})()}
-
-CRITICAL RESPONSE FORMAT:
-1. Story narrative (length based on age group)
-2. Blank line
-3. Five choices, each on its own line, with [Type=X] prefix
-
-${gameState.inCombat ? 
-    `COMBAT CHOICES: Since combat is active, you MUST provide EXACTLY these 4 combat choices that reflect the current tactical situation:
-    [Type=Attack] - Describe a specific attack against ${gameState.enemies?.find(e => !e.isDefeated)?.name || 'the enemy'}.
-    [Type=Special] - Suggest a special move that fits the current combat advantage/disadvantage.
-    [Type=Item] - Recommend an item use based on player/enemy conditions.
-    [Type=Run] - Describe an escape attempt that considers the environment.
-    
-    CRITICAL COMBAT RULES:
-    1. TACTICAL AWARENESS:
-       - If player has tactical advantage, emphasize aggressive options
-       - If at disadvantage, focus on defensive or strategic choices
-       - Match attack descriptions to enemy conditions
-       - Consider status effects in choice descriptions
-    
-    2. THREAT RESPONSE:
-       - Low Threat: Choices can be more experimental
-       - Normal Threat: Balanced mix of safe and aggressive options
-       - High Threat: Emphasize careful tactics
-       - Extreme Threat: Focus on survival and damage mitigation
-    
-    3. CONDITION ADAPTATION:
-       - Healthy Player: Enable bold tactical choices
-       - Injured Player: Suggest protective actions
-       - Critical Player: Prioritize healing/escape options
-    
-    4. REQUIRED ELEMENTS:
-       - Attack choices MUST name specific enemies
-       - Special moves MUST consider status effects
-       - Item suggestions MUST match player needs
-       - Escape plans MUST reference environment
-    
-    5. COMBAT NARRATION:
-       - Describe enemy reactions and positioning
-       - Note environmental factors affecting combat
-       - Highlight status effect impacts
-       - Indicate relative threat levels` 
-    :
-    `EXPLORATION CHOICES: You must provide EXACTLY 5 choices with EXACTLY ONE of each type. NO DUPLICATES ALLOWED.
-
-    REQUIRED CHOICE TYPES (EXACTLY ONE OF EACH):
-    [Type=Good] - A cautious or wise choice that prioritizes safety
-    [Type=Bad] - A dangerous or foolish choice that could have severe consequences
-    [Type=Risky] - A calculated gamble with both potential rewards and dangers
-    [Type=Silly] - A creative or humorous choice that might unexpectedly work
-    [Type=Investigative] - A choice focused on exploration, gathering information, or solving puzzles
-
-    ⚠️ CRITICAL: You MUST generate EXACTLY ONE choice of each type above. NO MORE, NO LESS.
-    ⚠️ If you generate two Investigative choices or miss a Silly choice, the system will reject your response.
-
-    CRITICAL CHOICE RULES:
-    1. CONTEXT INTEGRATION:
-       - If the story mentions specific paths, doors, or objects, choices MUST reference them
-       - If in a dangerous area, include appropriate caution in choice descriptions
-       - If at night/dark, reference light sources or visibility in choices
-       - Match the tone of choices to the current situation (e.g., tense, mysterious, etc.)
-    
-    2. CHOICE STRUCTURE:
-       - Start each choice with a specific verb (e.g., "Push", "Investigate", "Climb")
-       - Include relevant details from the environment
-       - Hint at potential consequences without being obvious
-       
-    3. EXAMPLES FOR CURRENT CONTEXT:
-       ${getCurrentContextExamples()}
-       
-    4. FORBIDDEN PATTERNS:
-       ❌ Don't use "safe", "dangerous", "risky" in choice text
-       ❌ Don't make the type obvious from the wording
-       ❌ Don't use generic actions like "proceed carefully"
-       ❌ Don't ignore elements mentioned in the narrative
-       
-    5. REQUIRED ELEMENTS:
-       - Each choice MUST relate to the current scene
-       - Each choice MUST have potential consequences
-       - Each choice MUST use specific, vivid language
-       - Choices MUST be shuffled in presentation order`}
-
-SPECIAL MOVES SYSTEM:
-When a player learns a new special move, generate a move that fits the current theme and context:
-1. Name: Create a thematic and descriptive name
-2. Effect: Write a vivid description of what the move does
-3. Context: Specify if it's for 'combat', 'exploration', or 'both'
-4. Mechanics: Define the move's mechanical effects:
-   - For combat moves: damage, healing, or status effects
-   - For exploration moves: obstacle types it can overcome, puzzle bonuses, or environmental effects
-5. Cooldown: Always set to 5 turns
-6. Theme: Match the move to the current adventure theme (fantasy, space, pirate, etc.)
-
-Example special move format:
-{
-    "name": "Mystic Surge",
-    "effect": "Channels arcane energy to empower attacks and overcome magical barriers",
-    "usageContext": "both",
-    "mechanics": {
-        "damage": 15,
-        "statusEffects": ["Empowered"],
-        "exploration": {
-            "obstacleTypes": ["magical", "barrier"],
-            "puzzleBonus": 2,
-            "environmentalEffect": "disperses magical barriers"
-        }
-    },
-    "cooldown": 5
-}
-
-4. NEVER add explanatory text around choices.
-5. NEVER create choices that don't match the required types.
-6. If in combat, ALWAYS specify the target enemy in Attack choices.
-7. Keep story segments concise but vivid.`;
-
-    // Add theme-specific guidance and story variation context
-    prompt += `\n\nCURRENT THEME: ${gameState.adventureTheme}${gameState.customThemeDescription ? ` (${gameState.customThemeDescription})` : ''}
-
-THEME-SPECIFIC GUIDANCE:
-${getThemeSpecificGuidance(gameState.adventureTheme)}
-
-THEME ATMOSPHERE AND ELEMENTS:
-${getThemeAtmosphere(gameState.adventureTheme)}
-
-THEME-SPECIFIC INTERACTIONS:
-${getThemeInteractions(gameState.adventureTheme)}
-
-FORBIDDEN TROPE PHRASES (do not use these exact words; they are over-used patterns from training data and break replay variety):
-  - "Sunken Library"
-  - "Heart of Shadow"
-  - "Heart of Darkness"
-  - "Shadow Blight"
-  - "the Heart of <noun>"
-  - "Whispering Woods" / "Whisperwood"
-  - "the Old Book"
-  - "the Ancient Evil"
-  - "the Chosen One"
-Invent fresh names and vocabulary native to the chosen theme. A dinosaur-era story should have hunting-grounds, migration-stones, ash-fields, geyser-fields, predator-territory — not libraries and shadow-blights. A space story should have habitats, transponders, biosignals, jump-coordinates — not libraries or curses.
-
-THEME FAITHFULNESS RULE: Use vocabulary, NPC types, locations, and props NATIVE to the chosen theme. Never borrow archetypes from other themes (no "village elder" in cyberpunk; no "ship's captain" in dinosaur; no "scholar" in post-apocalypse — replace with theme-appropriate equivalents like "tribe shaman", "fleet commander", "hunt-mother", "wasteland archivist").`;
-
-    // Phase 3.5 follow-on: surface the per-run STORY HOOK so the narrator
-    // anchors the FIRST story turn on this specific inciting incident.
-    // Different hook each game = different storyline each playthrough.
-    if (gameState.storyHook) {
-        prompt += `\n\nSTORY HOOK FOR THIS RUN (the inciting incident is fixed; do not invent an alternative):
-Archetype: ${gameState.storyHook.archetype}
-Concrete inciting incident: ${gameState.storyHook.flavor}
-This hook was selected for THIS playthrough. The opening prose must reflect it. Variations of NPC names, place names, and exact wording are encouraged — but the SHAPE of the inciting incident must come from the hook above, not from your training prior.`;
+        try {
+            const guidance = gameState.questProgressManager.generateAIGuidance();
+            const s = gameState.questProgressManager.getProgressSummary();
+            parts.push(`QUEST PACE: phase ${s.phase} (${s.percentage}% complete), urgency ${guidance.urgency}. Direction: ${guidance.storyDirection}${s.activeObjectives?.length ? ` Active objectives: ${s.activeObjectives.join(', ')}.` : ''}`);
+        } catch (e) { log(`Quest guidance unavailable: ${e.message}`); }
     }
 
-    // Add story variation context if available
-    if (gameState.storyVariation) {
-        prompt += `\n\nSTORY VARIATION CONTEXT:
-Current Setting: ${gameState.storyVariation.narrativeElements.setting}
-Central Conflict: ${gameState.storyVariation.narrativeElements.conflict}
-Core Mystery: ${gameState.storyVariation.narrativeElements.mystery}
-Urgency Factor: ${gameState.storyVariation.narrativeElements.urgency}
-Atmospheric Element: ${gameState.storyVariation.narrativeElements.atmosphericElement}
-Personal Connection: ${gameState.storyVariation.narrativeElements.personalConnection}
+    parts.push(`THEME: ${gameState.adventureTheme}${gameState.customThemeDescription ? ` (${gameState.customThemeDescription})` : ''}. ${getThemeSpecificGuidance(gameState.adventureTheme)}
+Atmosphere: ${getThemeAtmosphere(gameState.adventureTheme)}
+Typical interactions: ${getThemeInteractions(gameState.adventureTheme)}
+Use names, people, places and props native to this theme (no village elders in cyberpunk, no libraries in dinosaur times). Avoid over-used names: Sunken Library, Heart of Shadow/Darkness, Shadow Blight, Whispering Woods, the Ancient Evil, the Chosen One.`);
 
-NARRATIVE CONSISTENCY REQUIREMENTS:
-- All story elements must align with the ${gameState.storyVariation.narrativeElements.setting}
-- Maintain the central conflict: ${gameState.storyVariation.narrativeElements.conflict}
-- Keep the mystery focused on: ${gameState.storyVariation.narrativeElements.mystery}
-- Remember the urgency: ${gameState.storyVariation.narrativeElements.urgency}
-- Preserve the atmospheric tone: ${gameState.storyVariation.narrativeElements.atmosphericElement}`;
+    if (gameState.storyHook && (gameState.turn || 0) <= 3) {
+        parts.push(`STORY HOOK FOR THIS RUN (the opening must come from it): ${gameState.storyHook.archetype}: ${gameState.storyHook.flavor}`);
     }
-
-    // Add goal if set
-    if (gameState.adventureGoal) {
-        prompt += `\n\nCURRENT GOAL: ${gameState.adventureGoal}`;
+    if (gameState.storyVariation?.narrativeElements) {
+        const v = gameState.storyVariation.narrativeElements;
+        parts.push(`STORY THREADS: setting ${v.setting}; conflict ${v.conflict}; mystery ${v.mystery}; urgency ${v.urgency}; mood ${v.atmosphericElement}.`);
     }
+    if (gameState.adventureGoal) parts.push(`CURRENT GOAL: ${gameState.adventureGoal}`);
 
-    // Get current context
     const context = determineContext(currentPlayer);
-
-    // Enhanced context information
-    prompt += `\n\nCURRENT CONTEXT:
-Situation: ${context.situation}
-Environment: ${context.environment}
-Time of Day: ${context.timeOfDay}
-Weather: ${context.weather}
-Location: ${context.location || 'Unknown'}`;
-
-    // Enhanced combat state info
-    if (gameState.inCombat) {
-        const activeEnemies = gameState.enemies?.filter(e => !e.isDefeated) || [];
-        
-        prompt += `\n\nCOMBAT SITUATION:
-Threat Level: ${context.combatState.threatLevel}
-Tactical Position: ${context.combatState.tacticalAdvantage}
-Player Condition: ${context.combatState.playerCondition}
-Enemy Condition: ${context.combatState.enemyCondition}
-Active Enemies: ${activeEnemies.map(e => 
-            `${e.name} (HP: ${e.hp}/${e.maxHp}, ATK: ${e.atk}, DEF: ${e.def}${
-                e.statusEffects?.length ? `, Status: ${e.statusEffects.map(s => s.name).join(', ')}` : ''
-            }${e.abilities ? `, Abilities: ${e.abilities.join(', ')}` : ''})`
-        ).join('\n              ')}`;
-    }
-
-    // Add detailed player state.
-    // IMPORTANT: equipment.weapon / equipment.armor store ITEM IDs (e.g.
-    // "moksy7d4_r8d1m7a"); resolve them to names before showing the model so
-    // the narrative doesn't write lines like "she gripped the moksy7d4_...".
+    let scene = `SCENE: ${context.situation}; ${context.environment}; ${context.timeOfDay}; weather ${context.weather}.`;
     if (currentPlayer) {
-        const inv = currentPlayer.inventory || [];
-        const lookupName = (id) => {
-            if (!id) return 'None';
-            const item = inv.find(it => it && it.id === id);
-            return item ? (item.name || 'Unnamed Item') : 'None';
-        };
-        const weaponName = lookupName(currentPlayer.equipment?.weapon);
-        const armorName = lookupName(currentPlayer.equipment?.armor);
-        prompt += `\n\nPLAYER STATE:
-Name: ${currentPlayer.name}
-HP: ${currentPlayer.hp}/${currentPlayer.maxHp}
-ATK: ${currentPlayer.atk}
-DEF: ${currentPlayer.def}
-Coins: ${currentPlayer.coins}
-${currentPlayer.statusEffects?.length ? `Status Effects: ${currentPlayer.statusEffects.map(s => s.name).join(', ')}` : ''}
-Equipment: Weapon: ${weaponName}, Armor: ${armorName}`;
+        const moves = (currentPlayer.specialMoves || []).map(m => m.name).filter(Boolean);
+        const status = (currentPlayer.statusEffects || []).map(s => s.name).filter(Boolean);
+        scene += `\nACTING HERO: ${currentPlayer.name}, ATK ${currentPlayer.atk}, DEF ${currentPlayer.def}${status.length ? `, status: ${status.join(', ')}` : ''}${moves.length ? `, special moves: ${moves.join(', ')}` : ''}.`;
+    }
+    if (gameState.inCombat) {
+        const foes = (gameState.enemies || []).filter(e => !e.isDefeated);
+        scene += `\nCOMBAT: threat ${context.combatState.threatLevel}, position ${context.combatState.tacticalAdvantage}, hero ${context.combatState.playerCondition}. Enemies: ${foes.map(e => `${e.name} (HP ${e.hp}/${e.maxHp}${e.statusEffects?.length ? `, ${e.statusEffects.map(s => s.name).join('/')}` : ''})`).join(', ')}.`;
+    }
+    parts.push(scene);
+
+    // Faction standing: only factions that have moved, one line each.
+    const reps = Object.entries(gameState.reputationSystem?.factions || {}).filter(([, v]) => Math.abs(v) >= 5);
+    if (reps.length) {
+        parts.push(`FACTION STANDING (shapes how their people treat the heroes): ${reps.map(([f, v]) => `${f} ${v}`).join(', ')}. When a choice clearly helps or hurts a faction, replace /reputationSystem/factions/<name> (about ±5).`);
     }
 
-    // Add reputation context
-    if (gameState.reputationSystem) {
-        prompt += generateReputationContext();
-    }
-
-    // Phase 2 hybrid retrieval: inject only the summaries + entities that
-    // are RELEVANT to the current scene, instead of dumping everything we
-    // know. Recency-blended TF-IDF over arc summaries; mention-aware sort
-    // over entities. See memoryRetriever.js. The query is the current
-    // narrative — what the model is "thinking about right now."
+    // Relevant long-term memory and the main-quest stage (milestone names live there).
     const memoryQuery = (gameState.currentNarrative || '') + ' ' + (gameState.currentLocation?.name || '');
-    prompt += renderMemoryBlock(memoryQuery);
-
-    // Phase 3 main-quest stage hint — tells the narrator which act we're in
-    // so the milestone graph progresses, and switches to creative-mode
-    // framing once /isGoalComplete is true (god mode unlocked). This
-    // function also returns the jail-escape addon when imprisoned.
-    prompt += buildQuestStageHint(gameState);
-
-    // Phase 3.2: prepend the canonical entity state block. Done here at
-    // return time (rather than building the prompt around it) so the
-    // existing 1500+ lines of system-prompt construction don't have to be
-    // touched. The block is short and lives at the very top of the prompt
-    // — the first thing the narrator sees after the role directive.
-    return canonicalStateBlock + prompt;
+    return parts.join('\n\n') + renderMemoryBlock(memoryQuery) + buildQuestStageHint(gameState);
 }
 
 /**
@@ -1589,7 +842,7 @@ export async function refreshArcMemory() {
     try {
         const payload = await API.getAIResponseJSON(
             [
-                { role: 'system', content: 'You are an editor distilling a tabletop adventure transcript. Output ONLY a JSON object — no prose, no commentary. Use the EXACT field names below. Names should be specific (e.g. "Mira" not "the player"). /no_think' },
+                { role: 'system', content: 'You are an editor distilling a tabletop adventure transcript. Output ONLY a JSON object — no prose, no commentary. Use the EXACT field names below. Names should be specific (e.g. "Mira" not "the player"). ' },
                 { role: 'user', content:
 `Summarize turns ${lastSummaryTurn + 1}-${gameState.turn} and extract any new named entities. Respond with ONLY this JSON shape (use empty arrays where nothing applies):
 
@@ -1654,45 +907,7 @@ ${recentWindow}` }
     }
 }
 
-/**
- * Generates context-appropriate examples for the current game state
- * @returns {string} Example choices formatted for the current context
- */
-function getCurrentContextExamples() {
-    const context = determineContext(getCurrentPlayer());
-    
-    // Base examples on the current environment and situation
-    if (context.environment === 'dangerous') {
-        return `✓ [Type=Good] "Scout ahead from behind cover, watching for any movement"
-✓ [Type=Bad] "Rush forward without checking for traps or enemies"
-✓ [Type=Risky] "Create a distraction by throwing a rock at the metal debris"
-✓ [Type=Silly] "Try to sneak past while humming a 'sneaky' tune"
-✓ [Type=Investigative] "Search for signs of recent activity or tracks"`;
-    } else if (context.environment === 'mysterious') {
-        return `✓ [Type=Good] "Examine the ancient symbols with a respectful distance"
-✓ [Type=Bad] "Touch the glowing runes without any precaution"
-✓ [Type=Risky] "Attempt to decipher the inscription while channeling magic"
-✓ [Type=Silly] "Draw your own 'mystical' symbols next to the ancient ones"
-✓ [Type=Investigative] "Document the pattern of symbols for later research"`;
-    } else if (context.environment === 'urban') {
-        return `✓ [Type=Good] "Ask the local merchant about recent events"
-✓ [Type=Bad] "Pick a fight with the town guard"
-✓ [Type=Risky] "Try to eavesdrop on the suspicious conversation"
-✓ [Type=Silly] "Start juggling in the town square for coins"
-✓ [Type=Investigative] "Check the notice board for unusual postings"`;
-    } else {
-        return `✓ [Type=Good] "Survey the surroundings from a vantage point"
-✓ [Type=Bad] "Ignore the warning signs and proceed anyway"
-✓ [Type=Risky] "Test the stability of the old bridge"
-✓ [Type=Silly] "Try to befriend any nearby wildlife"
-✓ [Type=Investigative] "Look for any unusual patterns or markings"`;
-    }
-}
 
-/**
- * Gets the display name for the current theme. Helper for prompt generation.
- * @returns {string} The theme name.
- */
 export function getThemeName() {
     const log = window.displayVisualError || console.log; // Use logger
     if (gameState.adventureTheme === 'custom') {
@@ -1905,7 +1120,7 @@ Part 1: vivid scene-setting paragraph establishing the world, mood, and immediat
 Part 2: introduce the player character(s) — their situation right now and what makes this moment a turning point. Anchor names and props to the theme.
 Part 3: USE THE STORY HOOK BELOW as the inciting incident. Do not invent a different inciting incident — turn the hook's flavor text into prose.${hookBlock}
 
-Keep total length under ~400 words. Use second-person voice ("You ..."). Do NOT include choice options — those are generated separately. NEVER use the trope phrases listed in the system prompt's FORBIDDEN TROPE PHRASES section.`;
+This opening may run up to half again the READING LEVEL length. Use second-person voice ("You ..."). Avoid the over-used names listed under THEME.`;
     }
 
     try {
@@ -2083,81 +1298,4 @@ function getThemeInteractions(theme) {
         default:
             return "INTERACTIONS:\n- Skills: Theme-appropriate abilities\n- Social: Context-specific relations\n- Environment: Theme-specific challenges\n- Combat: Setting-appropriate conflict";
     }
-}
-
-/**
- * Generate reputation context for AI prompts
- * @returns {string} Reputation context formatted for AI
- */
-function generateReputationContext() {
-    const factions = gameState.reputationSystem.factions;
-    const contextualizedFactions = getContextualizedFactions();
-    const availableServices = gameState.reputationSystem.availableServices || [];
-    const reputationHistory = gameState.reputationSystem.reputationHistory || [];
-    
-    let context = '\n\nREPUTATION & FACTION STANDING:';
-    
-    // Add current faction standings
-    context += '\nCurrent Standing:';
-    Object.entries(factions).forEach(([factionKey, reputation]) => {
-        const faction = contextualizedFactions[factionKey];
-        if (faction) {
-            let standing = 'Neutral';
-            if (reputation >= 60) standing = 'Trusted';
-            else if (reputation >= 20) standing = 'Friendly';
-            else if (reputation <= -60) standing = 'Hostile';
-            else if (reputation <= -20) standing = 'Suspicious';
-            
-            context += `\n- ${faction.name}: ${reputation} (${standing}) - ${faction.flavor}`;
-        }
-    });
-    
-    // Add available services
-    if (availableServices.length > 0) {
-        context += '\n\nUnlocked Services: ' + availableServices.join(', ');
-    }
-    
-    // Add recent reputation changes for context
-    if (reputationHistory.length > 0) {
-        context += '\n\nRecent Reputation Events:';
-        reputationHistory.slice(-3).forEach(event => {
-            const majorChanges = event.changes.filter(c => Math.abs(c.change) >= 3);
-            if (majorChanges.length > 0) {
-                const change = majorChanges[0];
-                const faction = contextualizedFactions[change.faction];
-                const changeText = change.change > 0 ? 'improved' : 'worsened';
-                context += `\n- Turn ${event.turn}: ${faction?.name || change.faction} reputation ${changeText} due to "${event.choiceText}"`;
-            }
-        });
-    }
-    
-    // Add faction interaction guidance and trust penalties
-    const trustModifiers = getTrustDifficultyModifiers(factions);
-    
-    context += '\n\nFACTION INTERACTION GUIDANCE:';
-    context += '\n- NPCs react based on faction reputation';
-    context += '\n- Prices vary significantly based on standing';
-    context += '\n- High reputation unlocks exclusive services and dialogue';
-    context += '\n- Faction conflicts may limit maximum reputation with opposing groups';
-    context += '\n- Consider long-term reputation consequences in story choices';
-    
-    // Add trust level effects
-    context += `\n\nCURRENT TRUST LEVEL: ${trustModifiers.trustLevel.toUpperCase()}`;
-    if (trustModifiers.penalties.length > 0) {
-        context += '\nACTIVE TRUST PENALTIES:';
-        trustModifiers.penalties.forEach(penalty => {
-            context += `\n- ${penalty}`;
-        });
-        
-        context += '\n\nNPC BEHAVIOR ADJUSTMENTS:';
-        context += `\n- NPCs are ${Math.round((1 - trustModifiers.npcHelpChance) * 100)}% less helpful`;
-        context += `\n- Information quality reduced by ${Math.round((1 - trustModifiers.informationQuality) * 100)}%`;
-        context += `\n- Warning chances reduced by ${Math.round((1 - trustModifiers.warningChance) * 100)}%`;
-        
-        if (trustModifiers.ambushChance > 0) {
-            context += `\n- ${Math.round(trustModifiers.ambushChance * 100)}% chance of hostile ambushes`;
-        }
-    }
-    
-    return context;
 }

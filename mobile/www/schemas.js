@@ -64,6 +64,27 @@ export const narrativeTurnSchema = {
 };
 
 /**
+ * One-call turn: narration + state diff + choices. Choice count and
+ * one-of-each-type are checked by validateChoicesPayload after parsing.
+ */
+export const storyTurnSchema = {
+    type: 'object',
+    required: ['narration', 'ops', 'choices'],
+    properties: {
+        narration: narrativeTurnSchema.properties.narration,
+        ops: narrativeTurnSchema.properties.diff.properties.ops,
+        choices: {
+            type: 'array',
+            items: {
+                type: 'object',
+                required: ['type', 'text'],
+                properties: { type: { type: 'string' }, text: { type: 'string', minLength: 1 } }
+            }
+        }
+    }
+};
+
+/**
  * Lightly normalize a parsed narrative-turn payload. Engine-level path/value
  * validation happens in engine.applyDiff(). Throws on missing fields.
  */
@@ -74,8 +95,13 @@ export function validateNarrativeTurnPayload(payload) {
     const narration = typeof payload.narration === 'string' ? payload.narration.trim() : '';
     if (!narration) throw new Error('Narrative turn payload missing narration');
 
-    const diff = payload.diff && typeof payload.diff === 'object' ? payload.diff : { ops: [] };
-    const opsRaw = Array.isArray(diff.ops) ? diff.ops : [];
+    // Accept the shapes models actually send: {"ops":[...]} (what the turn
+    // prompt asks for), {"diff":{"ops":[...]}}, and {"diff":[...]}. The bare
+    // array form used to be dropped silently (live: a picked-up idol vanished).
+    const opsRaw = Array.isArray(payload.ops) ? payload.ops
+        : Array.isArray(payload.diff) ? payload.diff
+        : Array.isArray(payload.diff?.ops) ? payload.diff.ops
+        : [];
     const ops = opsRaw
         .filter(o => o && typeof o.op === 'string' && typeof o.path === 'string')
         .map(o => ({ op: o.op, path: o.path, value: o.value }));
@@ -274,10 +300,12 @@ export function validateChoicesPayload(payload, inCombat) {
 
     const normalized = [];
     const seen = new Set();
-    for (const c of choices) {
-        if (!c || typeof c.type !== 'string' || typeof c.text !== 'string') {
+    for (const raw of choices) {
+        if (!raw || typeof raw.type !== 'string' || typeof raw.text !== 'string') {
             throw new Error('Choice entry missing string type or text');
         }
+        // Small models drift on case/spacing ("good", " Risky"); match loosely.
+        const c = { type: validTypes.find(t => t.toLowerCase() === raw.type.trim().toLowerCase()) || raw.type, text: raw.text };
         const text = c.text.trim();
         if (!text) {
             throw new Error(`Empty choice text for type ${c.type}`);

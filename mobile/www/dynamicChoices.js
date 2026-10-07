@@ -222,7 +222,7 @@ export class DynamicChoiceGenerator {
             // Re-throw INSIDE the catch where `error` is in scope. The
             // previous version threw outside the catch, producing a
             // ReferenceError on every retry path. Phase 0 audit P1 #4.
-            throw new Error(`Dynamic choice generation failed: ${error.message}. The AI system must generate choices correctly. Check local AI server and prompts.`);
+            throw new Error(`Dynamic choice generation failed: ${error.message}. The AI system must generate choices correctly..`);
         }
     }
 
