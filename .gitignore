@@ -61,3 +61,6 @@ mobile/android/app/src/main/assets/public/mobile-bootstrap.js
 # On-device model files (1.6 GB) and Capacitor-generated web assets: never commit
 *.task
 mobile/android/app/src/main/assets/
+
+# Local secrets (OpenRouter key for dev tests) - never commit
+.env
