@@ -37,8 +37,53 @@ export const AI_DEFAULT_PARAMS = { max_tokens: 2048, temperature: 0.7, top_p: 0.
 // rate-limited or down model fails over server-side within one request.
 const OPENROUTER_FREE_LIMITS = '20/min · 50/day (1000/day after a one-time $10 credit purchase)';
 export const CLOUD_PROVIDERS = {
+    // Default: free Gemma 4 on Google first, then free OpenRouter models. A
+    // provider that is out of quota, rate-limited or down is skipped for a
+    // while and the same request goes to the next one, mid-turn.
+    auto: {
+        name: 'Auto — Gemma 4 31B (Google), then Nemotron (OpenRouter) · all free ★ recommended',
+        // Only two models, by Michael's choice: Gemma 4 31B (AI Studio, up to
+        // two keys from separate accounts) then Nemotron 3 Super (OpenRouter free).
+        chain: ['gemma_google', 'gemma_google_2', 'nemotron_openrouter'],
+        baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+        model: 'gemma-4-31b-it',
+        signupUrl: 'https://aistudio.google.com/apikey',
+        contextWindow: 262144,
+        rateLimit: 'Google free tier, then OpenRouter 1000/day free',
+        notes: 'Uses whichever free keys you save: Google first, OpenRouter when Google runs out. Never spends OpenRouter credits.'
+    },
+    gemma_google: {
+        name: 'Google AI Studio — Gemma 4 31B (Free)',
+        baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+        model: 'gemma-4-31b-it',
+        signupUrl: 'https://aistudio.google.com/apikey',
+        contextWindow: 262144,
+        rateLimit: 'Free tier — daily cap shown in AI Studio (resets midnight Pacific)',
+        notes: 'Free Google key from a project WITHOUT billing turned on.'
+    },
+    // Optional second AI Studio key (another Google account): its own quota.
+    gemma_google_2: {
+        name: 'Google AI Studio — Gemma 4 31B (2nd key)',
+        keySlot: 'generativelanguage.googleapis.com#2',
+        baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+        model: 'gemma-4-31b-it',
+        signupUrl: 'https://aistudio.google.com/apikey',
+        contextWindow: 262144,
+        rateLimit: 'Free tier — daily cap shown in AI Studio (resets midnight Pacific)',
+        notes: 'Optional key from a second Google account.'
+    },
+    // Auto's OpenRouter step: Nemotron 3 Super free only, no other models.
+    nemotron_openrouter: {
+        name: 'OpenRouter — Nemotron 3 Super 120B (Free)',
+        baseUrl: 'https://openrouter.ai/api/v1',
+        model: 'nvidia/nemotron-3-super-120b-a12b:free',
+        signupUrl: 'https://openrouter.ai/settings/keys',
+        contextWindow: 262144,
+        rateLimit: OPENROUTER_FREE_LIMITS,
+        notes: 'Free model only; never spends credits.'
+    },
     openrouter_free: {
-        name: 'OpenRouter — Free models (auto-fallback) ★ recommended',
+        name: 'OpenRouter — Free models (auto-fallback)',
         baseUrl: 'https://openrouter.ai/api/v1',
         model: 'nvidia/nemotron-3-super-120b-a12b:free',
         fallbackModels: ['nvidia/nemotron-3-ultra-550b-a55b:free', 'google/gemma-4-31b-it:free'],
@@ -85,7 +130,7 @@ export const CLOUD_PROVIDERS = {
  * Default cloud provider when LLM_BACKEND === 'cloud' but no specific
  * provider has been selected. Users override via localStorage('adv.cloudProvider').
  */
-export const DEFAULT_CLOUD_PROVIDER = 'openrouter_free';
+export const DEFAULT_CLOUD_PROVIDER = 'auto';
 
 /**
  * Resolve the active cloud provider config from localStorage selection,
@@ -106,21 +151,31 @@ export function resolveCloudProvider() {
  * Cloud requests must include this as `Authorization: Bearer <key>`.
  */
 export function getCloudApiKey() {
+    for (const p of providerChain()) { const k = keyForProvider(p); if (k) return k; }
+    return null;
+}
+
+/** The providers to try, in order (one unless the selection has a chain). */
+export function providerChain() {
+    const p = resolveCloudProvider();
+    return p.chain ? p.chain.map(k => CLOUD_PROVIDERS[k]).filter(Boolean) : [p];
+}
+
+/** The saved key for one provider (per host), or null. */
+export function keyForProvider(provider) {
     try {
-        if (typeof window !== 'undefined') {
-            const ls = window.localStorage;
-            const scoped = ls.getItem(cloudKeyStorageName(resolveCloudProvider()));
-            if (scoped) return scoped;
-            // Pre-2026-10 builds kept one unscoped key; it was an OpenRouter key.
-            if (resolveCloudProvider().baseUrl.includes('openrouter')) return ls.getItem('adv.apiKey') || null;
-        }
+        const ls = window.localStorage;
+        const scoped = ls.getItem(cloudKeyStorageName(provider));
+        if (scoped) return scoped;
+        // Pre-2026-10 builds kept one unscoped key; it was an OpenRouter key.
+        if (provider.baseUrl.includes('openrouter')) return ls.getItem('adv.apiKey') || null;
     } catch (_) { /* fall through */ }
     return null;
 }
 
 /** Keys are stored per provider host so an OpenRouter and a Google key can coexist. */
 export function cloudKeyStorageName(provider) {
-    return 'adv.apiKey.' + new URL(provider.baseUrl).hostname;
+    return 'adv.apiKey.' + (provider.keySlot || new URL(provider.baseUrl).hostname);
 }
 
 /** Story setting: describe blood/cuts/wounds in fights (off by default). */

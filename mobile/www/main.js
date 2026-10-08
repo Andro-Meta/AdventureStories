@@ -546,25 +546,38 @@ async function showLocalAIStatus() {
     })();
     const select = document.getElementById('cloudProviderSelect');
     if (select) select.value = providerKey;
-    const keyInput = document.getElementById('cloudApiKeyInput');
-    if (keyInput) {
-        keyInput.placeholder = Config.getCloudApiKey() ? '✓ Key saved (paste a new key to replace it)' : 'Paste your free API key here';
-        keyInput.value = '';
-    }
     updateCloudProviderNotes(providerKey);
     await runConnectionCheck();
 }
 
 /** Description and signup link for the selected provider. */
+// Auto mode has two keys: Google (Gemma, first) and OpenRouter (fallback).
+// The main key field belongs to OpenRouter there, else to the chosen provider.
+function mainKeyProvider(providerKey) {
+    return providerKey === 'auto' ? 'openrouter_free' : providerKey;
+}
+
 function updateCloudProviderNotes(providerKey) {
     const provider = Config.CLOUD_PROVIDERS[providerKey];
     if (!provider) return;
+    const auto = providerKey === 'auto';
+    document.getElementById('googleKeyBlock')?.classList.toggle('hidden', !auto);
+    const label = document.getElementById('cloudKeyLabel');
+    if (label) label.textContent = auto ? 'OpenRouter Key (used when Google runs out):' : 'API Key:';
+    const saved = (k) => Config.keyForProvider(Config.CLOUD_PROVIDERS[k]) ? '✓ Key saved (paste a new key to replace it)' : null;
+    const keyInput = document.getElementById('cloudApiKeyInput');
+    if (keyInput) { keyInput.value = ''; keyInput.placeholder = saved(mainKeyProvider(providerKey)) || 'Paste your free API key here'; }
+    const gInput = document.getElementById('googleApiKeyInput');
+    if (gInput) { gInput.value = ''; gInput.placeholder = saved('gemma_google') || 'Paste your free Google AI Studio key'; }
+    const g2Input = document.getElementById('googleApiKey2Input');
+    if (g2Input) { g2Input.value = ''; g2Input.placeholder = saved('gemma_google_2') || 'Optional: key from a second Google account'; }
+    const signupUrl = (auto ? Config.CLOUD_PROVIDERS.openrouter_free : provider).signupUrl;
     const notesEl = document.getElementById('cloudProviderNotes');
     const signupEl = document.getElementById('cloudSignupLink');
     if (notesEl) notesEl.textContent = `${provider.notes} (${provider.rateLimit})`;
     if (signupEl) {
-        signupEl.href = provider.signupUrl;
-        signupEl.textContent = `Get a free key from ${new URL(provider.signupUrl).hostname} →`;
+        signupEl.href = signupUrl;
+        signupEl.textContent = `Get a free key from ${new URL(signupUrl).hostname} →`;
     }
 }
 
@@ -613,7 +626,17 @@ function setupCloudBackendListeners() {
             if (!key) { UI.showPopup('Paste your API key first.', 'warning'); return; }
             const { localAI } = await import('./localAI.js');
             localAI.setCloudProvider(providerKey);
-            localAI.setApiKey(key);
+            localAI.setApiKey(key, mainKeyProvider(providerKey));
+            window.location.reload();
+        });
+    }
+    for (const [btnId, inputId, slot] of [['googleApiKeySaveBtn', 'googleApiKeyInput', 'gemma_google'], ['googleApiKey2SaveBtn', 'googleApiKey2Input', 'gemma_google_2']]) {
+        document.getElementById(btnId)?.addEventListener('click', async () => {
+            const key = document.getElementById(inputId)?.value?.trim() || '';
+            if (!key) { UI.showPopup('Paste your Google key first.', 'warning'); return; }
+            const { localAI } = await import('./localAI.js');
+            localAI.setCloudProvider(providerSelect ? providerSelect.value : 'auto');
+            localAI.setApiKey(key, slot);
             window.location.reload();
         });
     }
