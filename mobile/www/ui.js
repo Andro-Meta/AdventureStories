@@ -927,6 +927,9 @@ export function renderChoices(choices, handler = null) {
     // Every set of story choices is shown in a fresh random order, whatever
     // path produced it (post-fight and fallback choices came in type order).
     if (Array.isArray(choices) && !handler) choices = choices.filter(c => c?.type !== 'Defend');
+    // Exploration: five different approaches, always (the storyteller is asked
+    // and repaired in aiHandler; this is the last line for every other path).
+    if (Array.isArray(choices) && !handler && !gameState.inCombat && choices.length === 5) choices = Progression.fillApproaches(choices);
     if (Array.isArray(choices) && choices.length > 1 && !handler) {
         choices = [...choices];
         for (let i = choices.length - 1; i > 0; i--) {

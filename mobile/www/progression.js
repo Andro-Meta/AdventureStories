@@ -36,8 +36,57 @@ export const CHECKS = {
     Investigative: { stat: 'clever', dc: 10, label: 'Fair' },
     Silly:         { stat: null,     dc: 10, label: 'Luck' },
     Bad:           { stat: 'brave',  dc: 13, label: 'Tricky' },
-    Risky:         { stat: 'brave',  dc: 14, label: 'Hard' }
+    Risky:         { stat: 'sneaky', dc: 14, label: 'Hard' }
 };
+// The five approaches every exploration set must have, exactly once each
+// (Michael, phone 10-08: "two lucks, no sneaks"). 'luck' = the Silly one.
+export const APPROACHES = ['brave', 'clever', 'sneaky', 'kind', 'luck'];
+const TYPE_APPROACH = { Good: 'kind', Investigative: 'clever', Silly: 'luck', Bad: 'brave', Risky: 'sneaky' };
+// Last resort when the storyteller can't fix a set: plain, honest actions.
+export const APPROACH_FALLBACK = {
+    brave: 'Step up and face it head-on.',
+    clever: 'Stop and work out what is really going on here.',
+    sneaky: 'Slip out of sight and move in quietly.',
+    kind: 'Reach out and help someone nearby.',
+    luck: 'Do something wild and hope luck is on your side.'
+};
+
+/**
+ * Which choices must change so the five use five different approaches.
+ * Keeps one choice per approach (the one whose type naturally fits it, else
+ * the first) and returns [{ index, stat }] for the rest: each gets one of the
+ * missing approaches. Empty when the set is already balanced.
+ */
+export function approachPlan(choices) {
+    const list = choices || [];
+    const stat = (c) => (APPROACHES.includes(c?.stat) ? c.stat : null);
+    const keep = new Map();
+    for (const s of APPROACHES) {
+        const idx = list.map((c, i) => i).filter(i => stat(list[i]) === s);
+        if (idx.length) keep.set(s, idx.find(i => TYPE_APPROACH[list[i].type] === s) ?? idx[0]);
+    }
+    const kept = new Set(keep.values());
+    const free = list.map((c, i) => i).filter(i => !kept.has(i));
+    const missing = APPROACHES.filter(s => !keep.has(s));
+    const plan = [];
+    // A free slot whose type fits a missing approach takes it first.
+    for (const s of [...missing]) {
+        const i = free.find(j => TYPE_APPROACH[list[j]?.type] === s);
+        if (i != null) { plan.push({ index: i, stat: s }); free.splice(free.indexOf(i), 1); missing.splice(missing.indexOf(s), 1); }
+    }
+    missing.forEach((s, k) => { if (free[k] != null) plan.push({ index: free[k], stat: s }); });
+    return plan.sort((a, b) => a.index - b.index);
+}
+
+/** Apply a plan with fixed fallback texts (sync; used at render time). */
+export function fillApproaches(choices) {
+    const plan = approachPlan(choices);
+    if (!plan.length) return choices;
+    const out = choices.map(c => ({ ...c }));
+    for (const { index, stat } of plan) out[index] = { ...out[index], text: APPROACH_FALLBACK[stat], stat };
+    return out;
+}
+
 const pickStat = (type, stat) => (stat === 'luck' ? null : (STATS[stat] ? stat : CHECKS[type]?.stat ?? null));
 
 /**

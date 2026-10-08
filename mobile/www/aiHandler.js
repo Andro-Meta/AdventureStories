@@ -6,6 +6,7 @@ import { gameState } from './state.js';
 import * as Config from './config.js';
 import * as UI from './ui.js';
 import * as API from './api_new.js';
+import * as Progression from './progression.js';
 import * as AdaptiveAbilities from './adaptiveAbilities.js';
 import { getChoiceSchema, validateChoicesPayload, arcMemorySchema, validateArcMemoryPayload, storyTurnSchema, validateNarrativeTurnPayload, EXPLORATION_CHOICE_TYPES, COMBAT_CHOICE_TYPES } from './schemas.js';
 import { applyDiff, describeAllowedPaths } from './engine.js';
@@ -239,14 +240,15 @@ ${buildDiffInstructions(pIdx)}`;
         catch (e) { log(`Turn choices unusable (${e.message}); asking for choices only.`); }
         const done = recentActionTexts(prompt);
         if (!choices) choices = await requestChoicesOnly(cleanNarrative, nowInCombat, null, done);
-        // One fresh choices-only call when the set repeats a recent action or
-        // isn't five different approaches; keep whichever set is better.
+        // One fresh choices-only call when the set repeats a recent action;
+        // keep whichever set is better.
         const flaws = (cs) => nowInCombat ? 0 : (cs || []).filter(c => isNearRepeat(c.text, done)).length * 2 + approachGaps(cs);
-        if (flaws(choices) > 0) {
-            log(`Choices need another pass (repeats/approach gaps score ${flaws(choices)}); asking once for fresh ones.`);
+        if (!nowInCombat && (choices || []).some(c => isNearRepeat(c.text, done))) {
+            log(`Choices repeat a recent action (score ${flaws(choices)}); asking once for fresh ones.`);
             try { const fresh = await requestChoicesOnly(cleanNarrative, false, null, done); if (flaws(fresh) < flaws(choices)) choices = fresh; }
             catch (e) { log(`Fresh choices failed (${e.message}); keeping the first set.`); }
         }
+        if (!nowInCombat) choices = await ensureFiveApproaches(choices, cleanNarrative, done);
 
         UI.renderChoices(choices); // shuffles and sets gameState.currentChoices
         return { narrative: cleanNarrative, choices: gameState.currentChoices };
@@ -255,6 +257,35 @@ ${buildDiffInstructions(pIdx)}`;
         UI.showLoading(false);
         throw new Error(`AI processing failed: ${error.message}`);
     }
+}
+
+/**
+ * Exactly one brave, clever, sneaky, kind and luck choice. The model often
+ * doubles one (phone 10-08: two luck, no sneaky) however it's asked, so the
+ * code checks: only the off-approach choices are rewritten, in one small
+ * call; anything still wrong gets a plain fallback at render time.
+ */
+export async function ensureFiveApproaches(choices, narrative, avoid = []) {
+    const log = window.displayVisualError || console.log;
+    const plan = Progression.approachPlan(choices);
+    if (!plan.length) return choices;
+    const out = choices.map(c => ({ ...c }));
+    const WHAT = { brave: 'BRAVE (force, daring, facing danger head-on)', clever: 'CLEVER (searching, figuring out, knowing)', sneaky: 'SNEAKY (stealth, tricks, hiding, slipping past unseen)', kind: 'KIND (helping, talking, calming, making friends)', luck: 'LUCK (silly, random, pure chance)' };
+    log(`Choices missing ${plan.map(p => p.stat).join(', ')}; rewriting ${plan.length} of them.`);
+    try {
+        const others = out.filter((c, i) => !plan.some(p => p.index === i)).map(c => `- ${c.text}`).join('\n');
+        const payload = await API.getAIResponseJSON([
+            { role: 'system', content: `You write player choices for a ${getThemeName()} text adventure. Reply with one JSON object only.` },
+            { role: 'user', content: `SCENE:\n${narrative}\n\nThese choices stay:\n${others}\n\nWrite ${plan.length} new choice${plan.length > 1 ? 's' : ''}, one sentence each, that fit this scene and differ from the ones above:\n${plan.map((p, k) => `${k + 1}. a ${WHAT[p.stat]} action`).join('\n')}\n\nReply exactly as {"texts":[${plan.map(() => '"..."').join(',')}]}` }
+        ], null, { max_tokens: 250, temperature: 0.7, jsonObject: true });
+        const texts = Array.isArray(payload?.texts) ? payload.texts : [];
+        plan.forEach((p, k) => {
+            const t = String(texts[k] || '').trim();
+            const clash = out.some((c, i) => i !== p.index && isNearRepeat(t, [c.text])) || isNearRepeat(t, avoid);
+            if (t.length >= 8 && t.length <= 220 && !clash) out[p.index] = { ...out[p.index], text: t, stat: p.stat };
+        });
+    } catch (e) { log(`Approach fix failed (${e.message}); using plain choices for the gaps.`); }
+    return Progression.fillApproaches(out); // any gap left: plain text, never a doubled approach
 }
 
 /** Small call: choices for an already-written scene (optionally for a named hero). */
@@ -348,7 +379,8 @@ export async function requestChoicesOnly(narrative, inCombat, forHero = null, av
         { role: 'system', content: `You write the player choices for a ${getThemeName()} text adventure. Reply with one JSON object only.` },
         { role: 'user', content: `SCENE:\n${narrative}${enemies}\n\n${forHero ? `Write the choices for ${forHero}, who acts next.\n` : ''}${buildChoiceInstructions(types, inCombat, avoid)}\n\nReply exactly as {"choices":[${types.map(t => inCombat ? `{"type":"${t}","text":"..."}` : `{"type":"${t}","text":"...","stat":"..."}`).join(',')}]}` }
     ], getChoiceSchema(inCombat), { jsonSchemaName: inCombat ? 'combat_choices' : 'exploration_choices', max_tokens: 600, temperature: 0.7 });
-    return validateChoicesPayload(payload, inCombat);
+    const choices = validateChoicesPayload(payload, inCombat);
+    return inCombat ? choices : ensureFiveApproaches(choices, narrative, avoid);
 }
 
 /**
