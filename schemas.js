@@ -92,8 +92,25 @@ export function validateNarrativeTurnPayload(payload) {
     if (!payload || typeof payload !== 'object') {
         throw new Error('Narrative turn payload is not an object');
     }
-    const narration = typeof payload.narration === 'string' ? payload.narration.trim() : '';
+    let narration = typeof payload.narration === 'string' ? payload.narration.trim() : '';
     if (!narration) throw new Error('Narrative turn payload missing narration');
+    // Live (2 of 8 Nemotron turns): the model pasted {"ops":[...],"choices":[...]}
+    // inside the narration string. Players saw raw JSON, every op was lost and
+    // a second call was made. Cut it out and use it.
+    const cut = narration.search(/\{\s*"(ops|choices|op)"\s*:/);
+    if (cut > 0) {
+        const tail = narration.slice(cut);
+        narration = narration.slice(0, cut).trim();
+        let extra = null;
+        for (const body of [tail, tail.slice(0, tail.lastIndexOf('}') + 1)]) {
+            try { extra = JSON.parse(body.replace(/,(\s*[}\]])/g, '$1')); break; } catch (_) { /* try next */ }
+        }
+        if (extra && typeof extra === 'object') {
+            if (!Array.isArray(payload.ops) && Array.isArray(extra.ops)) payload.ops = extra.ops;
+            if (!Array.isArray(payload.choices) && Array.isArray(extra.choices)) payload.choices = extra.choices;
+        }
+        payload.narration = narration;
+    }
 
     // Accept the shapes models actually send: {"ops":[...]} (what the turn
     // prompt asks for), {"diff":{"ops":[...]}}, and {"diff":[...]}. The bare

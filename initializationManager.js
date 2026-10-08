@@ -229,9 +229,12 @@ export class InitializationManager {
                 const { gameState } = await import('./state.js');
                 
                 try {
-                    const dynamicItems = await import('./dynamicItems.js');
-                    gameState.shopItems = await dynamicItems.generateDynamicShopItems(8, gameState.turn);
-                    return { shopItems: gameState.shopItems.length, dynamic: true };
+                    // Same generator as restocks and loads (always has healing).
+                    // The AI shop call asked for 8 items, got 1 object back and fell
+                    // to static items anyway, delaying every new game.
+                    const Items = await import('./items.js');
+                    gameState.shopItems = Items.generateShopItems(gameState.adventureTheme, gameState.turn || 1);
+                    return { shopItems: gameState.shopItems.length, dynamic: false };
                 } catch (error) {
                     // Fallback to static items
                     gameState.shopItems = this.generateFallbackShopItems(gameState.adventureTheme);
@@ -322,12 +325,12 @@ export class InitializationManager {
 
                 const theme = gameState.adventureTheme || 'fantasy';
                 const narrative = gameState.currentNarrative || '';
-                const hookDesc = gameState.storyHook?.flavorText || '';
+                const hookDesc = gameState.storyHook ? `${gameState.storyHook.archetype}; twist: ${gameState.storyHook.motif || ''}` : ''; // field is .flavor, not .flavorText (was always blank)
 
                 const prompt = `You are setting the main quest goal for a ${theme} adventure game.
 
 Story so far:
-${narrative.slice(0, 600)}
+${narrative.slice(0, 1600)}
 ${hookDesc ? `\nStory hook: ${hookDesc}` : ''}
 
 Write ONE specific, achievable adventure goal in a single sentence (under 15 words). It should describe what the player must ultimately accomplish to win. Make it concrete and tied to the story above. Do NOT use generic phrases like "survive" or "discover the adventure".

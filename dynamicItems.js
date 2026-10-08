@@ -549,17 +549,10 @@ Respond with a JSON object containing: name, effect, stats (object with relevant
      * Direct AI generation fallback
      */
     async directItemGeneration(prompt, tier, type) {
-        try {
-            const API = await import('./api_new.js');
-            const response = await API.getAIResponse([
-                { role: 'system', content: 'You are an expert item designer for adventure games. Generate creative, thematic items that fit the requested specifications.' },
-                { role: 'user', content: prompt }
-            ]);
-            
-            return this.parseItemResponse(response, tier, type);
-        } catch (error) {
-            throw new Error(`Direct item generation failed: ${error.message}..`);
-        }
+        // ponytail: no AI call. It called a parseItemResponse that never
+        // existed, so every loot roll paid for a 2048-token reply and then
+        // threw into the fallback item anyway. The caller's fallback is used.
+        throw new Error('direct item generation disabled');
     }
 
     /**

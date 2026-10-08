@@ -63,7 +63,7 @@ if (!Array.isArray(arc) || arc.length !== 3) {
 const REQUIRED_MILESTONES = {
   act1: ['call_to_adventure','world_introduced','stakes_clear'],
   act2: ['ally_found','first_obstacle_overcome','antagonist_revealed'],
-  act3: ['final_confrontation','final_blow','aftermath']
+  act3: ['final_confrontation','final_blow'] // 'aftermath' removed: the quest ends at final_blow
 };
 for (const a of arc || []) {
   const want = REQUIRED_MILESTONES[a.id];
