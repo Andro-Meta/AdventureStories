@@ -302,10 +302,24 @@
                     <button class="menuDirectBtn" data-target="inventoryScreen">Inventory</button>
                     <button class="menuDirectBtn" data-target="shopScreen">Shop</button>
                     <button class="menuDirectBtn" data-target="specialMovesScreen">Special Moves</button>
+                    <button id="readStoryBtn">📖 Read the Story So Far</button>
                     <button id="saveGameBtn">Save Game</button>
                     <button id="exitToMainMenuBtn">Save and Exit to Menu</button>
                     <button id="exitWithoutSavingBtn">Exit Without Saving</button>
                 </nav>
+            </div>
+        </div>
+
+        <!-- Story Book: the whole adventure as one story -->
+        <div id="storyBookScreen" class="screen hidden">
+            <div class="card">
+                <h1>📖 The Story</h1>
+                <div id="storyBookText" style="white-space:pre-wrap;line-height:1.6;max-height:65vh;overflow-y:auto;user-select:text"></div>
+                <div class="button-container">
+                    <button id="saveStoryBtn">Save as File</button>
+                    <button id="copyStoryBtn">Copy</button>
+                    <button id="closeStoryBtn">Back</button>
+                </div>
             </div>
         </div>
 

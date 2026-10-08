@@ -115,6 +115,7 @@ export const gameState = {
     inCombat: false, // Flag indicating if combat is active
     messageHistory: [], // Array of { role: 'system' | 'user' | 'assistant', content: string }
     currentNarrative: '', // Current story narrative
+    storyLog: [], // every scene shown, in order, for the re-readable story book
     currentChoices: [], // Current available choices
     currentLocation: null, // Current location object { name, type, dangerLevel, etc }
     narrativeContext: {
@@ -667,6 +668,7 @@ export function resetGameState() {
         currentChoices: [],
         currentLocation: null,
         currentNarrative: '',
+        storyLog: [],
         questProgress: {
             currentPhase: 'beginning', completionPercentage: 0,
             milestones: [], currentObjectives: [], sideQuests: [],

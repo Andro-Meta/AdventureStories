@@ -116,5 +116,15 @@ Engine.applyDiff([{ op: 'add', path: '/enemies/-', value: { name: 'The Admiral G
 check(gameState.enemies[1]?.isBoss === true, 'the named villain becomes the boss');
 check(typeof AI.writeEpilogue === 'function', 'epilogue writer exists');
 
+// Choice order: every render path shuffles, so no type owns a slot.
+{
+  const UI = await import('../ui.js');
+  const ordered = ['Good', 'Bad', 'Risky', 'Silly', 'Investigative'].map(t => ({ type: t, text: `${t} option` }));
+  const firsts = {};
+  for (let i = 0; i < 300; i++) { UI.renderChoices(ordered); const t = gameState.currentChoices[0].type; firsts[t] = (firsts[t] || 0) + 1; }
+  const max = Math.max(...Object.values(firsts));
+  check(Object.keys(firsts).length === 5 && max < 120, `choices render in random order (first-slot counts ${JSON.stringify(firsts)})`);
+}
+
 console.log(failed ? `✗ ${failed} PROMPT CHECK FAILURE(S)` : '✓ prompt checks pass');
 process.exit(failed ? 1 : 0);

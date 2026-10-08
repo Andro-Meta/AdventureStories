@@ -1025,7 +1025,47 @@ export function updateNarrative(text) {
             .join('\n')
             .trim();
         elements.storyText.textContent = cleanText || "The story continues...";
+        recordStoryScene(cleanText);
     }
+}
+
+// Story book: every scene shown, so a finished game can be re-read as a story.
+function recordStoryScene(text) {
+    if (!text) return;
+    const log = gameState.storyLog || (gameState.storyLog = []);
+    const last = log[log.length - 1];
+    if (last === text) return;
+    if (last && text.startsWith(last)) log[log.length - 1] = text; // same scene grew (epilogue)
+    else log.push(text);
+}
+
+export function storyBookText() {
+    const title = gameState.adventureGoal || 'An Adventure Story';
+    const heroes = (gameState.players || []).map(p => p.name).join(', ');
+    return `${title}\n${heroes ? `Starring ${heroes}\n` : ''}\n${(gameState.storyLog || []).join('\n\n* * *\n\n')}\n`;
+}
+
+export function showStoryBook() {
+    const box = document.getElementById('storyBookText');
+    if (box) box.textContent = (gameState.storyLog || []).length ? storyBookText() : 'The story has not started yet.';
+    showScreen('storyBookScreen');
+}
+
+export async function saveStoryBook() {
+    const text = storyBookText();
+    const name = `${(gameState.adventureGoal || 'adventure-story').replace(/[^a-z0-9]+/gi, '-').slice(0, 40)}.txt`;
+    try {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+        a.download = name;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    } catch (_) { /* phone web views may block downloads; Copy still works */ }
+}
+
+export async function copyStoryBook() {
+    try { await navigator.clipboard.writeText(storyBookText()); showPopup('Story copied', 'info', 2000); }
+    catch (_) { showPopup('Copy blocked: select the text and copy it', 'info', 3000); }
 }
 
 /**
@@ -1035,6 +1075,16 @@ export function updateNarrative(text) {
  */
 export function renderChoices(choices, handler = null) {
     const log = window.displayVisualError || console.log;
+    // Every set of story choices is shown in a fresh random order, whatever
+    // path produced it (post-fight and fallback choices came in type order).
+    if (Array.isArray(choices) && choices.length > 1 && !handler) {
+        choices = [...choices];
+        for (let i = choices.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [choices[i], choices[j]] = [choices[j], choices[i]];
+        }
+        gameState.currentChoices = choices;
+    }
     log(`UI: Rendering choices. Data type: ${typeof choices}, Is Array: ${Array.isArray(choices)}, Handler Mode: ${!!handler}`);
     
     if (!elements.choicesContainer) {

@@ -180,14 +180,8 @@ ${buildDiffInstructions(pIdx)}`;
         }
         if (!choices) choices = await requestChoicesOnly(cleanNarrative, nowInCombat);
 
-        const shuffled = [...choices];
-        for (let i = shuffled.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-        }
-        gameState.currentChoices = shuffled;
-        UI.renderChoices(shuffled);
-        return { narrative: cleanNarrative, choices: shuffled };
+        UI.renderChoices(choices); // shuffles and sets gameState.currentChoices
+        return { narrative: cleanNarrative, choices: gameState.currentChoices };
     } catch (error) {
         log(`processAIResponse failed: ${error.message}`);
         UI.showLoading(false);
