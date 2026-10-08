@@ -69,15 +69,15 @@ shot('game_start'); await displayCheck('game start');
 (await errsSince(m)).forEach(e => note(`start error: ${e}`));
 
 // ---- turns: every exploration type, every fight move ----
-const explore = ['Good', 'Bad', 'Risky', 'Silly', 'Investigative'];
+const explore = ['kind', 'brave', 'sneaky', 'luck', 'clever']; // approaches (data-stat)
 const fightMoves = ['Attack', 'Special', 'Item', 'Attack', 'Run'];
 const used = new Set(); let fi = 0;
 for (let t = 0; t < TURNS; t++) {
-  const s = await gs(g => ({ combat: g.inCombat, types: g.currentChoices.map(c => c.type), hp: g.players[0].hp }));
+  const s = await gs(g => ({ combat: g.inCombat, types: g.inCombat ? g.currentChoices.map(c => c.type) : g.currentChoices.map(c => c.stat || 'luck'), hp: g.players[0].hp }));
   const want = s.combat ? fightMoves[fi++ % fightMoves.length] : explore[t % explore.length];
   const type = s.types.includes(want) ? want : s.types[0];
   m = await errMark();
-  await page.evaluate((type) => { const b = [...document.querySelectorAll('#choicesContainer .choice-btn')].find(x => x.dataset.actionType === type); b?.scrollIntoView({ block: 'center' }); b?.click(); }, type);
+  await page.evaluate((type) => { const b = [...document.querySelectorAll('#choicesContainer .choice-btn')].find(x => x.dataset.actionType === type || x.dataset.stat === type); b?.scrollIntoView({ block: 'center' }); b?.click(); }, type);
   await page.waitForTimeout(250);
   // Battle picker (Special/Item/target): check Cancel is on screen, then take
   // the last enabled option (Power Strike / a real item) like a player would.
@@ -95,8 +95,8 @@ for (let t = 0; t < TURNS; t++) {
   const after = await gs(g => ({ combat: g.inCombat, foe: (g.enemies || []).filter(e => !e.isDefeated).map(e => `${e.name} ${e.hp}/${e.maxHp}`).join(', '), hp: g.players[0].hp, recap: document.getElementById('turnRecap')?.textContent || '', heroes: g.players.length }));
   console.log(`turn ${t + 1} ${type}: ${(ms / 1000).toFixed(1)} s | HP ${s.hp}->${after.hp}${after.combat ? ' | FIGHT ' + after.foe : ''} | ${after.recap}`);
   // Five choices should be five approaches (brave, clever, sneaky, kind, luck).
-  const mix = await gs(g => g.inCombat ? null : g.currentChoices.map(c => c.stat || '-'));
-  if (mix) { const gaps = ['brave', 'clever', 'sneaky', 'kind', 'luck'].filter(x => !mix.includes(x)).length; globalThis.__mix = globalThis.__mix || { sets: 0, balanced: 0 }; __mix.sets++; if (!gaps) __mix.balanced++; console.log(`  approaches: ${mix.join(', ')}${gaps ? `  (${gaps} missing)` : '  ✓'}`); }
+  const mix = await gs(g => g.inCombat ? null : g.currentChoices.map(c => `${c.stat || '-'}/${c.type}`));
+  if (mix) { const gaps = ['brave', 'clever', 'sneaky', 'kind', 'luck'].filter(x => !mix.some(m => m.startsWith(x + '/'))).length; globalThis.__mix = globalThis.__mix || { sets: 0, balanced: 0 }; __mix.sets++; if (!gaps) __mix.balanced++; console.log(`  approaches: ${mix.join(', ')}${gaps ? `  (${gaps} missing)` : '  ✓'}`); }
   if (ms < 0) note(`turn ${t + 1} (${type}) never finished`);
   if (after.heroes !== 1) note(`solo game has ${after.heroes} heroes`);
   if (s.combat !== after.combat || t < 2 || (after.combat && t % 3 === 0)) shot(`turn${t + 1}_${type}${after.combat ? '_fight' : ''}`);

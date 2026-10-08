@@ -1,5 +1,5 @@
 // economy_sim.mjs - what a game actually feels like, in numbers. Plays N
-// exploration turns per choice type through the real handlePlayerChoice
+// exploration turns per danger (approaches in turn) through the real handlePlayerChoice
 // (a fake storyteller answers instantly) and reports, per type: coins/turn, HP lost/turn, how often HP moved
 // with no reason (success with a loss, or failure with a gain), XP gained,
 // levels reached, stat growth.
@@ -7,9 +7,9 @@
 import './dom_polyfill.mjs';
 // A storyteller that always answers (a failed call now undoes the roll).
 const STORY = JSON.stringify({ narration: 'Ava tries it, and the moment plays out.', ops: [], choices: [
-  { type: 'Good', text: 'Help the old fisherman haul his net', stat: 'kind' }, { type: 'Bad', text: 'Kick the guard dog to get past it', stat: 'brave' },
-  { type: 'Risky', text: 'Leap across the broken bridge', stat: 'brave' }, { type: 'Silly', text: 'Challenge the parrot to a staring contest', stat: 'luck' },
-  { type: 'Investigative', text: 'Search the captain desk for clues', stat: 'clever' }] });
+  { stat: 'kind', danger: 'Safe', text: 'Help the old fisherman haul his net' }, { stat: 'brave', danger: 'Reckless', text: 'Kick the guard dog to get past it' },
+  { stat: 'sneaky', danger: 'Bold', text: 'Slip past the sleeping guards' }, { stat: 'luck', danger: 'Bold', text: 'Challenge the parrot to a staring contest' },
+  { stat: 'clever', danger: 'Safe', text: 'Search the captain desk for clues' }] });
 globalThis.fetch = async () => ({ ok: true, status: 200, statusText: '200', headers: { get: () => null },
   json: async () => ({ choices: [{ message: { content: STORY } }] }), text: async () => '' });
 if (globalThis.window) globalThis.window.fetch = globalThis.fetch;
@@ -20,11 +20,11 @@ globalThis.displayVisualError = () => {}; if (globalThis.window) globalThis.wind
 
 const { gameState, resetGameState, createNewPlayer } = await import('../state.js');
 const AH = await import('../actionHandler.js');
-const { xpForLevel } = await import('../progression.js');
+const { xpForLevel, DANGERS, APPROACHES } = await import('../progression.js');
 const totalXp = (p) => { let t = p.xp || 0; for (let l = 1; l < (p.level || 1); l++) t += xpForLevel(l); return t; };
 const TURNS = Number(process.argv[2] || 40);
-const TYPES = ['Good', 'Bad', 'Risky', 'Silly', 'Investigative'];
-const TEXT = { Good: 'Help the old fisherman haul his net', Bad: 'Kick the guard dog to get past it', Risky: 'Leap across the broken bridge', Silly: 'Challenge the parrot to a staring contest', Investigative: 'Search the captain\'s desk for clues' };
+// One row per danger; each turn uses the next approach (brave, clever, ...).
+const TYPES = DANGERS;
 
 const rows = [];
 for (const type of TYPES) {
@@ -38,7 +38,9 @@ for (const type of TYPES) {
     p.hp = p.maxHp; // measure each turn from full
     const hp = p.hp, xpBefore = totalXp(p), lvBefore = p.level;
     gameState.isLoading = false; gameState.inCombat = false; gameState.enemies = [];
-    await AH.handlePlayerChoice(type, TEXT[type]).catch(() => {});
+    const stat = APPROACHES[t % APPROACHES.length], text = `A ${type} ${stat} move`;
+    gameState.currentChoices = [{ type, stat, text }];
+    await AH.handlePlayerChoice(type, text).catch(() => {});
     const band = gameState.narrativeContext?.lastOutcome?.band;
     const d = p.hp - hp;
     if (d < 0) lost += -d;
@@ -49,6 +51,6 @@ for (const type of TYPES) {
   }
   rows.push({ type, coinsPerTurn: ((p.coins - s0.coins) / TURNS).toFixed(1), hpLostPerTurn: (lost / TURNS).toFixed(1), unearnedHp: `${unearned}/${TURNS}`, xpPerTurn: (xpTotal / TURNS).toFixed(1), level: p.level || 1, stats: JSON.stringify(p.stats || {}) });
 }
-out(`${TURNS} exploration turns per choice type (no fights):`);
+out(`${TURNS} exploration turns per danger, approaches in turn (no fights):`);
 for (const r of rows) out(`  ${r.type.padEnd(13)} coins/turn ${r.coinsPerTurn.padStart(5)} | HP lost/turn ${r.hpLostPerTurn.padStart(5)} | HP moved against the outcome ${r.unearnedHp.padStart(5)} | XP/turn ${r.xpPerTurn.padStart(4)} | level ${r.level} | stats ${r.stats}`);
 process.exit(0);

@@ -41,11 +41,11 @@ const t0 = Date.now();
 await page.click('#nameInputStartBtn');
 const startMs = await settle(240000);
 console.log(`new game: ${(startMs / 1000).toFixed(1)} s | calls: ${(await aiLines(mark)).join(' ; ')}`);
-const types = ['Investigative', 'Risky', 'Good', 'Silly', 'Bad'];
+const types = ['clever', 'sneaky', 'kind', 'luck', 'brave']; // approaches (data-stat)
 const times = [];
 for (let t = 0; t < Number(TURNS); t++) {
   mark = await logLen();
-  const picked = await page.evaluate((type) => { const bs = [...document.querySelectorAll('#choicesContainer .choice-btn')]; const b = bs.find(x => x.dataset.actionType === type) || bs.find(x => x.dataset.actionType === 'Attack') || bs[0]; b.click(); return b.dataset.actionType; }, types[t % types.length]);
+  const picked = await page.evaluate((type) => { const bs = [...document.querySelectorAll('#choicesContainer .choice-btn')]; const b = bs.find(x => x.dataset.actionType === type || x.dataset.stat === type) || bs.find(x => x.dataset.actionType === 'Attack') || bs[0]; b.click(); return b.dataset.actionType; }, types[t % types.length]);
   const ms = await settle();
   times.push(ms);
   console.log(`turn ${t + 1} (${picked}): ${(ms / 1000).toFixed(1)} s | ${(await aiLines(mark)).join(' ; ')}`);

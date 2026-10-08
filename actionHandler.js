@@ -25,7 +25,7 @@ import { recordPlayerChoice, recordStoryBeat } from './state.js';
  * Handles the player selecting one of the AI-generated choices.
  * Identifies the choice's underlying type, applies mechanical consequences based on that type,
  * updates the UI, and then constructs a prompt for the AI based on the *text* chosen.
- * @param {string} actionType - The archetype of the action chosen ('Good', 'Bad', 'Risky', 'Silly', 'Investigative'), retrieved from button's data-action-type.
+ * @param {string} actionType - The choice's danger ('Safe', 'Bold', 'Reckless') or a battle command, from the button's data-action-type.
  * @param {string} choiceText - The actual text of the choice selected by the player, retrieved from button's text content.
  */
 /**
@@ -486,7 +486,7 @@ Mechanical outcome: ${combatLog}
 Active enemies: ${enemiesAfter.map(e => `${e.name} (HP ${e.hp}/${e.maxHp})`).join(', ') || 'None — combat ended.'}
 Combat status: ${gameState.inCombat ? 'Ongoing' : 'Ended'}
 
-Fight round ${gameState.combat?.round || 1}. Narrate this round so the fight CHANGES: the foe adapts or tries something new, the ground or weather shifts, a hazard, an object or a bystander gets involved. Never describe the same blow or the same reaction as an earlier round.${averagePartyAge() < 15 && !Config.injuryDetailOn() ? ' Kid-safe: no blood or wounds; show hits by their effect.' : ''} Never write HP, MP or other game numbers in the story. Then provide ${gameState.inCombat ? '4 combat choices (Attack/Special/Item/Run)' : '5 exploration choices (Good/Bad/Risky/Silly/Investigative)'} as JSON.`;
+Fight round ${gameState.combat?.round || 1}. Narrate this round so the fight CHANGES: the foe adapts or tries something new, the ground or weather shifts, a hazard, an object or a bystander gets involved. Never describe the same blow or the same reaction as an earlier round.${averagePartyAge() < 15 && !Config.injuryDetailOn() ? ' Kid-safe: no blood or wounds; show hits by their effect.' : ''} Never write HP, MP or other game numbers in the story. Then provide ${gameState.inCombat ? '4 combat choices (Attack/Special/Item/Run)' : '5 exploration choices (one per approach, each with a danger)'} as JSON.`;
 
                 cbStep(11, 'showLoading + AI call');
                 UI.showLoading(true, 'Combat unfolding...');
@@ -561,13 +561,7 @@ Fight round ${gameState.combat?.round || 1}. Narrate this round so the fight CHA
                             { type: 'Item',    text: 'Use an item from your pack.' },
                             { type: 'Run',     text: 'Try to break off and flee.' }
                         ]
-                        : [
-                            { type: 'Good',          text: 'Take stock of your surroundings and plan your next step.' },
-                            { type: 'Bad',           text: 'Push forward recklessly without a plan.' },
-                            { type: 'Risky',         text: 'Take a calculated gamble.' },
-                            { type: 'Silly',         text: 'Try something absurd.' },
-                            { type: 'Investigative', text: 'Search the area carefully for clues.' }
-                        ];
+                        : Progression.fallbackChoices();
                     UI.renderChoices(fallback);
                     cbStep(14, `rendered ${fallback.length} fallback choices`);
                 }
@@ -740,7 +734,8 @@ Fight round ${gameState.combat?.round || 1}. Narrate this round so the fight CHA
             ? `
 Already applied by the game (show these in the story; do not emit ops for them): ${outcomeNotes.join('; ')}.`
             : '';
-        const actionLog = `${currentPlayer.name} chose (${actionType}): "${choiceText}"
+        const lastRoll = gameState.narrativeContext.lastOutcome?.roll;
+        const actionLog = `${currentPlayer.name} chose (${lastRoll ? `${lastRoll.stat ? Progression.STATS[lastRoll.stat].name : 'Luck'}, ${lastRoll.type}` : actionType}): "${choiceText}"
 Result: ${{ crit: 'a brilliant success', success: 'it works out', partial: 'it works, but at a cost (show the cost)' }[gameState.narrativeContext.lastOutcome?.band] || (gameState.narrativeContext.lastOutcome?.success ? 'it works out' : 'it goes wrong: the story turns against them (a complication, not a dead end)')}.${outcomeText}`;
         gameState.lastActionMeta = { actor: currentPlayer.name, action: choiceText, success: !!gameState.narrativeContext.lastOutcome?.success, notes: outcomeNotes.join('; ') };
 
@@ -797,13 +792,7 @@ Result: ${{ crit: 'a brilliant success', success: 'it works out', partial: 'it w
         // the UI never hangs.
         if (!aiResponse?.choices || !Array.isArray(aiResponse.choices) || aiResponse.choices.length === 0) {
             log('Rendered fallback exploration choices (timeout or null response).');
-            UI.renderChoices([
-                { type: 'Good',          text: 'Take stock and plan your next step.' },
-                { type: 'Bad',           text: 'Push forward without a plan.' },
-                { type: 'Risky',         text: 'Take a calculated gamble.' },
-                { type: 'Silly',         text: 'Try something absurd.' },
-                { type: 'Investigative', text: 'Search the area carefully.' }
-            ]);
+            UI.renderChoices(Progression.fallbackChoices());
         }
 
     } catch (error) {
@@ -859,13 +848,7 @@ Result: ${{ crit: 'a brilliant success', success: 'it works out', partial: 'it w
                         { type: 'Item',    text: 'Use an item from your pack.' },
                         { type: 'Run',     text: 'Try to break off and flee.' }
                     ]
-                    : [
-                        { type: 'Good',          text: 'Take stock and plan your next step.' },
-                        { type: 'Bad',           text: 'Push forward without a plan.' },
-                        { type: 'Risky',         text: 'Take a calculated gamble.' },
-                        { type: 'Silly',         text: 'Try something absurd.' },
-                        { type: 'Investigative', text: 'Search the area carefully.' }
-                    ];
+                    : Progression.fallbackChoices();
                 UI.renderChoices(fallback);
                 document.querySelectorAll('#choicesContainer .choice-btn').forEach(b => { b.disabled = false; });
                 log('Final safety net: rendered fallback choices because none were enabled.');
@@ -886,13 +869,10 @@ function calculateChoiceSignificance(actionType, outcomeSet) {
     
     // Increase significance based on action type
     switch (actionType) {
-        case 'Risky':
+        case 'Reckless':
             significance += 0.2;
             break;
-        case 'Bad':
-            significance += 0.1;
-            break;
-        case 'Good':
+        case 'Bold':
             significance += 0.1;
             break;
     }
@@ -936,7 +916,7 @@ function validateAndMapActionType(actionType) {
     const log = window.displayVisualError || console.log;
     
     // Define valid action types
-    const validTypes = ['Good', 'Bad', 'Risky', 'Silly', 'Investigative', 'Attack', 'Special', 'Item', 'Run', 'Spell', 'Defend'];
+    const validTypes = [...Progression.DANGERS, ...Object.keys(Progression.LEGACY_TYPES), 'Attack', 'Special', 'Item', 'Run', 'Spell', 'Defend'];
     
     // If already valid, return as-is
     if (validTypes.includes(actionType)) {
@@ -945,34 +925,33 @@ function validateAndMapActionType(actionType) {
     
     // Define fallback mappings for common AI variations
     const actionMappings = {
-        'Explore': 'Investigative',
-        'Exploration': 'Investigative', 
-        'Search': 'Investigative',
-        'Examine': 'Investigative',
-        'Investigate': 'Investigative',
-        'Look': 'Investigative',
-        'Study': 'Investigative',
-        'Inspect': 'Investigative',
+        'Explore': 'Safe',
+        'Exploration': 'Safe',
+        'Search': 'Safe',
+        'Examine': 'Safe',
+        'Investigate': 'Safe',
+        'Look': 'Safe',
+        'Study': 'Safe',
+        'Inspect': 'Safe',
         'Combat': 'Attack',
         'Fight': 'Attack',
         'Battle': 'Attack',
         'Strike': 'Attack',
         'Hit': 'Attack',
-        'Defensive': 'Good',
-        'Safe': 'Good',
-        'Careful': 'Good',
-        'Cautious': 'Good',
-        'Dangerous': 'Bad',
-        'Reckless': 'Bad',
-        'Foolish': 'Bad',
-        'Aggressive': 'Bad',
-        'Gamble': 'Risky',
-        'Chance': 'Risky',
-        'Risk': 'Risky',
-        'Funny': 'Silly',
-        'Humorous': 'Silly',
-        'Creative': 'Silly',
-        'Weird': 'Silly',
+        'Defensive': 'Safe',
+        'Careful': 'Safe',
+        'Cautious': 'Safe',
+        'Dangerous': 'Reckless',
+        'Foolish': 'Reckless',
+        'Aggressive': 'Reckless',
+        'Gamble': 'Bold',
+        'Chance': 'Bold',
+        'Risk': 'Bold',
+        'Risky': 'Bold',
+        'Funny': 'Bold',
+        'Humorous': 'Bold',
+        'Creative': 'Bold',
+        'Weird': 'Bold',
         'Magic': 'Special',
         'Spell': 'Special',
         'Ability': 'Special',
@@ -995,8 +974,8 @@ function validateAndMapActionType(actionType) {
     }
     
     // If no mapping found, default to appropriate type based on context
-    log(`ActionType: Unknown type "${actionType}", defaulting to "Investigative"`);
-    return 'Investigative'; // Safe default for exploration-like actions
+    log(`ActionType: Unknown type "${actionType}", defaulting to "Safe"`);
+    return 'Safe';
 }
 
 

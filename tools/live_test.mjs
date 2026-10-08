@@ -72,10 +72,10 @@ async function settle(timeoutMs = 120000) {
 async function clickType(type, prefer = null) {
   const label = await page.evaluate((type) => {
     const btns = [...document.querySelectorAll('#choicesContainer .choice-btn')].filter(b => !b.disabled && !b.classList.contains('disabled'));
-    const b = btns.find(x => x.dataset.actionType === type) || btns[0];
+    const b = btns.find(x => x.dataset.actionType === type || x.dataset.stat === type) || btns[0];
     if (!b) return null;
     b.click();
-    return `${b.dataset.actionType}: ${b.textContent.trim().slice(0, 70)}`;
+    return `${b.dataset.stat ? b.dataset.stat + '/' : ''}${b.dataset.actionType}: ${b.textContent.trim().slice(0, 70)}`;
   }, type);
   // Battle picker (Special / Item / target): choose like a player would.
   await page.waitForTimeout(300);
@@ -109,14 +109,14 @@ for (let i = 0; i < nameInputs.length; i++) await nameInputs[i].fill(NAMES[i]);
 const tStart = Date.now();
 await page.click('#nameInputStartBtn');
 check(await settle(180000), 'new game starts and shows choices');
-const opening = await gs(g => ({ words: (g.currentNarrative || '').split(/\s+/).length, goal: g.adventureGoal, n: g.currentChoices.length, types: g.currentChoices.map(c => c.type).sort().join(',') }));
+const opening = await gs(g => ({ words: (g.currentNarrative || '').split(/\s+/).length, goal: g.adventureGoal, n: g.currentChoices.length, types: g.currentChoices.map(c => c.stat || '-').sort().join(','), dangers: g.currentChoices.map(c => c.type).join(',') }));
 if (opening.words <= 60) console.log((await page.evaluate(() => (window.__advLog || []).filter(l => /error|fail|ERROR|THREW|not defined|not a function|AI /i.test(l)).slice(-15).join(String.fromCharCode(10)))));
 check(opening.words > 60 && opening.goal, `opening story (${opening.words} words), goal: "${opening.goal}"`);
 const tags = await gs(g => g.currentChoices.map(c => `${c.stat || '-'}: ${c.text}`));
 check(tags.filter(t => !t.startsWith('-')).length >= 4, `storyteller tags choices with the stat they use: ${tags.map(t => t.slice(0, 60)).join(' | ')}`);
-check(opening.types === 'Bad,Good,Investigative,Risky,Silly', `5 choices, one of each type (${opening.types})`);
+check(opening.types === 'brave,clever,kind,luck,sneaky', `5 choices, one per approach (${opening.types}), dangers ${opening.dangers}`);
 
-const TYPES = ['Investigative', 'Risky', 'Good', 'Silly', 'Bad'];
+const TYPES = ['clever', 'sneaky', 'kind', 'luck', 'brave']; // approaches, clicked by data-stat
 async function playTurn(i) {
   const picked = await clickType(TYPES[i % TYPES.length]);
   const ok = await settle();

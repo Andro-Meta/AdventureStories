@@ -1151,35 +1151,48 @@ section('Batch 13: stats, checks, rewards and levels (progression.js)');
 const Prog = await import('../progression.js');
 await block(async () => {
   const h = Prog.ensureStats({ stats: {} });
-  const pct = (t) => Math.round(Prog.chanceFor(t, h) * 100);
-  check(pct('Good') === 70 && pct('Investigative') === 60 && pct('Risky') === 40 && pct('Bad') === 45 && pct('Silly') === 55, `odds at stat 1: Good ${pct('Good')}% Inv ${pct('Investigative')}% Risky ${pct('Risky')}% Bad ${pct('Bad')}% Silly ${pct('Silly')}%`);
-  h.stats.sneaky = 5; // untagged Risky = Sneaky
-  check(pct('Risky') === 60, `Sneaky 5 raises Risky odds 40% -> ${pct('Risky')}%`);
+  const pct = (t, st) => Math.round(Prog.chanceFor(t, h, st) * 100);
+  check(pct('Safe', 'brave') === 70 && pct('Bold', 'brave') === 55 && pct('Reckless', 'brave') === 40 && pct('Bold', null) === 50, `odds at stat 1: Safe ${pct('Safe', 'brave')}% Bold ${pct('Bold', 'brave')}% Reckless ${pct('Reckless', 'brave')}%, a Bold luck move ${pct('Bold', null)}%`);
+  h.stats.sneaky = 5;
+  check(pct('Reckless', 'sneaky') === 60 && pct('Reckless', 'brave') === 40, `Sneaky 5 raises a Reckless sneaky move 40% -> ${pct('Reckless', 'sneaky')}%, not a brave one (${pct('Reckless', 'brave')}%)`);
   const seq = (v) => () => v;
-  check(Prog.rollCheck('Risky', h, seq(0.99)).band === 'crit' && Prog.rollCheck('Risky', h, seq(0)).band === 'fumble', 'natural 20 is a crit, natural 1 a fumble');
-  const r = Prog.rollCheck('Risky', h, seq(0.30)); // die 7 + 5 = 12 vs 14: within 3 -> partial
+  check(Prog.rollCheck('Reckless', h, seq(0.99), 'sneaky').band === 'crit' && Prog.rollCheck('Reckless', h, seq(0), 'sneaky').band === 'fumble', 'natural 20 is a crit, natural 1 a fumble');
+  const r = Prog.rollCheck('Reckless', h, seq(0.30), 'sneaky'); // die 7 + 5 = 12 vs 14: within 3 -> partial
   check(r.band === 'partial', `7 + Sneaky 5 = 12 vs 14 is a success at a cost (${r.band})`);
 });
 await block(async () => {
-  // Harm only from failed Risky/Bad (and tiny silly fails); successes never hurt.
+  // Danger sizes the stakes: Safe never hurts, successes never hurt, and both
+  // the pay on a win and the harm on a setback rise Safe < Bold < Reckless.
   const h = Prog.ensureStats({ stats: {}, maxHp: 100, level: 1 });
   let bad = [];
-  for (const type of ['Good', 'Investigative', 'Risky', 'Bad', 'Silly']) {
-    for (let i = 0; i < 300; i++) {
-      const roll = Prog.rollCheck(type, h);
-      const o = Prog.outcomeFor(roll, h);
-      const won = roll.band === 'success' || roll.band === 'crit';
-      if (won && o.hpLoss > 0) bad.push(`${type} success hurt`);
-      if ((type === 'Good' || type === 'Investigative') && o.hpLoss > 0) bad.push(`${type} hurt`);
-      if (type === 'Silly' && o.hpLoss > 4) bad.push('Silly hurt more than 4');
-      if (o.xp < 5) bad.push(`${type} gave ${o.xp} XP`);
+  const pay = {}, harm = {}, ev = {};
+  for (const danger of Prog.DANGERS) {
+    let wins = 0, won$ = 0, fails = 0, hurt = 0, all$ = 0, n = 0;
+    for (const stat of ['brave', 'clever', 'sneaky', 'kind', null]) {
+      for (let i = 0; i < 400; i++) {
+        const roll = Prog.rollCheck(danger, h, Math.random, stat);
+        const o = Prog.outcomeFor(roll, h);
+        const won = roll.band === 'success' || roll.band === 'crit';
+        if (won && o.hpLoss > 0) bad.push(`${danger} success hurt`);
+        if (danger === 'Safe' && o.hpLoss > 0) bad.push('Safe hurt');
+        if (o.xp < 5) bad.push(`${danger} gave ${o.xp} XP`);
+        n++; all$ += o.coins;
+        if (won) { wins++; won$ += Math.max(0, o.coins); } else if (roll.band === 'fail' || roll.band === 'fumble') { fails++; hurt += o.hpLoss; }
+      }
     }
+    pay[danger] = won$ / wins; harm[danger] = hurt / Math.max(1, fails); ev[danger] = all$ / n;
   }
-  check(bad.length === 0, `harm only follows failed bold/reckless moves; every check gives XP (${[...new Set(bad)].join(', ') || 'clean'})`);
-  const fail = Prog.outcomeFor({ type: 'Bad', band: 'fail', die: 3, stat: 'sneaky', dc: 13, total: 4 }, h, () => 0.5);
-  check(fail.hpLoss >= 12 && fail.coins < 0, `a failed Bad move hurts and costs coins (${fail.hpLoss} HP, ${fail.coins} coins)`);
-  const jack = Prog.outcomeFor({ type: 'Silly', band: 'success', die: 19, stat: null, dc: 10, total: 19 }, h, () => 0.5);
-  check(jack.jackpot && jack.coins >= 25, `Silly natural 19 is a jackpot (${jack.coins} coins)`);
+  check(bad.length === 0, `Safe never hurts, successes never hurt, every check gives XP (${[...new Set(bad)].join(', ') || 'clean'})`);
+  const f = (o) => Prog.DANGERS.map(d => o[d].toFixed(1)).join(' < ');
+  check(pay.Safe < pay.Bold && pay.Bold < pay.Reckless && harm.Safe < harm.Bold && harm.Bold < harm.Reckless, `stakes rise with danger: coins per win ${f(pay)}, HP per setback ${f(harm)}`);
+  // Per attempt at stat 1 (wins and losses together) the risk must pay: the
+  // first cut had Reckless at 2.8 coins/turn vs Safe 10 (economy_sim).
+  check(ev.Safe < ev.Bold && ev.Bold < ev.Reckless, `coins per attempt rise with danger: ${f(ev)}`);
+  const fail = Prog.outcomeFor({ type: 'Reckless', band: 'fail', die: 3, stat: 'brave', dc: 14, total: 4 }, h, () => 0.5);
+  const fum = Prog.outcomeFor({ type: 'Reckless', band: 'fumble', die: 1, stat: 'brave', dc: 14, total: 2 }, h, () => 0.5);
+  check(fail.hpLoss >= 14 && fum.coins < 0 && fum.hpLoss >= 18, `a failed Reckless move hurts; a fumble also drops coins (fumble ${fum.coins}) (${fail.hpLoss} HP, ${fail.coins} coins)`);
+  const jack = Prog.outcomeFor({ type: 'Bold', band: 'success', die: 19, stat: null, dc: 11, total: 19 }, h, () => 0.5);
+  check(jack.jackpot && jack.coins >= 25, `a luck move's natural 19 is a jackpot (${jack.coins} coins)`);
 });
 await block(async () => {
   // Levels: 100 XP to level 2 with a stat point; 6 successes with a stat raise it.
@@ -1195,23 +1208,26 @@ await block(async () => {
   // A real exploration turn: the roll decides; a crit can't hurt; a failed Bad move does.
   // A storyteller that answers (when none does, the roll is undone: Batch 18).
   const offline = globalThis.fetch;
-  const STORY = JSON.stringify({ narration: 'It plays out.', ops: [], choices: ['Good', 'Bad', 'Risky', 'Silly', 'Investigative'].map((type, i) => ({ type, text: `Option ${i}`, stat: ['kind', 'brave', 'sneaky', 'luck', 'clever'][i] })) });
+  const STORY = JSON.stringify({ narration: 'It plays out.', ops: [], choices: Prog.APPROACHES.map((stat, i) => ({ stat, danger: Prog.DEFAULT_DANGER[stat], text: `Option ${i}` })) });
   globalThis.fetch = window.fetch = async () => ({ ok: true, status: 200, statusText: '200', headers: { get: () => null }, json: async () => ({ choices: [{ message: { content: STORY } }] }), text: async () => '' });
   localStorage.setItem('adv.cloudProvider', 'groq_qwen'); localStorage.setItem('adv.apiKey.api.groq.com', 'test');
   try {
   const { p } = fresh(); p.stats = { brave: 1, clever: 1, sneaky: 1, kind: 1 };
   const xp0 = p.xp || 0, hp0 = p.hp;
+  gameState.currentChoices = [{ type: 'Reckless', stat: 'brave', text: 'Leap across the broken bridge' }];
   pinRandom(0.99); // natural 20
-  await AH.handlePlayerChoice('Risky', 'Leap across the broken bridge'); unpinRandom();
-  check(p.hp === hp0 && (p.xp || 0) > xp0 && gameState.narrativeContext.lastOutcome?.band === 'crit', `Risky crit: no harm, XP ${xp0} -> ${p.xp} (band ${gameState.narrativeContext.lastOutcome?.band})`);
+  await AH.handlePlayerChoice('Reckless', 'Leap across the broken bridge'); unpinRandom();
+  check(p.hp === hp0 && (p.xp || 0) > xp0 && gameState.narrativeContext.lastOutcome?.band === 'crit', `Reckless crit: no harm, XP ${xp0} -> ${p.xp} (band ${gameState.narrativeContext.lastOutcome?.band})`);
   const g = fresh(); g.p.stats = { brave: 1, clever: 1, sneaky: 1, kind: 1 }; g.p.coins = 50;
+  gameState.currentChoices = [{ type: 'Reckless', stat: 'brave', text: 'Kick the guard dog to get past it' }];
   pinRandom(0.1); // die 3: a clear failure
-  await AH.handlePlayerChoice('Bad', 'Kick the guard dog to get past it'); unpinRandom();
-  check(g.p.hp < 100 && g.p.coins < 50, `failed Bad move: HP 100 -> ${g.p.hp}, coins 50 -> ${g.p.coins}`);
+  await AH.handlePlayerChoice('Reckless', 'Kick the guard dog to get past it'); unpinRandom();
+  check(g.p.hp < 100 && g.p.coins === 50, `failed Reckless move hurts (HP 100 -> ${g.p.hp}); only a fumble drops coins (coins 50 -> ${g.p.coins})`);
   const k = fresh(); k.p.stats = { brave: 1, clever: 1, sneaky: 1, kind: 1 };
   pinRandom(0.1);
-  await AH.handlePlayerChoice('Good', 'Help the fisherman haul his net'); unpinRandom();
-  check(k.p.hp === 100, `failed Good move costs no HP (HP ${k.p.hp})`);
+  gameState.currentChoices = [{ type: 'Safe', stat: 'kind', text: 'Help the fisherman haul his net' }];
+  await AH.handlePlayerChoice('Safe', 'Help the fisherman haul his net'); unpinRandom();
+  check(k.p.hp === 100, `failed Safe move costs no HP (HP ${k.p.hp})`);
   } finally { globalThis.fetch = window.fetch = offline; localStorage.removeItem('adv.apiKey.api.groq.com'); localStorage.removeItem('adv.cloudProvider'); }
 });
 await block(async () => {
@@ -1250,12 +1266,12 @@ await block(async () => {
   // Every choice type at a natural 20 runs clean (a big faction swing used to
   // crash the turn; factions were later removed).
   const errs = [];
-  for (const type of ['Good', 'Bad', 'Risky', 'Silly', 'Investigative']) {
+  for (const type of [...Prog.DANGERS, 'Good', 'Silly']) { // old saved types too
     fresh(); gameLog.length = 0; pinRandom(0.99);
     await AH.handlePlayerChoice(type, `A ${type} thing to do`); unpinRandom();
     errs.push(...gameLog.filter(l => /is not defined|is not a function|Error in handlePlayerChoice/.test(l)).map(l => `${type}: ${l.slice(0, 80)}`));
   }
-  check(errs.length === 0, `five choice types at a natural 20 raise no errors (${errs[0] || 'clean'})`);
+  check(errs.length === 0, `every danger (and old saved types) at a natural 20 raises no errors (${errs[0] || 'clean'})`);
 });
 
 // =====================================================================
@@ -1263,32 +1279,34 @@ section('Batch 16: the stat follows the action; lucky charms');
 await block(async () => {
   const S = await import('../schemas.js');
   const v = S.validateChoicesPayload({ choices: [
-    { type: 'Good', text: 'Help the fisherman haul his net', stat: 'kind' }, { type: 'Bad', text: 'Kick the guard dog to get past it', stat: 'brave' },
-    { type: 'Risky', text: 'Slip past the sleeping guards', stat: 'sneaky' }, { type: 'Silly', text: 'Challenge the parrot to a staring contest', stat: 'luck' },
-    { type: 'Investigative', text: "Search the captain's desk", stat: 'nonsense' }] }, false);
-  check(v[1].stat === 'brave' && v[2].stat === 'sneaky' && v[3].stat === 'luck' && !v[4].stat, `choice stats kept, junk dropped (${v.map(c => c.stat || '-').join(',')})`);
+    { stat: 'kind', danger: 'safe', text: 'Sweet-talk the guard dog' }, { stat: 'Brave', danger: 'Reckless', text: 'Kick the guard dog to get past it' },
+    { stat: 'sneaky', danger: 'Bold', text: 'Slip past the sleeping guards' }, { stat: 'luck', danger: 'nonsense', text: 'Bark back at the dog' },
+    { stat: 'nonsense', text: 'Study the collar' }] }, false);
+  check(v.map(c => `${c.stat || '-'}/${c.type}`).join(',') === 'kind/Safe,brave/Reckless,sneaky/Bold,luck/Bold,-/Bold',
+    `approach and danger read loosely, junk -> defaults (${v.map(c => `${c.stat || '-'}/${c.type}`).join(',')})`);
+  const old = S.validateChoicesPayload({ choices: ['Good', 'Bad', 'Risky', 'Silly', 'Investigative'].map(type => ({ type, text: type })) }, false);
+  check(old.map(c => `${c.stat}/${c.type}`).join(',') === 'kind/Safe,brave/Reckless,brave/Bold,luck/Bold,clever/Safe', `old-style choices still load (${old.map(c => `${c.stat}/${c.type}`).join(',')})`);
   const h = Prog.ensureStats({ stats: { brave: 4, clever: 1, sneaky: 1, kind: 1 } });
-  const risky = Math.round(Prog.chanceFor('Risky', h, 'brave') * 100), riskyDefault = Math.round(Prog.chanceFor('Risky', h) * 100);
-  check(risky === 55 && riskyDefault === 40, `a brave Risky move uses Brave 4 (${risky}%), untagged uses Sneaky 1 (${riskyDefault}%)`);
-  check(Prog.CHECKS.Bad.stat === 'brave', `untagged Bad choices use Brave, not Sneaky (${Prog.CHECKS.Bad.stat})`);
+  const braveBold = Math.round(Prog.chanceFor('Bold', h, 'brave') * 100), sneakyBold = Math.round(Prog.chanceFor('Bold', h, 'sneaky') * 100);
+  check(braveBold === 70 && sneakyBold === 55, `same danger, the approach's stat decides: Bold+Brave 4 ${braveBold}%, Bold+Sneaky 1 ${sneakyBold}%`);
 });
 await block(async () => {
   // The turn rolls with the stat on the chosen button.
   const { p } = fresh(); p.stats = { brave: 0, clever: 0, sneaky: 5, kind: 0 };
-  gameState.currentChoices = [{ type: 'Risky', text: 'Slip past the sleeping guards', stat: 'sneaky' }];
+  gameState.currentChoices = [{ type: 'Reckless', text: 'Slip past the sleeping guards', stat: 'sneaky' }];
   pinRandom(0.5); // die 11 + Sneaky 5 = 16 vs 14
-  await AH.handlePlayerChoice('Risky', 'Slip past the sleeping guards'); unpinRandom();
+  await AH.handlePlayerChoice('Reckless', 'Slip past the sleeping guards'); unpinRandom();
   const r = gameState.narrativeContext.lastOutcome?.roll;
   check(r?.stat === 'sneaky' && r?.total === 16 && r?.band === 'success', `rolled ${r?.stat} ${r?.die}+${r?.bonus}=${r?.total} vs ${r?.dc}: ${r?.band}`);
 });
 await block(async () => {
   const Items = await import('../items.js');
   const h = Prog.ensureStats({ stats: {}, inventory: [] });
-  const before = Math.round(Prog.chanceFor('Silly', h) * 100);
+  const before = Math.round(Prog.chanceFor('Bold', h, null) * 100);
   h.inventory.push(Items.makeLuckyCharm('pirate', 1));
-  const after = Math.round(Prog.chanceFor('Silly', h) * 100);
-  check(Prog.luckOf(h) === 1 && after === before + 5, `a lucky charm: luck ${Prog.luckOf(h)}, Silly ${before}% -> ${after}%`);
-  check(Prog.rollCheck('Risky', h, () => 0.9).band === 'crit', 'with luck 1 a natural 19 is a critical success');
+  const after = Math.round(Prog.chanceFor('Bold', h, null) * 100);
+  check(Prog.luckOf(h) === 1 && after === before + 5, `a lucky charm: luck ${Prog.luckOf(h)}, a luck move ${before}% -> ${after}%`);
+  check(Prog.rollCheck('Reckless', h, () => 0.9, 'brave').band === 'crit', 'with luck 1 a natural 19 is a critical success');
   const shop = Items.generateShopItems('pirate', 3);
   check(shop.some(i => i.stats?.luck === 1 && i.cost === 60), `the shop sells a lucky charm (${shop.find(i => i.stats?.luck)?.name})`);
 });
@@ -1300,8 +1318,9 @@ await block(async () => {
   const phone = ['clever', 'clever', 'luck', 'brave', 'brave'].map(stat => ({ stat }));
   const good = ['brave', 'clever', 'sneaky', 'kind', 'luck'].map(stat => ({ stat }));
   check(AIH.approachGaps(phone) === 2 && AIH.approachGaps(good) === 0, `approach gaps: phone set ${AIH.approachGaps(phone)} (no kind, no sneaky), balanced set ${AIH.approachGaps(good)}`);
-  const ins = AIH.buildChoiceInstructions(['Good', 'Bad', 'Risky', 'Silly', 'Investigative'], false, []);
-  check(/FIVE DIFFERENT APPROACHES/.test(ins) && /one sneaky/.test(ins) && /one kind/.test(ins), 'choice instructions ask for one brave, clever, sneaky, kind and luck choice');
+  const ins = AIH.buildChoiceInstructions(Prog.DANGERS, false, []);
+  check(/one for each APPROACH/.test(ins) && ['brave', 'clever', 'sneaky', 'kind', 'luck'].every(a => ins.includes(`- ${a}:`)) && /Safe \(/.test(ins) && /Reckless \(/.test(ins) && /kicking a guard dog is Reckless/i.test(ins),
+    'choice instructions: one per approach, plus a danger (Safe / Bold / Reckless) that fits the action');
 });
 
 // =====================================================================
@@ -1311,10 +1330,10 @@ await block(async () => {
   // five seconds while the AI was down each paid out coins/XP with no story.
   const { p } = fresh({ player: { coins: 50, hp: 7, maxHp: 10 } });
   gameState.enemies = [];
-  gameState.currentChoices = [{ type: 'Risky', text: 'Leap the gap', stat: 'brave' }];
+  gameState.currentChoices = [{ type: 'Reckless', text: 'Leap the gap', stat: 'brave' }];
   const snap = () => JSON.stringify({ coins: p.coins, hp: p.hp, xp: p.xp, level: p.level, inv: p.inventory.length, stats: p.stats, sparks: p.sparks });
   const before = snap();
-  for (let i = 0; i < 5; i++) { gameState.isLoading = false; await AH.handlePlayerChoice('Risky', 'Leap the gap'); }
+  for (let i = 0; i < 5; i++) { gameState.isLoading = false; await AH.handlePlayerChoice('Reckless', 'Leap the gap'); }
   const after = snap();
   check(before === after, `5 choices with the storyteller down: hero unchanged (${after === before ? 'same' : before + ' -> ' + after})`);
 });
@@ -1328,15 +1347,15 @@ await block(async () => {
   const distinct = (cs) => new Set(cs.map(c => c.stat)).size === 5 && cs.every(c => ALL.includes(c.stat));
   // The screenshot's set.
   const phone = [
-    { type: 'Silly', stat: 'luck', text: 'Balance a wobbling hubcap on your head to mimic the moving shadows.' },
-    { type: 'Investigative', stat: 'clever', text: 'Inspect the tracks in the dust beneath your Salvaged Tire Armor.' },
-    { type: 'Risky', stat: 'brave', text: 'Vault across the jagged alleyway using the Makeshift Pipe Wrench.' },
-    { type: 'Good', stat: 'kind', text: 'Share a ration of filtered water with the shivering scavenger.' },
-    { type: 'Bad', stat: 'luck', text: 'Lick the suspicious frost off the vibrating metallic sign.' }];
+    { type: 'Bold', stat: 'luck', text: 'Balance a wobbling hubcap on your head to mimic the moving shadows.' },
+    { type: 'Safe', stat: 'clever', text: 'Inspect the tracks in the dust beneath your Salvaged Tire Armor.' },
+    { type: 'Reckless', stat: 'brave', text: 'Vault across the jagged alleyway using the Makeshift Pipe Wrench.' },
+    { type: 'Safe', stat: 'kind', text: 'Share a ration of filtered water with the shivering scavenger.' },
+    { type: 'Reckless', stat: 'luck', text: 'Lick the suspicious frost off the vibrating metallic sign.' }];
   const plan = Prog.approachPlan(phone);
   check(plan.length === 1 && plan[0].index === 4 && plan[0].stat === 'sneaky', `screenshot set: only the licking choice changes, to sneaky (${JSON.stringify(plan)})`);
   // Every combination of stats (incl. missing/invalid) on every type order.
-  const TYPES = ['Good', 'Bad', 'Risky', 'Silly', 'Investigative'];
+  const TYPES = ['Safe', 'Bold', 'Reckless', 'Bold', 'Safe'];
   const opts = [...ALL, undefined];
   let bad = 0, sets = 0, keptWrong = 0;
   const rec = (pre) => {
@@ -1353,7 +1372,7 @@ await block(async () => {
   };
   rec([]);
   check(bad === 0 && keptWrong === 0, `all ${sets} possible stat sets end with exactly one of each approach (${bad} failed), unique choices untouched (${keptWrong})`);
-  check(new Set(['Good', 'Bad', 'Risky', 'Silly', 'Investigative'].map(t => Prog.CHECKS[t].stat ?? 'luck')).size === 5, 'default stats per type are five different approaches (Risky = Sneaky)');
+  check(new Set(Prog.fallbackChoices().map(c => c.stat)).size === 5, 'the plain fallback set is five different approaches');
 
   // Storyteller down (network off here): gaps get plain choices, still five approaches.
   const down = await AIH.ensureFiveApproaches(phone, 'A frozen alley.', []);
@@ -1361,13 +1380,13 @@ await block(async () => {
 
   // Storyteller up: the one choice is rewritten as a sneaky action.
   const offline = globalThis.fetch; let asked = '';
-  globalThis.fetch = window.fetch = async (u, o) => { asked = JSON.parse(o.body).messages[1].content; return { ok: true, status: 200, statusText: '200', headers: { get: () => null }, json: async () => ({ choices: [{ message: { content: '{"texts":["Creep along the shadowed wall and slip past the sign unseen."]}' } }] }), text: async () => '' }; };
+  globalThis.fetch = window.fetch = async (u, o) => { asked = JSON.parse(o.body).messages[1].content; return { ok: true, status: 200, statusText: '200', headers: { get: () => null }, json: async () => ({ choices: [{ message: { content: '{"choices":[{"text":"Creep along the shadowed wall and slip past the sign unseen.","danger":"Bold"}]}' } }] }), text: async () => '' }; };
   localStorage.setItem('adv.cloudProvider', 'groq_qwen'); localStorage.setItem('adv.apiKey.api.groq.com', 'test');
   try {
     const fixed = await AIH.ensureFiveApproaches(phone, 'A frozen alley.', []);
-    check(distinct(fixed) && /slip past/.test(fixed[4].text) && /SNEAKY/.test(asked) && fixed.filter((c, i) => c.text !== phone[i].text).length === 1, `AI up: one small call rewrites only that choice ("${fixed[4].text}")`);
+    check(distinct(fixed) && /slip past/.test(fixed[4].text) && fixed[4].type === "Bold" && /SNEAKY/.test(asked) && fixed.filter((c, i) => c.text !== phone[i].text).length === 1, `AI up: one small call rewrites only that choice ("${fixed[4].text}")`);
     // A rewrite that just repeats another choice is not accepted.
-    globalThis.fetch = window.fetch = async () => ({ ok: true, status: 200, statusText: '200', headers: { get: () => null }, json: async () => ({ choices: [{ message: { content: '{"texts":["Share a ration of filtered water with the shivering scavenger."]}' } }] }), text: async () => '' });
+    globalThis.fetch = window.fetch = async () => ({ ok: true, status: 200, statusText: '200', headers: { get: () => null }, json: async () => ({ choices: [{ message: { content: '{"choices":[{"text":"Share a ration of filtered water with the shivering scavenger.","danger":"Safe"}]}' } }] }), text: async () => '' });
     const dup = await AIH.ensureFiveApproaches(phone, 'A frozen alley.', []);
     check(distinct(dup) && dup[4].text === Prog.APPROACH_FALLBACK.sneaky, 'a rewrite that copies another choice is refused (plain sneaky choice instead)');
   } finally { globalThis.fetch = window.fetch = offline; localStorage.removeItem('adv.apiKey.api.groq.com'); localStorage.removeItem('adv.cloudProvider'); }
@@ -1377,7 +1396,7 @@ await block(async () => {
   UI.renderChoices(phone.map(c => ({ ...c })));
   check(distinct(gameState.currentChoices), `on screen: ${gameState.currentChoices.map(c => c.stat).sort().join(', ')}`);
   UI.renderChoices(['Good', 'Bad', 'Risky', 'Silly', 'Investigative'].map(type => ({ type, text: type })));
-  check(gameState.currentChoices.every(c => !c.stat) || distinct(gameState.currentChoices), 'stat-less fallback choices: defaults are five approaches');
+  check(distinct(gameState.currentChoices) && gameState.currentChoices.every(c => Prog.DANGERS.includes(c.type)), `an old saved set renders as five approaches with dangers (${gameState.currentChoices.map(c => `${c.stat}/${c.type}`).join(', ')})`);
 });
 
 console.error = realError;

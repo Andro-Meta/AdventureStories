@@ -131,17 +131,17 @@ validateSchema('combatChoicesSchema', Schemas.combatChoicesSchema);
 validateSchema('narrativeTurnSchema', Schemas.narrativeTurnSchema);
 validateSchema('arcMemorySchema', Schemas.arcMemorySchema);
 
-if (Schemas.EXPLORATION_CHOICE_TYPES.length !== 5) fail('EXPLORATION_CHOICE_TYPES must have 5 entries');
-else ok('5 exploration choice types');
+if (Schemas.EXPLORATION_CHOICE_TYPES.join() !== 'Safe,Bold,Reckless') fail('exploration choice types must be the dangers Safe, Bold, Reckless');
+else ok('exploration choice types are the dangers Safe, Bold, Reckless');
 if (Schemas.COMBAT_CHOICE_TYPES.length !== 4) fail('COMBAT_CHOICE_TYPES must have 4 entries');
 else ok('4 combat choice types');
 
 // Schema validators: positive cases
 try {
   const norm = Schemas.validateChoicesPayload({
-    choices: Schemas.EXPLORATION_CHOICE_TYPES.map(t => ({ type: t, text: 'do something' }))
+    choices: Schemas.CHOICE_STATS.map(stat => ({ stat, danger: 'Bold', text: 'do something' }))
   }, false);
-  if (norm.length !== 5) fail('validateChoicesPayload returned wrong length');
+  if (norm.length !== 5 || norm.some(c => c.type !== 'Bold' || !c.stat)) fail('validateChoicesPayload returned wrong length');
   else ok('validateChoicesPayload accepts canonical 5-choice exploration');
 } catch (e) { fail(`validateChoicesPayload failed: ${e.message}`); }
 
@@ -160,8 +160,8 @@ try {
 } catch (_) { negCaught++; }
 try {
   Schemas.validateChoicesPayload({ choices: [
-    {type:'Good',text:'a'}, {type:'Good',text:'b'},
-    {type:'Bad',text:'c'}, {type:'Risky',text:'d'}, {type:'Silly',text:'e'}
+    {stat:'brave',danger:'Safe',text:'a'}, {stat:'clever',danger:'Safe',text:''},
+    {stat:'sneaky',danger:'Bold',text:'c'}, {stat:'kind',danger:'Safe',text:'d'}, {stat:'luck',danger:'Bold',text:'e'}
   ] }, false);
 } catch (_) { negCaught++; }
 if (negCaught === 2) ok('validateChoicesPayload rejects malformed payloads');

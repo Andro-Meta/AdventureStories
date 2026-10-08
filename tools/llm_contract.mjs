@@ -103,9 +103,14 @@ const corpus = [
     expectShape: 'choices', inCombat: false, expectPass: true
   },
   {
-    name: 'duplicate type rejected',
-    text: '{"choices":[{"type":"Good","text":"a"},{"type":"Good","text":"b"},{"type":"Risky","text":"c"},{"type":"Silly","text":"d"},{"type":"Investigative","text":"e"}]}',
+    name: 'empty choice text rejected',
+    text: '{"choices":[{"stat":"brave","danger":"Bold","text":"a"},{"stat":"clever","danger":"Safe","text":" "},{"stat":"sneaky","danger":"Bold","text":"c"},{"stat":"kind","danger":"Safe","text":"d"},{"stat":"luck","danger":"Bold","text":"e"}]}',
     expectShape: 'choices', inCombat: false, expectPass: false
+  },
+  {
+    name: 'approach + danger choices (current format)',
+    text: '{"choices":[{"stat":"brave","danger":"Reckless","text":"Kick the guard dog."},{"stat":"clever","danger":"Safe","text":"Study its collar."},{"stat":"sneaky","danger":"Bold","text":"Slip past it."},{"stat":"kind","danger":"Safe","text":"Sweet-talk it."},{"stat":"luck","danger":"Bold","text":"Bark back at it."}]}',
+    expectShape: 'choices', inCombat: false, expectPass: true
   },
   {
     name: '4-choice combat (correct)',
