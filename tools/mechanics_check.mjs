@@ -447,9 +447,10 @@ await block(async () => {
     const mp0 = p.mp, hp0 = e.hp, r0 = gameState.combat.round;
     const res = await SpellCasting.castSpell(p, dmgSpell, e);
     check(res.success && p.mp < mp0 && e.hp < hp0, `cast ${dmgSpell.name}: MP ${mp0} -> ${p.mp}, goblin ${hp0} -> ${e.hp} (${res.reason || 'ok'})`);
-    // spellUI.js Cast button then calls TurnManager.advanceTurn() "if in combat"
-    await advanceTurn();
-    check(gameState.combat.round > r0 || gameState.combat.currentTurnIndex !== 0, `after a combat cast the Cast button's advanceTurn() hands the turn on (round ${r0} -> ${gameState.combat.round}, turnIndex ${gameState.combat.currentTurnIndex})`);
+    // spellUI.js Cast button in a fight runs the battle 'Spell' action.
+    const mp1 = p.mp, r1 = gameState.combat.round;
+    await AH.handlePlayerChoice('Spell', `Cast ${dmgSpell.name}`);
+    check(p.mp < mp1 && (!gameState.inCombat || gameState.combat.round > r1 || gameState.combat.currentTurnIndex !== 0), `combat Cast costs MP and hands the turn on (MP ${mp1} -> ${p.mp}, round ${r1} -> ${gameState.combat?.round})`);
     const res2 = await SpellCasting.castSpell(p, dmgSpell, e);
     out(`    recast immediately: success=${res2.success}, MP now ${p.mp} (spells have no cooldown field: ${dmgSpell.cooldown === undefined})`);
   }

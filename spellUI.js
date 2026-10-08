@@ -487,14 +487,14 @@ export function addSpellbookButton() {
         castSpellBtn.title = adaptation.actionButton;
         castSpellBtn.addEventListener('click', () => {
             showQuickSpellSelector(player, async (spell) => {
+                // In a fight a cast is a battle action: it costs the turn and the
+                // enemies answer (advanceTurn() is a no-op in combat).
+                if (gameState.inCombat) {
+                    const { handlePlayerChoice } = await import('./actionHandler.js');
+                    return handlePlayerChoice('Spell', `Cast ${spell.name}`);
+                }
                 const SpellCasting = await import('./spellCasting.js');
                 await SpellCasting.castSpell(player, spell);
-                
-                // Advance turn if in combat
-                if (gameState.inCombat) {
-                    const TurnManager = await import('./turnManager.js');
-                    await TurnManager.advanceTurn();
-                }
             });
         });
         quickActions.appendChild(castSpellBtn);

@@ -8,7 +8,7 @@ import { dirname, resolve } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // Loader-using suites (need preload.mjs to strip ?cb= from imports).
-const LOADER_SUITES = ['audit', 'engine_audit', 'godmode_audit', 'llm_contract', 'first_turn_check', 'prompt_check', 'loot_check'];
+const LOADER_SUITES = ['audit', 'engine_audit', 'godmode_audit', 'llm_contract', 'first_turn_check', 'prompt_check', 'loot_check', 'mechanics_check'];
 // Pure static-analysis suites (read source as text — no module loading).
 const PLAIN_SUITES  = ['ui_audit'];
 

@@ -287,6 +287,20 @@ export async function handlePlayerChoice(actionType, choiceText) {
                         break;
                     }
 
+                    case 'Spell': {
+                        // Cast button / spellbook in a fight (see spellUI.js).
+                        const spells = currentPlayer.spellcasting?.knownSpells || [];
+                        const said = String(choiceText || '').toLowerCase();
+                        const spell = spells.find(sp => sp?.name && said.includes(sp.name.toLowerCase()));
+                        if (!spell) { combatLog = `${currentPlayer.name} reaches for a spell but the words won't come.`; break; }
+                        const SpellCasting = await import('./spellCasting.js');
+                        const res = await SpellCasting.castSpell(currentPlayer, spell, target);
+                        combatLog = res?.success
+                            ? `${currentPlayer.name} casts ${spell.name}!`
+                            : `${currentPlayer.name} tries ${spell.name} but it fizzles (${res?.reason || 'failed'}).`;
+                        break;
+                    }
+
                     case 'Run': {
                         const fled = Math.random() < (Config.FLEE_CHANCE ?? 0.4);
                         if (fled) {
@@ -909,7 +923,7 @@ function validateAndMapActionType(actionType) {
     const log = window.displayVisualError || console.log;
     
     // Define valid action types
-    const validTypes = ['Good', 'Bad', 'Risky', 'Silly', 'Investigative', 'Attack', 'Special', 'Item', 'Run'];
+    const validTypes = ['Good', 'Bad', 'Risky', 'Silly', 'Investigative', 'Attack', 'Special', 'Item', 'Run', 'Spell'];
     
     // If already valid, return as-is
     if (validTypes.includes(actionType)) {
@@ -1982,6 +1996,12 @@ export async function useSpecialMove(moveId) {
         log(`Move ${move.name} cannot be used in combat.`);
         UI.showPopup(`${move.name} cannot be used during combat!`, 'warning');
         return;
+    }
+    // In a fight the Moves screen runs the battle Special action: same
+    // damage and effects, and the turn passes (before: 0 damage, free turn).
+    if (gameState.inCombat) {
+        UI.showScreen('gameScreen');
+        return handlePlayerChoice('Special', `Use ${move.name}`);
     }
     if (!gameState.inCombat && move.usageContext === 'combat') {
         log(`Move ${move.name} cannot be used outside combat.`);
