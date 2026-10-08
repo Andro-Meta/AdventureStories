@@ -47,7 +47,10 @@ let _migrationAttemptedThisSession = false;
     const safeKeyAt = (i) => { try { return localStorage.key(i); } catch (_) { return null; } };
 
     try {
-        const MIGRATED_FLAG = 'AG-migration-v1-done';
+        // Not under the save prefix 'AG-': the old 'AG-migration-v1-done' key was
+        // counted as a save, so Continue showed with no saves.
+        const MIGRATED_FLAG = 'adv.migration-v1-done';
+        if (safeGet('AG-migration-v1-done')) { safeSet(MIGRATED_FLAG, '1'); safeRemove('AG-migration-v1-done'); }
         if (safeGet(MIGRATED_FLAG)) return; // already ran in a previous session
 
         const oldPrefix = Config.SAVE_GAME_LEGACY_PREFIX;
@@ -143,6 +146,12 @@ export function saveGameToLocalStorage(slotName) {
         // and blocked every later arc-memory summary after loading.
         delete stateToSave._arcMemoryRefreshInFlight;
         delete stateToSave._rewardsPromise;
+        // Live service objects: saved, they came back as method-less plain
+        // objects (loot and spell rewards then failed silently) and bloated saves.
+        delete stateToSave.dynamicItemRegistry;
+        delete stateToSave.dynamicSpellRegistry;
+        delete stateToSave.popupQueue;
+        delete stateToSave.activeModals;
         stateToSave.combatRoundInProgress = false;
         log("SaveLoad: Pruning message history for save...");
         stateToSave.messageHistory = pruneMessageHistory(stateToSave.messageHistory);
@@ -204,7 +213,14 @@ export function saveGameToLocalStorage(slotName) {
             gameState: stateToSave
         };
         log(`SaveLoad: Saving data (Version: ${saveData.saveFormatVersion}, Date: ${new Date(saveData.saveDate).toLocaleString()})`);
-        localStorage.setItem(Config.SAVE_GAME_PREFIX + slotName, JSON.stringify(saveData));
+        const json = JSON.stringify(saveData);
+        try { localStorage.setItem(Config.SAVE_GAME_PREFIX + slotName, json); }
+        catch (e) {
+            // Storage full: drop the oldest autosaves (never manual saves) and retry once.
+            if (!(e instanceof DOMException && e.name === 'QuotaExceededError')) throw e;
+            pruneAutosaves(1, Config.SAVE_GAME_PREFIX + slotName);
+            localStorage.setItem(Config.SAVE_GAME_PREFIX + slotName, json);
+        }
         log(`SaveLoad: Game saved successfully to slot: ${slotName}`);
         gameState.currentSaveSlot = slotName;
         return true;
@@ -260,13 +276,13 @@ function rememberNames() {
     } catch (_) { /* storage blocked: variety hint just stays empty */ }
 }
 
-/** Keep the newest `keep` autosaves; manual saves are never touched. */
-function pruneAutosaves(keep) {
+/** Keep the newest `keep` autosaves (plus `exceptKey`); manual saves are never touched. */
+function pruneAutosaves(keep, exceptKey = null) {
     try {
         const autos = [];
         for (let i = 0; i < localStorage.length; i++) {
             const k = localStorage.key(i);
-            if (k && k.startsWith(Config.SAVE_GAME_PREFIX + 'Autosave ')) {
+            if (k && k !== exceptKey && k.startsWith(Config.SAVE_GAME_PREFIX + 'Autosave ')) {
                 let date = 0;
                 try { date = JSON.parse(localStorage.getItem(k))?.saveDate || 0; } catch (_) {}
                 autos.push([k, date]);
@@ -441,7 +457,11 @@ export async function loadGame(slotName) {
             }
         }
 
-        gameState.currentSaveSlot = slotName;
+        // An autosave is not the player's slot: "Save and Exit" into it made a
+        // manual save that pruneAutosaves later deleted.
+        gameState.currentSaveSlot = slotName.startsWith('Autosave ') ? null : slotName;
+        delete gameState.dynamicItemRegistry; // old saves carried method-less copies
+        delete gameState.dynamicSpellRegistry;
         gameState.isLoading = false;
         gameState.pendingConfirmation = null;
         gameState.handlingPartyWipe = false;

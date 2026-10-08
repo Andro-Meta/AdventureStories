@@ -810,7 +810,7 @@ export const dynamicItemRegistry = DynamicItemRegistry.initializeDynamicItemSyst
  * @returns {Promise<Object>} Generated item
  */
 export async function generateDynamicItem(theme, tier, type, context = {}) {
-    const registry = gameState.dynamicItemRegistry || dynamicItemRegistry;
+    const registry = dynamicItemRegistry; // live instance (a loaded save held a method-less copy)
     
     // Build enhanced context
     const enhancedContext = {
@@ -891,7 +891,7 @@ export async function generateDynamicShopItems(itemCount = 6, turn = 1) {
  */
 async function generateBatchItems(itemRequests, theme, batchType) {
     const log = window.displayVisualError || console.log;
-    const registry = gameState.dynamicItemRegistry || dynamicItemRegistry;
+    const registry = dynamicItemRegistry; // live instance (a loaded save held a method-less copy)
     
     // Check cache first for similar batch requests
     const cacheKey = `batch_${batchType}_${theme}_${itemRequests.length}`;
@@ -1012,7 +1012,7 @@ Make items creative, balanced, and thematically appropriate. Ensure variety in n
  */
 function parseBatchItemResponse(response, itemRequests, theme) {
     const log = window.displayVisualError || console.log;
-    const registry = gameState.dynamicItemRegistry || dynamicItemRegistry;
+    const registry = dynamicItemRegistry; // live instance (a loaded save held a method-less copy)
     
     try {
         // Try to extract JSON array from response
