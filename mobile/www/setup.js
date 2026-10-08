@@ -226,6 +226,7 @@ export async function completeSetupAndStartGame() {
     gameState.playerNames = [...playerNames];
     
     loadingManager.showLoading('Initializing adventure...');
+    UI.resetFx?.();
 
     try {
         // Reset game state (preserves playerNames, playerAges, playerCount)
@@ -398,6 +399,7 @@ export async function completeSetupAndStartGameIntelligent() {
 
     // Shown only after validation so an invalid name can't strand the overlay.
     loadingManager.showLoading('Preparing your adventure...');
+    UI.resetFx?.();
     try {
         // Set up progress monitoring
         const progressInterval = setInterval(() => {

@@ -3039,3 +3039,31 @@ body { padding-top: calc(env(safe-area-inset-top) + 0.5rem); padding-bottom: cal
 /* Fight moves carry a visible type badge. */
 .choice-badge { display: inline-block; margin-right: 0.5rem; padding: 0.1rem 0.45rem; border-radius: 6px;
     background: rgba(37, 117, 252, 0.25); color: #9cc3ff; font-size: 0.8em; font-weight: 700; white-space: nowrap; }
+
+/* ---- Hit / heal effects (fx.js) ---- */
+@keyframes fx-shake { 0%,100% { transform: translateX(0); } 20% { transform: translateX(-6px); } 40% { transform: translateX(5px); } 60% { transform: translateX(-4px); } 80% { transform: translateX(2px); } }
+@keyframes fx-shake-heavy { 0%,100% { transform: translate(0,0); } 15% { transform: translate(-10px,3px); } 30% { transform: translate(9px,-3px); } 45% { transform: translate(-7px,2px); } 60% { transform: translate(6px,-1px); } 80% { transform: translate(-3px,0); } }
+.fx-shake { animation: fx-shake 0.35s ease-out; }
+.fx-shake-heavy { animation: fx-shake-heavy 0.5s ease-out; }
+#fxDamageEdge { position: fixed; inset: 0; pointer-events: none; z-index: 999; opacity: 0;
+    box-shadow: inset 0 0 90px 30px rgba(244, 67, 54, 0.75); }
+#fxDamageEdge.fx-on { animation: fx-edge 0.8s ease-out; }
+@keyframes fx-edge { 0% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes fx-hurt { 0% { box-shadow: 0 0 0 2px rgba(244,67,54,0.9), 0 0 24px rgba(244,67,54,0.8); } 100% { box-shadow: none; } }
+.fx-hurt { animation: fx-hurt 0.8s ease-out; }
+@keyframes fx-heal { 0% { box-shadow: 0 0 0 2px rgba(76,175,80,0.9), 0 0 26px rgba(76,175,80,0.85); } 100% { box-shadow: none; } }
+.fx-heal { animation: fx-heal 0.9s ease-out; }
+@keyframes fx-foe-hit { 0% { transform: translateX(0); background-color: rgba(244,67,54,0.45); } 25% { transform: translateX(8px); } 50% { transform: translateX(-6px); } 100% { transform: translateX(0); background-color: transparent; } }
+.fx-foe-hit { animation: fx-foe-hit 0.45s ease-out; }
+.fx-foe-crit { animation: fx-foe-hit 0.45s ease-out 2; }
+.fx-float { position: absolute; right: 44px; top: -8px; font-weight: 800; font-size: 1.4rem; pointer-events: none;
+    text-shadow: 0 2px 6px #000; animation: fx-float 1.2s ease-out forwards; }
+.fx-float-dmg { color: #ff6b5e; }
+.fx-float-heal { color: #7cf08a; }
+@keyframes fx-float { 0% { opacity: 0; transform: translateY(8px) scale(0.8); } 15% { opacity: 1; transform: translateY(0) scale(1.15); } 100% { opacity: 0; transform: translateY(-34px) scale(1); } }
+@media (prefers-reduced-motion: reduce) { .fx-shake, .fx-shake-heavy, .fx-foe-hit, .fx-foe-crit { animation: none; } }
+
+/* Moves screen: section headers span the whole grid ("Known Spells" sat in a
+   card-sized cell with the first spell beside it). */
+#specialMovesDisplay .spec-section-header { grid-column: 1 / -1; text-align: left; margin: 0.5rem 0 0; }
+.castSpellCardBtn { width: 100%; margin-top: 0.6rem; }

@@ -39,6 +39,24 @@ window.displayVisualError = (message, error = null) => {
     while (box.childElementCount > 200) box.removeChild(box.firstChild);
 };
 
+// --- Android back button (MainActivity asks here first) ---
+// Returns true when handled. Only the main menu lets back leave the app.
+window.__advBack = () => {
+    const open = document.querySelector('.modal:not(.hidden)');
+    if (open) { open.classList.add('hidden'); return true; }
+    const active = document.querySelector('.screen.active')?.id || 'mainMenuScreen';
+    if (active === 'mainMenuScreen') return false;
+    const prev = {
+        gameScreen: 'menuScreen', menuScreen: 'gameScreen', storyBookScreen: 'menuScreen',
+        inventoryScreen: 'gameScreen', shopScreen: 'gameScreen', specialMovesScreen: 'gameScreen',
+        playerCountScreen: 'mainMenuScreen', adventureTypeScreen: 'playerCountScreen',
+        ageInputScreen: 'adventureTypeScreen', nameInputScreen: 'ageInputScreen',
+        gameOverScreen: 'gameOverScreen'
+    }[active] || 'mainMenuScreen';
+    import('./ui.js').then(UI => UI.showScreen(prev)).catch(() => {});
+    return true;
+};
+
 // --- Start Execution Log ---
 displayVisualError("main.js: Script starting execution.");
 
@@ -456,6 +474,9 @@ function setupEventListeners(UI, setup, actionHandler, saveLoad) { // Added acti
                 displayVisualError(`Inventory 'Unequip' clicked for item: ${itemId}, slot: ${slot}`);
                 actionHandler.unequipInventoryItem(slot); // Sync action
             } else { displayVisualError("Unequip button or parent card missing valid data-slot (weapon/armor)."); }
+        }
+        else if (event.target.classList.contains('sellItemBtn')) {
+            actionHandler.sellInventoryItem(itemId);
         }
         else if (event.target.classList.contains('dropItemBtn')) {
             displayVisualError(`Inventory 'Drop' clicked for item: ${itemId}`);

@@ -568,7 +568,8 @@ export function generateThemedItem(theme, tier, type) {
     const effects = specificTypeData.effects || [`A ${actualTier} ${type}.`];
 
     const prefix = getRandomElement(prefixes);
-    const name = getRandomElement(names);
+    const nameIndex = Math.floor(Math.random() * names.length);
+    const name = names[nameIndex];
     const suffix = getRandomElement(suffixes);
     const finalName = `${prefix} ${name} ${suffix}`.replace(/\s+/g, ' ').trim();
 
@@ -577,8 +578,12 @@ export function generateThemedItem(theme, tier, type) {
         name: finalName,
         type: type,
         tier: actualTier,
-        effect: getRandomElement(effects),
-        stats: { ...(specificTypeData.stats || {}) },
+        // Consumable effect lists line up with their names ("Antidote" -> "Cures poison.").
+        effect: type === 'Consumable' && effects[nameIndex] ? effects[nameIndex] : getRandomElement(effects),
+        // Consumables: stats come from what the item is (consumableStats), not the
+        // tier-wide list, which made every Low item 'apply Blind, Poison' to
+        // the hero who drank it.
+        stats: type === 'Consumable' ? {} : { ...(specificTypeData.stats || {}) },
         cost: Config.DefaultItemCosts[actualTier] || 10,
         quantity: type === 'Consumable' ? 1 : undefined,
         equippedSlot: null,
@@ -591,7 +596,8 @@ export function generateThemedItem(theme, tier, type) {
             
             // Add elemental damage and status effects for enhanced weapons
             if (specificTypeData.elements && specificTypeData.elements.length > 0) {
-                const element = getRandomElement(specificTypeData.elements);
+                // The name wins ("Flaming Staff" is Fire, not a random Ice).
+                const element = elementFromName(finalName) || getRandomElement(specificTypeData.elements);
                 if (element !== 'Physical') {
                     item.stats.element = element;
                     item.effect += ` Deals ${element} damage.`;
@@ -637,7 +643,8 @@ export function generateThemedItem(theme, tier, type) {
         case 'Consumable':
               const isHealingItem = /heal|potion|salve|elixir|draught|medikit|med-spray/i.test(item.name);
              if (!item.stats) item.stats = {};
-             if (isHealingItem && item.stats.heal === undefined && item.stats.revive !== true) {
+             Object.assign(item.stats, consumableStats(`${name} ${item.effect}`));
+             if (isHealingItem && item.stats.heal === undefined && item.stats.revive !== true && !item.stats.throwStatus) {
                  item.stats.heal = generateStatValue(actualTier, 'HealAmount');
                  if (item.effect.length < 50) { item.effect = `Restores ${item.stats.heal} HP. ${item.effect}`; }
              }
@@ -811,4 +818,36 @@ export function generateLootDrop(theme, chance, maxTier) {
      if (typeRoll < 0.25) droppedType = 'Weapon'; else if (typeRoll < 0.50) droppedType = 'Armor'; else if (typeRoll < 0.85) droppedType = 'Consumable'; else droppedType = 'Misc';
     if (window.displayVisualError) displayVisualError(`Generating loot drop: Tier ${droppedTier}, Type ${droppedType}`);
     return generateThemedItem(theme, droppedTier, droppedType);
+}
+
+/** Element a weapon's name implies, or null. */
+function elementFromName(name) {
+    const n = String(name).toLowerCase();
+    if (/flam|fire|burn|blaz|ember|inferno/.test(n)) return 'Fire';
+    if (/frost|ice|frozen|glacial|winter/.test(n)) return 'Ice';
+    if (/lightning|thunder|storm|shock|spark/.test(n)) return 'Lightning';
+    if (/venom|poison|toxic/.test(n)) return 'Poison';
+    if (/holy|blessed|sacred|divine/.test(n)) return 'Holy';
+    if (/shadow|dark|void|cursed/.test(n)) return 'Dark';
+    return null;
+}
+
+/**
+ * What a consumable does, from its own name/description: heal, cure, a buff on
+ * the user, or a status thrown at an enemy (throwStatus, fights only).
+ */
+export function consumableStats(text) {
+    const t = String(text).toLowerCase();
+    if (/phoenix|revive/.test(t)) return { revive: true, heal: 9999 };
+    if (/panacea|cures all|purif/.test(t)) return { cure: 'All', heal: 40 };
+    if (/antidote|cures poison/.test(t)) return { cure: 'Poison' };
+    if (/calming|cures confusion/.test(t)) return { cure: 'Confusion' };
+    const thrown = [[/flash|blind/, 'Blind'], [/poison dart|weak poison|applies .*poison/, 'Poison'], [/fire|burns enemies/, 'Burn'], [/frost bomb|freezes/, 'Frost'],
+        [/lightning|paraly/, 'Paralysis'], [/confusion gas|confuses/, 'Confusion'], [/sleep/, 'Sleep'], [/vulnerab/, 'Vulnerability'], [/stun/, 'Stun']];
+    for (const [re, status] of thrown) if (re.test(t)) return { throwStatus: status };
+    if (/shield|reduces incoming/.test(t)) return { applyStatus: ['Shield'] };
+    if (/haste|swift|speed/.test(t)) return { applyStatus: ['Haste'] };
+    if (/troll blood|regenerat/.test(t)) return { applyStatus: ['Regen'], heal: 20 };
+    if (/strength|berserk|boosts attack|sharpness|immense/.test(t)) return { applyStatus: ['Berserk'] };
+    return {};
 }

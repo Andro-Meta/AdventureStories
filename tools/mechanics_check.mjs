@@ -514,6 +514,18 @@ await block(async () => {
   check(kept, `stunned hero cannot use an item (potion still in pack: ${kept}, HP ${p.hp})`);
 });
 
+await block(async () => {
+  // Live phone: a generated spell with school 'Divination' crashed castSpell ('icon' of undefined).
+  const { p, e } = fresh();
+  startFight();
+  const spell = { id: 'sp_div', name: 'Aura Sense', school: 'Divination', type: 'UTILITY', level: 0, mpCost: 4, targeting: 'self', effects: {} };
+  p.spellcasting = p.spellcasting || { knownSpells: [], preparedSpells: [] };
+  p.spellcasting.knownSpells.push(spell); p.spellcasting.preparedSpells?.push(spell);
+  const mp0 = p.mp;
+  const res = await (await import('../spellCasting.js')).castSpell(p, spell);
+  check(res?.success && p.mp === mp0 - 4, `spell from an unknown school casts and costs MP (${res?.success ? 'ok' : res?.reason}, MP ${mp0} -> ${p.mp})`);
+});
+
 console.error = realError;
 out(`\nfetch attempts blocked: ${fetchCalls}; elapsed ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 out(failed ? `✗ ${failed} mechanics check(s) failed` : '✓ all mechanics checks passed');

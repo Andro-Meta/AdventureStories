@@ -273,13 +273,30 @@ export async function handlePlayerChoice(actionType, choiceText) {
                             const heal = item.stats?.heal || 0;
                             const healPct = item.stats?.healPercent || 0;
                             const totalHeal = heal + Math.round((currentPlayer.maxHp || 100) * healPct);
+                            const parts = [];
+                            if (item.stats?.throwStatus) {
+                                // Bombs, darts, powders: thrown at the foe, never at the hero.
+                                const st = item.stats.throwStatus;
+                                Combat.applyStatusEffect(target, st, Combat.lookupStatusEffect(st)?.defaultDuration || 3, {}, item.name);
+                                const before = target.hp; target.hp = Math.max(0, target.hp - 5);
+                                parts.push(`throws ${item.name} at ${target.name} (${before - target.hp} damage, ${st})`);
+                            }
                             if (totalHeal > 0) {
                                 const oldHp = currentPlayer.hp;
                                 currentPlayer.hp = Math.min(currentPlayer.maxHp, currentPlayer.hp + totalHeal);
-                                combatLog = `${currentPlayer.name} uses ${item.name}, restoring ${currentPlayer.hp - oldHp} HP.`;
-                            } else {
-                                combatLog = `${currentPlayer.name} uses ${item.name}.`;
+                                parts.push(`restores ${currentPlayer.hp - oldHp} HP`);
                             }
+                            for (const st of [].concat(item.stats?.applyStatus || [])) {
+                                Combat.applyStatusEffect(currentPlayer, st, Combat.lookupStatusEffect(st)?.defaultDuration || 3, {}, item.name);
+                                parts.push(`gains ${st}`);
+                            }
+                            if (item.stats?.cure) {
+                                const cure = item.stats.cure;
+                                const n0 = (currentPlayer.statusEffects || []).length;
+                                currentPlayer.statusEffects = (currentPlayer.statusEffects || []).filter(fx => cure !== 'All' && ![].concat(cure).includes(fx.name));
+                                if (n0 !== currentPlayer.statusEffects.length) parts.push(`is cured`);
+                            }
+                            combatLog = `${currentPlayer.name} ${parts.length ? parts.join(', ') : `uses ${item.name}`}.`;
                             // Decrement / remove
                             if (item.quantity != null) {
                                 item.quantity = Math.max(0, item.quantity - 1);
@@ -1535,6 +1552,10 @@ export async function useInventoryItem(itemId) {
      let actionLog = "";
      let turnAdvanced = false; // Track if turn is advanced *within* this function
 
+     if (item.type === 'Consumable' && item.stats?.throwStatus) {
+         UI.showPopup(`${item.name} is thrown at enemies: save it for a fight.`, 'info');
+         return; // not consumed, no turn used
+     }
      if (item.type === 'Consumable') {
         // Heal Effect (with trust-based penalties)
         const baseHeal = (Number(item.stats?.heal) || 0) + Math.round((player.maxHp || 100) * (Number(item.stats?.healPercent) || 0));
@@ -2518,4 +2539,22 @@ function determineItemMarketFaction(itemData) {
 function averagePartyAge() {
     const ages = (gameState.players || []).map(p => p?.age).filter(a => typeof a === 'number' && a > 0);
     return ages.length ? ages.reduce((a, b) => a + b, 0) / ages.length : 99;
+}
+
+/** Sell one of an item to the shop for half its price (not equipped gear, quest items or mid-fight). */
+export function sellInventoryItem(itemId) {
+    const player = getCurrentPlayer();
+    const idx = player?.inventory?.findIndex(i => i && i.id === itemId) ?? -1;
+    if (idx === -1 || gameState.inCombat) return;
+    const item = player.inventory[idx];
+    if (item.type === 'Quest' || player.equipment?.weapon === itemId || player.equipment?.armor === itemId) return;
+    const coins = UI.sellValue(item);
+    if ((item.quantity ?? 1) > 1) item.quantity -= 1;
+    else player.inventory.splice(idx, 1);
+    player.coins = (player.coins || 0) + coins;
+    UI.showPopup(`Sold ${item.name} for ${coins} coins`, 'coins', 2500);
+    UI.renderInventory();
+    UI.renderPlayerCards();
+    UI.updateContextHeaders();
+    import('./saveLoad.js').then(m => m.autosave()).catch(() => {});
 }

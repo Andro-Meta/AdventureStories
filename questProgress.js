@@ -261,7 +261,8 @@ export class QuestProgressManager {
                 timestamp: Date.now()
             });
             
-            UI.showPopup(`Story Phase: ${this.getPhaseDisplayName(newPhase)}`, 'legendary', 5000);
+            // ponytail: phase names ("Deep Exploration") are internal; the header
+            // already shows the act and next step, so no pop-up for them.
         }
     }
 

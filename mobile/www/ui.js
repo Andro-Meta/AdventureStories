@@ -2,6 +2,7 @@
 // Handles DOM manipulation, UI updates, screen transitions, popups, modals, etc.
 
 // --- Module Imports ---
+import { playHpEffects, resetFx } from './fx.js';
 import { gameState } from './state.js';
 import * as Config from './config.js';
 import { loadPlayerAges, loadPlayerNames, loadAdventureTheme } from './inputCache.js';
@@ -420,8 +421,8 @@ export function updateGameUI() {
     
     updateGameHeader();
     
-    // Add spellbook button if current player has spellcasting
-    SpellUI.addSpellbookButton();
+    // Spells are cast from the Moves screen (one place; the extra Book/Cast
+    // quick buttons appeared only on loaded games and crowded the bar).
     renderPlayerCards();
     renderEnemyCards();
     updateQuickActions();
@@ -692,6 +693,7 @@ export function renderPlayerCards() {
         elements.playersDisplay.appendChild(card);
     });
     updateCollapsibleListeners();
+    playHpEffects(gameState.players);
 }
 
 /** Renders all enemy cards in the enemy display area. */
@@ -711,6 +713,7 @@ export function renderEnemyCards() {
             elements.enemiesDisplay.appendChild(card);
         });
         updateCollapsibleListeners();
+        playHpEffects(activeEnemies);
     } else {
         elements.enemyContainer.classList.add('hidden');
     }
@@ -1429,8 +1432,27 @@ export function renderSpecialMoves() {
                 <h4>${sanitizeText(spell.name || 'Unnamed Spell')}</h4>
                 <p>${sanitizeText(spell.description || spell.effect || 'A learned spell.')}</p>
                 <p class="meta">School: ${sanitizeText(spell.school || 'Arcane')} · MP: ${spell.mpCost ?? '?'} · Level: ${spell.level ?? '?'}</p>
-                <p class="hint">Use the <strong>Book</strong> / <strong>Cast</strong> buttons in the player card to invoke.</p>
             `;
+            // Cast from here (the Book/Cast quick buttons were only ever added
+            // when a save was loaded, so new games could never cast).
+            const castBtn = document.createElement('button');
+            castBtn.className = 'castSpellCardBtn';
+            const player = getCurrentPlayer();
+            const enoughMp = (player?.mp ?? 0) >= (spell.mpCost || 0);
+            castBtn.textContent = enoughMp ? `Cast (${spell.mpCost || 0} MP)` : `Need ${spell.mpCost} MP`;
+            castBtn.disabled = !enoughMp || gameState.isLoading;
+            castBtn.addEventListener('click', async () => {
+                showScreen('gameScreen');
+                if (gameState.inCombat) {
+                    const { handlePlayerChoice } = await import('./actionHandler.js');
+                    return handlePlayerChoice('Spell', `Cast ${spell.name}`); // costs the turn
+                }
+                const SpellCasting = await import('./spellCasting.js');
+                const res = await SpellCasting.castSpell(player, spell);
+                showPopup(res?.success ? `${player.name} casts ${spell.name}!` : `${spell.name} fizzles${res?.reason ? ': ' + res.reason : ''}`, res?.success ? 'skill' : 'warning');
+                renderPlayerCards();
+            });
+            card.appendChild(castBtn);
             elements.specialMovesDisplay.appendChild(card);
         });
     }
@@ -1527,9 +1549,10 @@ function createItemCard(item, context) {
         <div class="button-container vertical">
             ${context === 'inventory' ? `
                 ${item.type === 'Consumable' && !item.stats?.revive ? `<button class="useItemBtn" ${cannotAct ? 'disabled' : ''}>Use</button>` : ''}
-                ${item.type === 'Weapon' ? `<button class="equipItemBtn" data-slot="weapon" ${cannotAct || isEquipped ? 'disabled' : ''}>Equip Weapon</button>` : ''}
-                ${item.type === 'Armor' ? `<button class="equipItemBtn" data-slot="armor" ${cannotAct || isEquipped ? 'disabled' : ''}>Equip Armor</button>` : ''}
+                ${item.type === 'Weapon' && !isEquipped ? `<button class="equipItemBtn" data-slot="weapon" ${cannotAct ? 'disabled' : ''}>Equip Weapon</button>` : ''}
+                ${item.type === 'Armor' && !isEquipped ? `<button class="equipItemBtn" data-slot="armor" ${cannotAct ? 'disabled' : ''}>Equip Armor</button>` : ''}
                 ${isEquipped ? `<button class="unequipItemBtn" ${cannotAct ? 'disabled' : ''}>Unequip</button>` : ''}
+                ${!isEquipped && item.type !== 'Quest' && !gameState.inCombat ? `<button class="sellItemBtn btn-secondary" ${cannotAct ? 'disabled' : ''}>Sell (${sellValue(item)}💰)</button>` : ''}
                 <button class="dropItemBtn" ${cannotAct ? 'disabled' : ''}>Drop</button>
             ` : ''}
             ${context === 'shop' ? `
@@ -1993,4 +2016,12 @@ export function enableChoices() {
             button.style.opacity = '1';
         });
     }
+}
+
+export { resetFx };
+
+/** What the shop pays for an item: half its price (half the tier's default when unpriced). */
+export function sellValue(item) {
+    const base = item?.cost || Config.DefaultItemCosts?.[item?.tier] || 10;
+    return Math.max(1, Math.floor(base / 2));
 }
