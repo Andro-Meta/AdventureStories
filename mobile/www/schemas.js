@@ -10,10 +10,13 @@
 // the schema (notably the legacy MiniCPM Python server, which has no grammar
 // support — the schema acts as a strong prompt hint there).
 
-export const EXPLORATION_CHOICE_TYPES = ['Good', 'Bad', 'Risky', 'Silly', 'Investigative'];
+import { DANGERS, APPROACHES, normalizeChoice } from './progression.js';
+
+// An exploration choice's "type" is its danger (Safe / Bold / Reckless) and
+// its "stat" the approach (progression.js); five choices, one per approach.
+export const EXPLORATION_CHOICE_TYPES = DANGERS;
 export const COMBAT_CHOICE_TYPES = ['Attack', 'Special', 'Item', 'Run'];
-// The skill an exploration choice really uses (progression.js); optional.
-export const CHOICE_STATS = ['brave', 'clever', 'sneaky', 'kind', 'luck'];
+export const CHOICE_STATS = APPROACHES;
 
 // =============================================================================
 // PHASE 1: Narrative state-diff schema.
@@ -79,8 +82,8 @@ export const storyTurnSchema = {
             type: 'array',
             items: {
                 type: 'object',
-                required: ['type', 'text'],
-                properties: { type: { type: 'string' }, text: { type: 'string', minLength: 1 }, stat: { type: 'string', enum: CHOICE_STATS } }
+                required: ['text'],
+                properties: { type: { type: 'string' }, danger: { type: 'string' }, text: { type: 'string', minLength: 1 }, stat: { type: 'string', enum: CHOICE_STATS } }
             }
         }
     }
@@ -146,18 +149,11 @@ export const explorationChoicesSchema = {
             items: {
                 type: 'object',
                 additionalProperties: false,
-                required: ['type', 'text'],
+                required: ['stat', 'danger', 'text'],
                 properties: {
-                    type: {
-                        type: 'string',
-                        enum: EXPLORATION_CHOICE_TYPES
-                    },
-                    text: {
-                        type: 'string',
-                        minLength: 1,
-                        maxLength: 240
-                    },
-                    stat: { type: 'string', enum: CHOICE_STATS }
+                    stat: { type: 'string', enum: CHOICE_STATS },
+                    danger: { type: 'string', enum: DANGERS },
+                    text: { type: 'string', minLength: 1, maxLength: 240 }
                 }
             }
         }
@@ -311,7 +307,17 @@ export function validateChoicesPayload(payload, inCombat) {
         throw new Error('Choice payload missing "choices" array');
     }
 
-    const validTypes = inCombat ? COMBAT_CHOICE_TYPES : EXPLORATION_CHOICE_TYPES;
+    // Exploration: five choices, each { stat, danger, text }. Doubled
+    // approaches are repaired later (aiHandler.ensureFiveApproaches).
+    if (!inCombat) {
+        if (choices.length !== 5) throw new Error(`Expected 5 choices, got ${choices.length}`);
+        return choices.map(raw => {
+            if (!raw || typeof raw.text !== 'string' || !raw.text.trim()) throw new Error('Choice entry missing text');
+            const c = normalizeChoice({ type: raw.type, danger: raw.danger, stat: raw.stat, text: raw.text.trim() });
+            return c.stat ? { type: c.type, text: c.text, stat: c.stat } : { type: c.type, text: c.text };
+        });
+    }
+    const validTypes = COMBAT_CHOICE_TYPES;
     const expectedCount = validTypes.length;
 
     if (choices.length !== expectedCount) {
@@ -337,8 +343,7 @@ export function validateChoicesPayload(payload, inCombat) {
             throw new Error(`Duplicate choice type "${c.type}" — exactly one of each required`);
         }
         seen.add(c.type);
-        const stat = typeof raw.stat === 'string' ? raw.stat.trim().toLowerCase() : '';
-        normalized.push(CHOICE_STATS.includes(stat) && !inCombat ? { type: c.type, text, stat } : { type: c.type, text });
+        normalized.push({ type: c.type, text });
     }
 
     const missing = validTypes.filter(t => !seen.has(t));

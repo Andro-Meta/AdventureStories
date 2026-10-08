@@ -24,11 +24,6 @@ import { determineContext } from './state.js';
 // FALLBACK FUNCTION REMOVED - AI must work correctly or fail clearly
 
 const CHOICE_TYPE_MEANINGS = {
-    Good: 'the sensible, careful option',
-    Bad: 'a tempting but clearly foolish option',
-    Risky: 'a bold gamble that could pay off big or go wrong',
-    Silly: 'something genuinely funny for this age group that might just work',
-    Investigative: 'look closer, ask questions, or search for clues',
     Attack: 'a specific strike at a named enemy',
     Special: "use one of the hero's special moves or abilities",
     Item: 'use something from the inventory',
@@ -81,16 +76,34 @@ Format examples only (never use these names or details in the story):
 }
 
 export function buildChoiceInstructions(types, inCombat, avoid = []) {
-    const list = types.map(t => `- ${t}: ${CHOICE_TYPE_MEANINGS[t]}`).join('\n');
     // Live (phone, 10-08): "Use the biometric key on the ledger now" was followed
     // a turn later by "Secure the biometric key and return it to the ledger's
     // auth pads", and the story circled the same ledger for five turns.
     const noRepeat = !inCombat && avoid.length
         ? `\nNever offer an action the heroes already took, or a reworded version of it. Already done: ${avoid.map(a => `"${a}"`).join('; ')}. Each choice leads somewhere new.`
         : '';
-    return `CHOICES: exactly ${types.length}, one of each type:
+    if (inCombat) {
+        const list = types.map(t => `- ${t}: ${CHOICE_TYPE_MEANINGS[t]}`).join('\n');
+        return `CHOICES: exactly ${types.length}, one of each type:
 ${list}
-Each choice: under 160 characters, starts with a verb, names something specific from the narration, and never states its type (no "safely", "risky", "silly").${inCombat ? '' : ' Give each a "stat", and make the five FIVE DIFFERENT APPROACHES: exactly one brave (force, daring, facing danger), one clever (searching, figuring out, knowing), one sneaky (stealth, tricks, slipping past), one kind (helping, talking, calming, making friends), and the Silly one luck. The action must truly be that approach: kicking a dog is brave, slipping past it sneaky, sweet-talking it kind, studying its collar clever. The Good choice is a kind or honest act, not another search.'}${inCombat ? ` Attack must name the enemy it targets.${combatKitLine()}` : ' Make the five genuinely different from each other. If your ops START a fight, write four fight choices instead, types Attack, Special, Item, Run.'}${noRepeat}`;
+Each choice: under 160 characters, starts with a verb, names something specific from the narration. Attack must name the enemy it targets.${combatKitLine()}`;
+    }
+    return `CHOICES: exactly 5, one for each APPROACH ("stat"), each used exactly once:
+- brave: force, daring, facing danger head-on
+- clever: searching, figuring out, knowing things
+- sneaky: stealth, tricks, hiding, slipping past unseen
+- kind: helping, talking, calming, making friends
+- luck: something silly or random, genuinely funny for this age group, that might just work
+The action must truly be that approach: kicking a guard dog is brave, slipping past it sneaky, sweet-talking it kind, studying its collar clever.
+Give each a "danger" that fits what could go wrong: Safe (little harm if it fails), Bold (could get hurt), Reckless (likely to get hurt if it fails, but a big payoff). Kicking a guard dog is Reckless; sweet-talking it is Safe. Mix them: at least one Safe and at least one Bold or Reckless.
+Each choice: under 160 characters, starts with a verb, names something specific from the narration, and never states its approach or danger (no "safely", "sneakily", "risky"). Make the five genuinely different from each other. If your ops START a fight, write four fight choices instead, types Attack, Special, Item, Run.${noRepeat}`;
+}
+
+/** The JSON shape the choices are asked for in. */
+function choiceFormat(inCombat) {
+    return inCombat
+        ? COMBAT_CHOICE_TYPES.map(t => `{"type":"${t}","text":"..."}`).join(',')
+        : Progression.APPROACHES.map(s => `{"stat":"${s}","danger":"...","text":"..."}`).join(',');
 }
 
 /**
@@ -161,7 +174,7 @@ ${prompt}`;
     const userPrompt = `${scene}
 
 Reply with ONE JSON object with all three keys, and nothing else:
-{"narration":"...","ops":[],"choices":[${types.map(t => inCombat ? `{"type":"${t}","text":"..."}` : `{"type":"${t}","text":"...","stat":"..."}`).join(',')}]}
+{"narration":"...","ops":[],"choices":[${choiceFormat(inCombat)}]}
 
 NARRATION: ${words} words (at least ${wc.min}; replies under that are too thin), in 2 short paragraphs, third person, naming the hero who acted. Show what happens because of the action, then end on a moment that invites the next decision. No choices or bracket tokens inside the narration.
 
@@ -276,13 +289,14 @@ export async function ensureFiveApproaches(choices, narrative, avoid = []) {
         const others = out.filter((c, i) => !plan.some(p => p.index === i)).map(c => `- ${c.text}`).join('\n');
         const payload = await API.getAIResponseJSON([
             { role: 'system', content: `You write player choices for a ${getThemeName()} text adventure. Reply with one JSON object only.` },
-            { role: 'user', content: `SCENE:\n${narrative}\n\nThese choices stay:\n${others}\n\nWrite ${plan.length} new choice${plan.length > 1 ? 's' : ''}, one sentence each, that fit this scene and differ from the ones above:\n${plan.map((p, k) => `${k + 1}. a ${WHAT[p.stat]} action`).join('\n')}\n\nReply exactly as {"texts":[${plan.map(() => '"..."').join(',')}]}` }
+            { role: 'user', content: `SCENE:\n${narrative}\n\nThese choices stay:\n${others}\n\nWrite ${plan.length} new choice${plan.length > 1 ? 's' : ''}, one sentence each, that fit this scene and differ from the ones above:\n${plan.map((p, k) => `${k + 1}. a ${WHAT[p.stat]} action`).join('\n')} Give each a "danger" that fits it: Safe, Bold or Reckless.\n\nReply exactly as {"choices":[${plan.map(p => `{"text":"...","danger":"..."}`).join(',')}]}` }
         ], null, { max_tokens: 250, temperature: 0.7, jsonObject: true });
-        const texts = Array.isArray(payload?.texts) ? payload.texts : [];
+        const got = Array.isArray(payload?.choices) ? payload.choices : [];
         plan.forEach((p, k) => {
-            const t = String(texts[k] || '').trim();
+            const t = String(got[k]?.text || '').trim();
+            const danger = Progression.DANGERS.find(d => d.toLowerCase() === String(got[k]?.danger || '').trim().toLowerCase()) || Progression.DEFAULT_DANGER[p.stat];
             const clash = out.some((c, i) => i !== p.index && isNearRepeat(t, [c.text])) || isNearRepeat(t, avoid);
-            if (t.length >= 8 && t.length <= 220 && !clash) out[p.index] = { ...out[p.index], text: t, stat: p.stat };
+            if (t.length >= 8 && t.length <= 220 && !clash) out[p.index] = { ...out[p.index], type: danger, text: t, stat: p.stat };
         });
     } catch (e) { log(`Approach fix failed (${e.message}); using plain choices for the gaps.`); }
     return Progression.fillApproaches(out); // any gap left: plain text, never a doubled approach
@@ -377,7 +391,7 @@ export async function requestChoicesOnly(narrative, inCombat, forHero = null, av
     const enemies = inCombat ? `\nEnemies: ${(gameState.enemies || []).filter(e => !e.isDefeated).map(e => e.name).join(', ')}` : '';
     const payload = await API.getAIResponseJSON([
         { role: 'system', content: `You write the player choices for a ${getThemeName()} text adventure. Reply with one JSON object only.` },
-        { role: 'user', content: `SCENE:\n${narrative}${enemies}\n\n${forHero ? `Write the choices for ${forHero}, who acts next.\n` : ''}${buildChoiceInstructions(types, inCombat, avoid)}\n\nReply exactly as {"choices":[${types.map(t => inCombat ? `{"type":"${t}","text":"..."}` : `{"type":"${t}","text":"...","stat":"..."}`).join(',')}]}` }
+        { role: 'user', content: `SCENE:\n${narrative}${enemies}\n\n${forHero ? `Write the choices for ${forHero}, who acts next.\n` : ''}${buildChoiceInstructions(types, inCombat, avoid)}\n\nReply exactly as {"choices":[${choiceFormat(inCombat)}]}` }
     ], getChoiceSchema(inCombat), { jsonSchemaName: inCombat ? 'combat_choices' : 'exploration_choices', max_tokens: 600, temperature: 0.7 });
     const choices = validateChoicesPayload(payload, inCombat);
     return inCombat ? choices : ensureFiveApproaches(choices, narrative, avoid);
@@ -426,28 +440,11 @@ function validateAndFixChoices(choices, inCombat) {
             }
         });
     } else {
-        const requiredTypes = ['Good', 'Bad', 'Risky', 'Silly', 'Investigative'];
-        const missingTypes = requiredTypes.filter(type => !choices.some(choice => choice.type === type));
-        
-        if (missingTypes.length > 0) {
-            log(`Adding missing exploration choice types: ${missingTypes.join(', ')}`);
-            const context = determineContext(getCurrentPlayer());
-            
-            missingTypes.forEach(type => {
-                const defaultText = {
-                    'Good': context.environment === 'dangerous' ? 
-                        'Take a careful and cautious approach.' : 'Take a safe and methodical approach.',
-                    'Bad': 'Take a risky and potentially dangerous action.',
-                    'Risky': context.environment === 'dangerous' ? 
-                        'Attempt a calculated but dangerous maneuver.' : 'Take a calculated risk.',
-                    'Silly': 'Do something unexpected or humorous.',
-                    'Investigative': context.situation === 'social' ? 
-                        'Ask questions and gather information.' : 'Search the area thoroughly.'
-                }[type];
-                
-                choices.push({ type, text: defaultText });
-            });
-        }
+        // Fewer than five: one plain choice per missing approach.
+        const have = new Set(choices.map(c => c?.stat));
+        const missing = Progression.fallbackChoices().filter(c => !have.has(c.stat)).slice(0, Math.max(0, 5 - choices.length));
+        if (missing.length) log(`Adding plain choices for: ${missing.map(c => c.stat).join(', ')}`);
+        choices.push(...missing);
     }
 
     return choices;

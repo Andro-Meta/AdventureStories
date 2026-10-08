@@ -780,7 +780,7 @@ function statsExplainer(hero) {
         `<li>${s.icon} <b>${s.name} ${hero.stats[k]}</b>/${Progression.STAT_MAX}: ${s.does}. In fights: ${s.fight}.${hero.stats[k] < Progression.STAT_MAX ? ` <small>Practice ${hero.sparks[k] || 0}/${Progression.SPARKS_PER_POINT}</small>` : ' <small>Mastered</small>'}</li>`).join('');
     return `<div class="stats-explainer"><p><b>Level ${hero.level}</b> · ${hero.xp}/${Progression.xpForLevel(hero.level)} XP</p>
         <ul>${rows}</ul>
-        <p class="stats-how"><small>Every choice is a roll: a 20-sided die plus the stat the action uses (the icon on the button), and the % is your chance. Each point in a stat adds +5% to every choice that uses it. 🍀 choices are pure luck: a lucky charm in your bag helps those and makes a 19 count as a critical success too.${Progression.luckOf(hero) ? ` You carry luck +${Progression.luckOf(hero)}.` : ''} Every roll gives XP; each level lets you raise a stat; ${Progression.SPARKS_PER_POINT} successes with a stat raise it as well.</small></p></div>`;
+        <p class="stats-how"><small>Every choice is a roll: a 20-sided die plus the stat the action uses (the icon on the button), and the % is your chance. Each point in a stat adds +5% to every choice that uses it. The marks show the danger: no mark is safe (a failure just complicates things), ⚠ is bold (a failure can hurt), ⚠⚠ is reckless (a failure will hurt, but it pays the most). 🍀 choices are pure luck: a lucky charm in your bag helps those and makes a 19 count as a critical success too.${Progression.luckOf(hero) ? ` You carry luck +${Progression.luckOf(hero)}.` : ''} Every roll gives XP; each level lets you raise a stat; ${Progression.SPARKS_PER_POINT} successes with a stat raise it as well.</small></p></div>`;
 }
 
 let statPromptOpen = false;
@@ -929,6 +929,7 @@ export function renderChoices(choices, handler = null) {
     if (Array.isArray(choices) && !handler) choices = choices.filter(c => c?.type !== 'Defend');
     // Exploration: five different approaches, always (the storyteller is asked
     // and repaired in aiHandler; this is the last line for every other path).
+    if (Array.isArray(choices) && !handler && !gameState.inCombat) choices = choices.map(Progression.normalizeChoice);
     if (Array.isArray(choices) && !handler && !gameState.inCombat && choices.length === 5) choices = Progression.fillApproaches(choices);
     if (Array.isArray(choices) && choices.length > 1 && !handler) {
         choices = [...choices];
@@ -1047,12 +1048,13 @@ export function renderChoices(choices, handler = null) {
         const check = !gameState.inCombat && !handler && Progression.CHECKS[choice.type];
         if (check) {
             const hero = gameState.players?.[gameState.currentPlayerIndex] || gameState.players?.[0];
-            const stat = choice.stat && choice.stat !== 'luck' && Progression.STATS[choice.stat] ? choice.stat : (choice.stat === 'luck' ? null : check.stat);
-            const pct = Math.round(Progression.chanceFor(choice.type, hero, choice.stat) * 100);
+            const stat = Progression.STATS[choice.stat] ? choice.stat : null; // null = luck
+            const pct = Math.round(Progression.chanceFor(choice.type, hero, choice.stat ?? null) * 100);
             const icon = stat ? Progression.STATS[stat].icon : '🍀';
-            const danger = choice.type === 'Risky' || choice.type === 'Bad' ? ' ⚠' : '';
+            // Danger: Safe shows nothing, Bold ⚠ (could get hurt), Reckless ⚠⚠.
+            const danger = { Bold: ' ⚠', Reckless: ' ⚠⚠' }[choice.type] || '';
             button.dataset.odds = `${icon} ${pct}%${danger}`;
-            button.title = `${stat ? Progression.STATS[stat].name : 'Luck'} check, ${pct}% to succeed${danger ? ': failing can hurt' : ''}`;
+            button.title = `${stat ? Progression.STATS[stat].name : 'Luck'}, ${choice.type}: ${pct}% to succeed${choice.type === 'Reckless' ? ', failing will hurt' : danger ? ', failing can hurt' : ''}`;
         }
         // In a fight the move type is shown: Attack/Special/Item/Run are
         // mechanics, not hidden story options.
@@ -1066,6 +1068,7 @@ export function renderChoices(choices, handler = null) {
             button.textContent = plain;
         }
         button.dataset.actionType = choice.type;
+        if (check) button.dataset.stat = Progression.STATS[choice.stat] ? choice.stat : 'luck'; // the approach (tests pick by it)
         button.dataset.choiceIndex = index;
 
         if (handler) {

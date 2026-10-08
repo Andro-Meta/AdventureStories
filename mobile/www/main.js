@@ -357,9 +357,9 @@ function setupEventListeners(UI, setup, actionHandler, saveLoad) { // Added acti
         UI.renderPlayerCards();
         UI.renderEnemyCards();
         UI.renderChoices([
-            { type: 'Good', text: 'Get back on your feet and take stock' },
-            { type: 'Investigative', text: 'Look around for what went wrong' },
-            { type: 'Risky', text: 'Go after them again, smarter this time' }
+            { type: 'Safe', stat: 'kind', text: 'Get back on your feet and take stock' },
+            { type: 'Safe', stat: 'clever', text: 'Look around for what went wrong' },
+            { type: 'Bold', stat: 'brave', text: 'Go after them again, smarter this time' }
         ]);
         UI.showPopup('You rise again — battered, but unbowed.', 'info', 4000);
     }, 'gameOverContinueBtn');

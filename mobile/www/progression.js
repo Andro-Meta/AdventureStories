@@ -8,11 +8,11 @@
 //    shown on the button (Baldur's Gate 3, Disco Elysium). Three result bands:
 //    success, success with a cost, setback (Powered by the Apocalypse), plus
 //    natural 20 / natural 1 moments.
-//  - Coins and HP only change for a reason: searching finds treasure, bold
-//    plays win big, harm only comes from failed Risky / Bad moves and is
-//    sized by how badly it went. Silly is comedy with a jackpot on 19-20.
-//    (Before: every choice rolled random HP and coins whatever happened;
-//    a reckless Bad choice paid as much as a Good one.)
+//  - Each choice has an APPROACH (the stat it uses) and a DANGER (Safe,
+//    Bold, Reckless: how hard, how much it pays, whether failure hurts).
+//    Coins and HP only change for a reason: danger sizes the stakes, the
+//    approach flavours the reward (Clever finds stashes and gear, Kind may be
+//    patched up, Luck can hit a jackpot on 19-20).
 //  - XP from every check, milestones and fights; levels at 100/250/450/700/
 //    1000 total XP; each level the player picks +1 stat, and stats also grow
 //    by use (Skyrim): 6 successes with a stat = +1.
@@ -27,21 +27,24 @@ export const STATS = {
 export const STAT_MAX = 5;
 export const SPARKS_PER_POINT = 6;
 
-// Choice type -> how hard it is (DC on a d20) and the stat it uses when the
-// storyteller didn't say. The storyteller tags each choice with the stat the
-// ACTION really uses ("Kick the guard dog" is Brave, "slip past it" Sneaky);
-// the type only sets the risk. (Michael: "is kicking a guard dog sneaky?!")
+// Each exploration choice has an APPROACH, the stat it uses (brave, clever,
+// sneaky, kind, or luck = pure chance), and a DANGER: how hard it is and what
+// is at stake. "Kick the guard dog" is Brave + Reckless, "sweet-talk it" Kind
+// + Safe. (Michael 10-08: the old five types Good/Bad/Risky/Silly/
+// Investigative mixed the two: "is Risky sneaky or luck?")
+export const DANGERS = ['Safe', 'Bold', 'Reckless'];
 export const CHECKS = {
-    Good:          { stat: 'kind',   dc: 8,  label: 'Easy' },
-    Investigative: { stat: 'clever', dc: 10, label: 'Fair' },
-    Silly:         { stat: null,     dc: 10, label: 'Luck' },
-    Bad:           { stat: 'brave',  dc: 13, label: 'Tricky' },
-    Risky:         { stat: 'sneaky', dc: 14, label: 'Hard' }
+    Safe:     { dc: 8,  label: 'Safe' },     // little harm if it fails
+    Bold:     { dc: 11, label: 'Bold' },     // could get hurt
+    Reckless: { dc: 14, label: 'Reckless' }  // big payoff, real harm
 };
+// Choices saved before the change: [danger, approach].
+export const LEGACY_TYPES = { Good: ['Safe', 'kind'], Investigative: ['Safe', 'clever'], Silly: ['Bold', 'luck'], Risky: ['Bold', 'brave'], Bad: ['Reckless', 'brave'] };
 // The five approaches every exploration set must have, exactly once each
-// (Michael, phone 10-08: "two lucks, no sneaks"). 'luck' = the Silly one.
+// (Michael, phone 10-08: "two lucks, no sneaks").
 export const APPROACHES = ['brave', 'clever', 'sneaky', 'kind', 'luck'];
-const TYPE_APPROACH = { Good: 'kind', Investigative: 'clever', Silly: 'luck', Bad: 'brave', Risky: 'sneaky' };
+// When the storyteller gave no danger, the usual one for the approach.
+export const DEFAULT_DANGER = { kind: 'Safe', clever: 'Safe', sneaky: 'Bold', luck: 'Bold', brave: 'Reckless' };
 // Last resort when the storyteller can't fix a set: plain, honest actions.
 export const APPROACH_FALLBACK = {
     brave: 'Step up and face it head-on.',
@@ -51,31 +54,31 @@ export const APPROACH_FALLBACK = {
     luck: 'Do something wild and hope luck is on your side.'
 };
 
+/** A full fallback set: one plain choice per approach. */
+export const fallbackChoices = () => APPROACHES.map(stat => ({ type: DEFAULT_DANGER[stat], stat, text: APPROACH_FALLBACK[stat] }));
+
+/** Any choice in the current shape { type: danger, stat, text } (old saves and loose model output converted). */
+export function normalizeChoice(c) {
+    if (!c || typeof c !== 'object') return c;
+    const legacy = LEGACY_TYPES[c.type];
+    const s = String(c.stat || '').trim().toLowerCase();
+    const stat = APPROACHES.includes(s) ? s : legacy?.[1];
+    const pick = (v) => DANGERS.find(d => d.toLowerCase() === String(v || '').trim().toLowerCase());
+    const type = pick(c.danger) || pick(c.type) || legacy?.[0] || DEFAULT_DANGER[stat] || 'Bold';
+    const { danger, stat: _junk, ...rest } = c;
+    return { ...rest, type, ...(stat ? { stat } : {}) };
+}
+
 /**
  * Which choices must change so the five use five different approaches.
- * Keeps one choice per approach (the one whose type naturally fits it, else
- * the first) and returns [{ index, stat }] for the rest: each gets one of the
- * missing approaches. Empty when the set is already balanced.
+ * Keeps the first choice of each approach and returns [{ index, stat }] for
+ * the rest: each gets one of the missing approaches. Empty when balanced.
  */
 export function approachPlan(choices) {
     const list = choices || [];
-    const stat = (c) => (APPROACHES.includes(c?.stat) ? c.stat : null);
-    const keep = new Map();
-    for (const s of APPROACHES) {
-        const idx = list.map((c, i) => i).filter(i => stat(list[i]) === s);
-        if (idx.length) keep.set(s, idx.find(i => TYPE_APPROACH[list[i].type] === s) ?? idx[0]);
-    }
-    const kept = new Set(keep.values());
-    const free = list.map((c, i) => i).filter(i => !kept.has(i));
-    const missing = APPROACHES.filter(s => !keep.has(s));
-    const plan = [];
-    // A free slot whose type fits a missing approach takes it first.
-    for (const s of [...missing]) {
-        const i = free.find(j => TYPE_APPROACH[list[j]?.type] === s);
-        if (i != null) { plan.push({ index: i, stat: s }); free.splice(free.indexOf(i), 1); missing.splice(missing.indexOf(s), 1); }
-    }
-    missing.forEach((s, k) => { if (free[k] != null) plan.push({ index: free[k], stat: s }); });
-    return plan.sort((a, b) => a.index - b.index);
+    const seen = new Set(), free = [];
+    list.forEach((c, i) => { if (APPROACHES.includes(c?.stat) && !seen.has(c.stat)) seen.add(c.stat); else free.push(i); });
+    return APPROACHES.filter(s => !seen.has(s)).map((stat, k) => ({ index: free[k], stat })).filter(p => p.index != null);
 }
 
 /** Apply a plan with fixed fallback texts (sync; used at render time). */
@@ -83,15 +86,21 @@ export function fillApproaches(choices) {
     const plan = approachPlan(choices);
     if (!plan.length) return choices;
     const out = choices.map(c => ({ ...c }));
-    for (const { index, stat } of plan) out[index] = { ...out[index], text: APPROACH_FALLBACK[stat], stat };
+    for (const { index, stat } of plan) out[index] = { ...out[index], type: DEFAULT_DANGER[stat], text: APPROACH_FALLBACK[stat], stat };
     return out;
 }
 
-const pickStat = (type, stat) => (stat === 'luck' ? null : (STATS[stat] ? stat : CHECKS[type]?.stat ?? null));
+// The check a choice makes: its difficulty and the stat that helps (null = luck).
+function checkOf(type, stat) {
+    const legacy = LEGACY_TYPES[type];
+    const c = CHECKS[type] || CHECKS[legacy?.[0]] || CHECKS.Bold;
+    const s = stat === undefined ? legacy?.[1] : stat;
+    return { c, danger: CHECKS[type] ? type : legacy?.[0] || 'Bold', stat: STATS[s] ? s : null };
+}
 
 /**
  * Lucky charms: the best one carried counts (cap 3). Luck adds to luck rolls
- * (Silly, or anything tagged luck) and widens the critical range: with luck 1
+ * (choices tagged luck) and widens the critical range: with luck 1
  * a natural 19 is a crit too. (Fighting Fantasy's Luck, as an item.)
  */
 export function luckOf(hero) {
@@ -117,8 +126,7 @@ const flusterPenalty = (hero) => (hero?.statusEffects || []).some(e => e?.name =
 
 /** Chance (0-1) to at least succeed (total >= DC) on d20 + stat. Natural 20 always wins, natural 1 always fails. */
 export function chanceFor(type, hero, statOverride = undefined) {
-    const c = CHECKS[type]; if (!c) return 0.5;
-    const stat = pickStat(type, statOverride);
+    const { c, stat } = checkOf(type, statOverride);
     const bonus = stat ? statOf(hero, stat) : luckOf(hero);
     const need = c.dc - bonus + flusterPenalty(hero); // roll needed on the die
     const critFrom = 20 - luckOf(hero);                // these always succeed
@@ -127,8 +135,7 @@ export function chanceFor(type, hero, statOverride = undefined) {
 
 /** Roll the check. rng() returns [0,1). */
 export function rollCheck(type, hero, rng = Math.random, statOverride = undefined) {
-    const c = CHECKS[type] || CHECKS.Investigative;
-    const stat = pickStat(type, statOverride);
+    const { c, danger, stat } = checkOf(type, statOverride);
     const die = 1 + Math.floor(rng() * 20);
     const bonus = (stat ? statOf(hero, stat) : luckOf(hero)) - flusterPenalty(hero);
     const total = die + bonus;
@@ -138,61 +145,65 @@ export function rollCheck(type, hero, rng = Math.random, statOverride = undefine
     else if (total >= c.dc) band = 'success';
     else if (total >= c.dc - 3) band = 'partial';
     else band = 'fail';
-    return { type, stat, dc: c.dc, die, bonus, total, band };
+    return { type: danger, stat, dc: c.dc, die, bonus, total, band };
 }
 
 const levelScale = (hero) => 1 + 0.15 * ((hero?.level || 1) - 1);
 const between = (rng, lo, hi) => lo + Math.floor(rng() * (hi - lo + 1));
 const pctHp = (hero, lo, hi, rng) => Math.max(1, Math.round((hero?.maxHp || 100) * between(rng, lo, hi) / 100));
 
+// What each danger puts at stake: XP, coin ranges, gear tier, harm (% of max HP).
+const STAKES = {
+    Safe:     { xp: 10, coins: [5, 10],  crit: [10, 20],  rare: 0.04, items: ['Low', 'Medium'],  partial: null,    fail: null,     fumble: null },
+    Bold:     { xp: 15, coins: [15, 30], crit: [25, 50],  rare: 0.10, items: ['Low', 'Medium'],  partial: [4, 8],  fail: [10, 15], fumble: [14, 20] },
+    Reckless: { xp: 22, coins: [40, 70], crit: [60, 100], rare: 0.20, items: ['Medium', 'High'], partial: [6, 10], fail: [14, 20], fumble: [18, 24] }
+};
+
 /**
  * What the roll earns or costs. Returns plain data; the caller applies it.
- * { coins, hpLoss, heal, item: {tierPool, typePool} | null, xp, fluster, jackpot, note }
+ * { coins, hpLoss, heal, item: {tierPool, typePool} | null, xp, fluster, jackpot, note, charm }
+ * Danger sizes the stakes; the approach flavours the reward.
  */
 export function outcomeFor(roll, hero, rng = Math.random) {
     const s = levelScale(hero);
+    const k = STAKES[roll.type] || STAKES[LEGACY_TYPES[roll.type]?.[0]] || STAKES.Bold;
     const o = { coins: 0, hpLoss: 0, heal: 0, item: null, xp: 0, fluster: false, jackpot: false, note: '' };
-    const xpWin = { Good: 10, Investigative: 15, Silly: 10, Bad: 15, Risky: 20 }[roll.type] || 10;
     const won = roll.band === 'success' || roll.band === 'crit';
-    o.xp = won ? xpWin : roll.band === 'partial' ? Math.round(xpWin * 0.6) : 5; // even a setback teaches
+    const coins = ([lo, hi]) => Math.round(between(rng, lo, hi) * s);
+    const approach = roll.stat || 'luck';
+    o.xp = won ? k.xp : roll.band === 'partial' ? Math.round(k.xp * 0.6) : 5; // even a setback teaches
     if (roll.band === 'crit') o.xp += 10;
 
-    switch (roll.type) {
-        case 'Good': // kindness: safe, small thanks; a failure only complicates the story
-            if (won && rng() < 0.6) { if (rng() < 0.6) o.coins = Math.round(between(rng, 6, 14) * s); else o.heal = pctHp(hero, 8, 15, rng); } // thanks, a tip, a meal
-            if (roll.band === 'crit') o.coins += Math.round(between(rng, 15, 30) * s);
-            break;
-        case 'Investigative': // searching finds treasure, gear, or a clue
-            if (won) {
-                const r = rng();
-                if (r < 0.40) {
-                    const rare = rng() < 0.10 || roll.band === 'crit';
-                    o.coins = Math.round((rare ? between(rng, 80, 120) : between(rng, 15, 30)) * s);
-                    o.jackpot = rare; o.note = rare ? 'a rare treasure chest' : 'a hidden stash';
-                } else if (r < 0.65) o.item = { tierPool: ['Low', 'Medium'], typePool: ['Consumable', 'Weapon', 'Armor'] };
-                else if (r < 0.70 && luckOf(hero) < 1) o.charm = 1; // a lucky charm
-                else o.note = 'a useful clue';
-            } else if (roll.band === 'partial') { o.coins = Math.round(between(rng, 3, 8) * s); o.note = 'a few loose coins'; }
-            break;
-        case 'Risky': // bold: big rewards, real danger
-            if (won) {
-                if (rng() < 0.6) o.coins = Math.round(between(rng, 20, 40) * s);
-                else o.item = { tierPool: ['Medium', 'High'], typePool: ['Weapon', 'Armor', 'Consumable'] };
-                if (roll.band === 'crit') o.coins += Math.round(between(rng, 25, 50) * s);
-            } else if (roll.band === 'partial') { o.coins = Math.round(between(rng, 10, 20) * s); o.hpLoss = pctHp(hero, 4, 8, rng); }
-            else o.hpLoss = roll.band === 'fumble' ? pctHp(hero, 16, 22, rng) : pctHp(hero, 10, 15, rng);
-            break;
-        case 'Bad': // reckless / mean shortcut: a quick grab, a nasty fall
-            if (won) o.coins = Math.round(between(rng, 8, 16) * s); // a grab, never the best way to earn
-            else if (roll.band === 'partial') { o.coins = Math.round(between(rng, 4, 8) * s); o.hpLoss = pctHp(hero, 5, 9, rng); }
-            else { o.hpLoss = roll.band === 'fumble' ? pctHp(hero, 18, 24, rng) : pctHp(hero, 12, 18, rng); o.coins = -Math.round(between(rng, 5, 15) * s); o.fluster = roll.band === 'fumble'; }
-            break;
-        case 'Silly': // comedy: tiny stakes, the odd jackpot
-            if (roll.die >= 19) { o.jackpot = true; o.coins = Math.round(between(rng, 25, 50) * s); o.note = 'an absurd stroke of luck'; }
-            else if (won) { if (rng() < 0.4) o.coins = Math.round(between(rng, 3, 8) * s); }
-            else if (roll.band === 'fumble') { o.fluster = true; o.note = 'a glorious pratfall'; }
-            else if (roll.band === 'fail') { if (rng() < 0.5) o.coins = -between(rng, 1, 3); else o.hpLoss = between(rng, 2, 4); }
-            break;
+    if (won) {
+        if (approach === 'luck') { // pure chance: small stakes, the odd jackpot
+            if (roll.die >= 19) { o.jackpot = true; o.coins = coins(k.crit); o.note = 'an absurd stroke of luck'; }
+            else if (rng() < 0.5) o.coins = coins([Math.ceil(k.coins[0] / 2), k.coins[0]]);
+        } else if (approach === 'clever') { // figuring it out: a stash, gear, a charm, or a clue
+            const r = rng();
+            if (r < 0.40) {
+                const rare = rng() < k.rare || roll.band === 'crit';
+                o.coins = rare ? coins([80, 120]) : coins(k.coins);
+                o.jackpot = rare; o.note = rare ? 'a rare treasure chest' : 'a hidden stash';
+            } else if (r < 0.65) o.item = { tierPool: k.items, typePool: ['Consumable', 'Weapon', 'Armor'] };
+            else if (r < 0.70 && luckOf(hero) < 1) o.charm = 1; // a lucky charm
+            else o.note = 'a useful clue';
+        } else if (roll.type !== 'Safe' || rng() < 0.6) { // a Safe win pays something 60% of the time
+            if (approach === 'kind' && rng() < 0.5) o.heal = pctHp(hero, 8, 15, rng); // someone grateful patches them up
+            else if (approach !== 'kind' && roll.type !== 'Safe' && rng() < 0.4) o.item = { tierPool: k.items, typePool: ['Weapon', 'Armor', 'Consumable'] };
+            else o.coins = coins(k.coins);
+        }
+        if (roll.band === 'crit' && !o.jackpot) o.coins += coins(k.crit);
+    } else if (roll.band === 'partial') { // it works, at a cost
+        o.coins = coins([Math.ceil(k.coins[0] / 3), Math.ceil(k.coins[0] / 2)]);
+        if (k.partial) o.hpLoss = pctHp(hero, k.partial[0], k.partial[1], rng);
+    } else { // setback or fumble: only Bold and Reckless hurt
+        const harm = roll.band === 'fumble' ? k.fumble : k.fail;
+        if (harm) o.hpLoss = pctHp(hero, harm[0], harm[1], rng);
+        if (roll.band === 'fumble') {
+            o.fluster = true;
+            if (roll.type === 'Reckless') o.coins = -coins([5, 15]); // dropped something in the scramble
+            if (approach === 'luck') o.note = 'a glorious pratfall';
+        }
     }
     return o;
 }

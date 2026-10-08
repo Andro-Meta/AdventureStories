@@ -40,7 +40,7 @@ export class LoadingTipsManager {
                 "Stats Tip: Each level lets you raise a stat. Tap the star on your hero card to spend points.",
                 "Stats Tip: Use a stat successfully 6 times and it grows by itself.",
                 "Stats Tip: Brave adds attack, Sneaky dodges, Clever powers abilities, Kind heals more.",
-                "Stats Tip: Risky and Bad choices can hurt when they fail - the ⚠ warns you.",
+                "Stats Tip: ⚠ means a choice can hurt if it fails, ⚠⚠ means it probably will - but it pays more.",
                 "Stats Tip: A lucky charm in your bag helps 🍀 luck choices and makes a 19 a critical success."
             ],
             items: [
