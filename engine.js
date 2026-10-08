@@ -232,6 +232,11 @@ const PATHS = [
             const idx = Number(m[1]);
             const field = m[2];
             const player = gs.players[idx];
+            // atk/def are recomputed from baseAtk/baseDef + gear + effects on
+            // every equip or status change; move the base by the same amount
+            // so a god-mode ATK 50 doesn't fall back to 15.
+            if (field === 'atk') player.baseAtk = (player.baseAtk ?? Config.BASE_ATK) + (value - (player.atk || 0));
+            if (field === 'def') player.baseDef = (player.baseDef ?? Config.BASE_DEF) + (value - (player.def || 0));
             player[field] = value;
             // Raise current to new max if max increased
             if (field === 'maxHp' && (player.hp || 0) > value) player.hp = value;
