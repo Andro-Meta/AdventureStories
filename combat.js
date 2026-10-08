@@ -1662,7 +1662,7 @@ function getContextualAttackDescription(enemy, context) {
     } else if (context.combatState.playerCondition === 'critical') {
         return `${enemy.name} moves in for a finishing blow`;
     } else {
-        return `${enemy.name} attacks with standard intensity`;
+        return `${enemy.name} strikes`;
     }
 }
 
@@ -1787,7 +1787,7 @@ async function executeEnemyAttack(enemy, target, action, context) {
     }
     
     // Show the attack result
-    showPopup(`${attackDescription}! Deals ${damageResult.damage} damage${damageResult.isCritical ? ' (Critical Hit!)' : ''}`, 'damage');
+    showPopup(`${attackDescription}: ${target.name} −${damageResult.damage}${damageResult.isCritical ? ' (critical!)' : ''}`, 'damage');
     
     // Check for defeat
     if (target.hp <= 0) {

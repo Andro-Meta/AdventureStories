@@ -3067,3 +3067,6 @@ body { padding-top: calc(env(safe-area-inset-top) + 0.5rem); padding-bottom: cal
    card-sized cell with the first spell beside it). */
 #specialMovesDisplay .spec-section-header { grid-column: 1 / -1; text-align: left; margin: 0.5rem 0 0; }
 .castSpellCardBtn { width: 100%; margin-top: 0.6rem; }
+
+/* Scrolling to a new scene stops below the status bar. */
+#storyCard { scroll-margin-top: calc(env(safe-area-inset-top) + 8px); }
