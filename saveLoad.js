@@ -370,6 +370,7 @@ export async function loadGame(slotName) {
 
         Object.assign(gameState, loadedGameState);
         log("SaveLoad: Loaded game state applied.");
+        UI.resetFx?.(); // HP from another game must not fire hit/heal effects
         // Saves made while resetGameState built an incomplete narrativeContext
         // lack these arrays, and every turn after loading would crash on them.
         gameState.narrativeContext = gameState.narrativeContext || {};

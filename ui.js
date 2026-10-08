@@ -2,6 +2,7 @@
 // Handles DOM manipulation, UI updates, screen transitions, popups, modals, etc.
 
 // --- Module Imports ---
+import { playHpEffects, resetFx } from './fx.js';
 import { gameState } from './state.js';
 import * as Config from './config.js';
 import { loadPlayerAges, loadPlayerNames, loadAdventureTheme } from './inputCache.js';
@@ -692,6 +693,7 @@ export function renderPlayerCards() {
         elements.playersDisplay.appendChild(card);
     });
     updateCollapsibleListeners();
+    playHpEffects(gameState.players);
 }
 
 /** Renders all enemy cards in the enemy display area. */
@@ -711,6 +713,7 @@ export function renderEnemyCards() {
             elements.enemiesDisplay.appendChild(card);
         });
         updateCollapsibleListeners();
+        playHpEffects(activeEnemies);
     } else {
         elements.enemyContainer.classList.add('hidden');
     }
@@ -1994,3 +1997,5 @@ export function enableChoices() {
         });
     }
 }
+
+export { resetFx };
