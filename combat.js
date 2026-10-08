@@ -182,6 +182,9 @@ export async function advanceCombatTurn() {
 
     // Process end-of-turn effects for current character if they exist
     // (not for a downed hero or fallen foe whose turn is only being skipped)
+    // A hero's turn ticking here is remembered, so the post-fight advanceTurn
+    // doesn't tick the same round again.
+    if (String(currentTurnChar?.id || '').startsWith('player')) gameState.combat.tickedTurn = gameState.turn;
     if (currentTurnChar?.statusEffects?.length > 0 && !currentTurnChar.isDowned && !currentTurnChar.isDefeated) {
         try {
             await processStatusEffectTicks(currentTurnChar);

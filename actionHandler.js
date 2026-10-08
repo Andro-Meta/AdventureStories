@@ -505,7 +505,10 @@ Fight round ${gameState.combat?.round || 1}. Narrate this round so the fight CHA
                         gameState.inCombat = false;
                         if (gameState.combat) gameState.combat.isActive = false;
                         const fighter = gameState.currentPlayerIndex;
-                        await advanceTurn();
+                        // Skip the round tick only if this hero's combat turn already ticked
+                        // (the storyteller ended the fight after the enemy phase); a killing
+                        // blow ends it before any combat tick, so that round still ticks once.
+                        await advanceTurn({ afterCombat: gameState.combat?.tickedTurn === gameState.turn });
                         // The reply's choices were written for the fighter; with 2+
                         // players the turn has just passed to someone else.
                         if (gameState.players.length > 1 && gameState.currentPlayerIndex !== fighter) {
