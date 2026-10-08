@@ -1121,6 +1121,30 @@ await block(async () => {
   check(!z.missed, `ATK 0 attack is a normal roll, no divide-by-zero (missed ${z.missed})`);
 });
 
+// =====================================================================
+section('Batch 12: no repeated actions (phone game 10-08)');
+await block(async () => {
+  const AIH = await import('../aiHandler.js');
+  fresh();
+  gameState.recentTurns = [
+    'T4 Michael: Study the flashing data streams for a repeating pattern to exploit -> worked (found 9 coins).',
+    'T5 Michael: Crawl into the ventilation shaft alone to investigate the red pulse -> went wrong (lost 5 HP).',
+    'T6 Michael: Use the biometric key on the ledger now -> worked (regained 4 HP).'
+  ];
+  const done = AIH.recentActionTexts('Michael chose (Good): "Peek through the vent grille" -> it works out.');
+  check(done.length === 4 && done[2] === 'Use the biometric key on the ledger now', `recent actions read from the turn log (${done.length}: ${done.join(' | ').slice(0, 80)}...)`);
+  const t7 = 'Secure the biometric key and return it to the ledger’s auth pads';
+  check(AIH.isNearRepeat(t7, done), `"${t7}" is flagged as a repeat of turn 6`);
+  const fresh5 = ['Examine the ‘Project Marigold’ subfile on the ledger before responding to the compartment',
+    'Rush into the dark opening in the west wall without checking the ledger’s status',
+    'Start dancing to confuse any potential security system in the ventilation shaft',
+    'Attempt to wrest the biometric free from the ledger to scan the hidden compartment'];
+  const flagged = fresh5.filter(c => AIH.isNearRepeat(c, done));
+  check(flagged.length === 0, `new directions are not flagged (${flagged.length ? flagged.join(' | ') : 'none flagged'})`);
+  const ins = AIH.buildChoiceInstructions(['Good', 'Bad'], false, done);
+  check(/Never offer an action the heroes already took/.test(ins) && ins.includes('biometric key'), 'choice instructions list the actions already taken');
+});
+
 console.error = realError;
 out(`\nfetch attempts blocked: ${fetchCalls}; elapsed ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 out(failed ? `✗ ${failed} mechanics check(s) failed` : '✓ all mechanics checks passed');

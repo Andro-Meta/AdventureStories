@@ -79,11 +79,37 @@ Format examples only (never use these names or details in the story):
 {"op":"add","path":"/questProgress/milestones/-","value":{"name":"call_to_adventure","description":"The locket whispers the hero's name."}}`;
 }
 
-export function buildChoiceInstructions(types, inCombat) {
+export function buildChoiceInstructions(types, inCombat, avoid = []) {
     const list = types.map(t => `- ${t}: ${CHOICE_TYPE_MEANINGS[t]}`).join('\n');
+    // Live (phone, 10-08): "Use the biometric key on the ledger now" was followed
+    // a turn later by "Secure the biometric key and return it to the ledger's
+    // auth pads", and the story circled the same ledger for five turns.
+    const noRepeat = !inCombat && avoid.length
+        ? `\nNever offer an action the heroes already took, or a reworded version of it. Already done: ${avoid.map(a => `"${a}"`).join('; ')}. Each choice leads somewhere new.`
+        : '';
     return `CHOICES: exactly ${types.length}, one of each type:
 ${list}
-Each choice: under 160 characters, starts with a verb, names something specific from the narration, and never states its type (no "safely", "risky", "silly").${inCombat ? ` Attack must name the enemy it targets.${combatKitLine()}` : ' Make the five genuinely different from each other. If your ops START a fight, write four fight choices instead, types Attack, Special, Item, Run.'}`;
+Each choice: under 160 characters, starts with a verb, names something specific from the narration, and never states its type (no "safely", "risky", "silly").${inCombat ? ` Attack must name the enemy it targets.${combatKitLine()}` : ' Make the five genuinely different from each other. If your ops START a fight, write four fight choices instead, types Attack, Special, Item, Run.'}${noRepeat}`;
+}
+
+const STOP_WORDS = new Set('the a an and or to of on in at for with from into onto your their his her its it this that them they now then just again before after while back up down out over all any some more most very only use try'.split(' '));
+const contentWords = (s) => new Set(String(s || '').toLowerCase().replace(/[’']/g, '').match(/[a-z]{3,}/g)?.filter(w => !STOP_WORDS.has(w)).map(w => w.replace(/(ing|ed|es|s)$/, '')) || []);
+
+/** The heroes' last few actions: from the RECENT TURNS lines plus the action this turn answers. */
+export function recentActionTexts(prompt = '') {
+    const past = (gameState.recentTurns || []).slice(-3).map(l => (String(l).match(/^T\d+ [^:]+: (.+?) -> /) || [])[1]).filter(Boolean);
+    const now = (String(prompt).match(/chose \([^)]*\): "([^"]+)"/) || [])[1];
+    return [...past, ...(now ? [now] : [])];
+}
+
+/** A choice that repeats a recent action: 3+ shared content words covering 60%+ of the shorter one. */
+export function isNearRepeat(choice, actions) {
+    const c = contentWords(choice);
+    return actions.some(a => {
+        const w = contentWords(a);
+        let shared = 0; for (const x of c) if (w.has(x)) shared++;
+        return shared >= 3 && shared / Math.max(1, Math.min(c.size, w.size)) >= 0.6;
+    });
 }
 
 // Item and Special choices must name what the acting hero really has: the
@@ -131,7 +157,7 @@ ${prompt.startsWith('[God mode]') ? '' : `STORY LOGIC: link this scene to the la
 
 ${nextActor && (gameState.players || []).length > 1 ? `NEXT TO ACT: ${nextActor.name}. Write the choices for ${nextActor.name}${nextActor.specialMoves?.length ? ` (special moves: ${nextActor.specialMoves.map(m => m.name).join(', ')})` : ''} and end the narration by turning to them.
 
-` : ''}${buildChoiceInstructions(types, inCombat)}
+` : ''}${buildChoiceInstructions(types, inCombat, recentActionTexts(prompt))}
 
 ${buildDiffInstructions(pIdx)}`;
 
@@ -200,7 +226,14 @@ ${buildDiffInstructions(pIdx)}`;
         // below); before, every fight start/end cost a choices-only call.
         try { choices = validateChoicesPayload(payload, nowInCombat); }
         catch (e) { log(`Turn choices unusable (${e.message}); asking for choices only.`); }
-        if (!choices) choices = await requestChoicesOnly(cleanNarrative, nowInCombat);
+        const done = recentActionTexts(prompt);
+        if (!choices) choices = await requestChoicesOnly(cleanNarrative, nowInCombat, null, done);
+        const repeats = (cs) => nowInCombat ? 0 : (cs || []).filter(c => isNearRepeat(c.text, done)).length;
+        if (repeats(choices) > 0) {
+            log(`Choices repeat a recent action (${repeats(choices)}); asking once for fresh ones.`);
+            try { const fresh = await requestChoicesOnly(cleanNarrative, false, null, done); if (repeats(fresh) < repeats(choices)) choices = fresh; }
+            catch (e) { log(`Fresh choices failed (${e.message}); keeping the first set.`); }
+        }
 
         UI.renderChoices(choices); // shuffles and sets gameState.currentChoices
         return { narrative: cleanNarrative, choices: gameState.currentChoices };
@@ -295,12 +328,12 @@ ${text}`.trim();
     return text;
 }
 
-export async function requestChoicesOnly(narrative, inCombat, forHero = null) {
+export async function requestChoicesOnly(narrative, inCombat, forHero = null, avoid = []) {
     const types = inCombat ? COMBAT_CHOICE_TYPES : EXPLORATION_CHOICE_TYPES;
     const enemies = inCombat ? `\nEnemies: ${(gameState.enemies || []).filter(e => !e.isDefeated).map(e => e.name).join(', ')}` : '';
     const payload = await API.getAIResponseJSON([
         { role: 'system', content: `You write the player choices for a ${getThemeName()} text adventure. Reply with one JSON object only.` },
-        { role: 'user', content: `SCENE:\n${narrative}${enemies}\n\n${forHero ? `Write the choices for ${forHero}, who acts next.\n` : ''}${buildChoiceInstructions(types, inCombat)}\n\nReply exactly as {"choices":[${types.map(t => `{"type":"${t}","text":"..."}`).join(',')}]}` }
+        { role: 'user', content: `SCENE:\n${narrative}${enemies}\n\n${forHero ? `Write the choices for ${forHero}, who acts next.\n` : ''}${buildChoiceInstructions(types, inCombat, avoid)}\n\nReply exactly as {"choices":[${types.map(t => `{"type":"${t}","text":"..."}`).join(',')}]}` }
     ], getChoiceSchema(inCombat), { jsonSchemaName: inCombat ? 'combat_choices' : 'exploration_choices', max_tokens: 600, temperature: 0.7 });
     return validateChoicesPayload(payload, inCombat);
 }
@@ -503,7 +536,7 @@ export function generateSystemPrompt() {
 - Vocabulary: ${g.contentGuidelines.vocabulary.description}.` : `READING LEVEL (average party age ${playerAge}): clear, vivid prose, 120-200 words.`;
 
     const parts = [buildCanonicalStateBlock()];
-    parts.push(`You are the storyteller of a turn-based text adventure for ${heroCountLine()} Each turn, continue the story from the chosen action and set up the next decision. Make it fun: surprises, humor, vivid details, NPCs with personality, and consequences that clearly follow from what the players chose. Stay in the story; never mention being an AI.
+    parts.push(`You are the storyteller of a turn-based text adventure for ${heroCountLine()} Each turn, continue the story from the chosen action and set up the next decision. The chosen action resolves this turn (it works or it fails, and the scene changes because of it): never hand the same object or obstacle back for the same move again. Make it fun: surprises, humor, vivid details, NPCs with personality, and consequences that clearly follow from what the players chose. Stay in the story; never mention being an AI.
 
 ${reading}
 
