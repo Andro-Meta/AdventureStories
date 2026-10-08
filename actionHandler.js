@@ -18,7 +18,7 @@ import { advanceTurn } from './turnManager.js';
 // Import game loop
 import { processPlayerAction as gameLoopProcessAction } from './gameLoop.js';
 // Import reputation system
-import { calculatePriceModifiers, getTrustDifficultyModifiers } from './reputationContextualizer.js';
+import { calculatePriceModifiers, getTrustDifficultyModifiers, getContextualizedFactions } from './reputationContextualizer.js';
 // Import intelligent compression helpers
 import { recordPlayerChoice, recordStoryBeat } from './state.js';
 
@@ -2262,7 +2262,7 @@ async function applyReputationChanges(reputationChanges, actionType, choiceText)
         const majorChanges = significantChanges.filter(c => Math.abs(c.change) >= 3);
         
         if (majorChanges.length > 0) {
-            const factionName = contextualizedFactions[majorChanges[0].faction]?.name || majorChanges[0].faction;
+            const factionName = getContextualizedFactions()?.[majorChanges[0].faction]?.name || majorChanges[0].faction; // (was an undefined variable; this code never ran before)
             const change = majorChanges[0].change;
             const changeText = change > 0 ? 'improved' : 'worsened';
             

@@ -1237,6 +1237,20 @@ await block(async () => {
   check(q.p.stats.brave === 0, `outside god mode the storyteller can't set stats (brave ${q.p.stats.brave})`);
 });
 
+// =====================================================================
+section('Batch 15: exploration turns run clean (live run 10-08)');
+await block(async () => {
+  // Faction reputation now actually applies; a big swing crashed the turn
+  // ("contextualizedFactions is not defined").
+  const errs = [];
+  for (const type of ['Good', 'Bad', 'Risky', 'Silly', 'Investigative']) {
+    fresh(); gameLog.length = 0; pinRandom(0.99);
+    await AH.handlePlayerChoice(type, `A ${type} thing to do`); unpinRandom();
+    errs.push(...gameLog.filter(l => /is not defined|is not a function|Error in handlePlayerChoice/.test(l)).map(l => `${type}: ${l.slice(0, 80)}`));
+  }
+  check(errs.length === 0, `five choice types at a natural 20 raise no errors (${errs[0] || 'clean'})`);
+});
+
 console.error = realError;
 out(`\nfetch attempts blocked: ${fetchCalls}; elapsed ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 out(failed ? `✗ ${failed} mechanics check(s) failed` : '✓ all mechanics checks passed');
