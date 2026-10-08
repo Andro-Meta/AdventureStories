@@ -770,8 +770,11 @@ Result: ${gameState.narrativeContext.lastOutcome?.success ? 'it works out' : 'it
                 try { await gameState._rewardsPromise; } catch (_) {}
                 delete gameState._rewardsPromise;
                 // Quest just won: write the ending before god mode opens.
+                // Locked while it's written, so no one clicks past the ending.
+                gameState.isLoading = true;
                 try { UI.showLoading(true, 'Writing the epilogue...'); await (await import('./aiHandler.js')).writeEpilogue(); }
                 catch (e) { log(`Epilogue skipped: ${e.message}`); }
+                finally { gameState.isLoading = false; }
             }
             try { UI.showTurnRecap(formatTurnRecap(recapBefore, snapshotParty(), recapActor)); } catch (_) {}
             try { (await import('./saveLoad.js')).autosave(); } catch (e) { log(`Autosave failed: ${e.message}`); }

@@ -286,6 +286,7 @@ await block(async () => {
 await block(async () => {
   // Special Moves screen "Use" button (useSpecialMove)
   const { p, e } = fresh();
+  pinRandom(0.5); // a 10% miss made this check flaky
   Engine.applyDiff([{ op: 'add', path: '/players/0/specialMoves/-', value: { name: 'Flame Strike', cooldown: 3, mpCost: 10, mechanics: { directDamage: 30 } } }], { strict: false });
   const mv = p.specialMoves[0];
   startFight();
@@ -300,6 +301,7 @@ await block(async () => {
   const h2 = e2.hp, m2 = p2.mp;
   await AH.useSpecialMove('mv2');
   check(!(e2.hp < h2 && p2.mp === m2 && p2.specialMoves[0].currentCooldown === 0), `Moves-screen damage is not free when narration fails (goblin ${h2}->${e2.hp}, MP ${m2}->${p2.mp}, cd ${p2.specialMoves[0].currentCooldown})`);
+  unpinRandom();
 });
 
 // =====================================================================
