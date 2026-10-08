@@ -67,7 +67,9 @@
                          config.js exactly. If you add a new provider in
                          config.js, mirror it here. -->
                     <select id="cloudProviderSelect" class="cloud-provider-select">
-                        <option value="openrouter_free" selected>OpenRouter — Free models (auto-fallback) ★ recommended</option>
+                        <option value="auto" selected>Auto — Gemma 4 31B (Google), then Nemotron (OpenRouter) · all free ★ recommended</option>
+                        <option value="gemma_google">Google AI Studio — Gemma 4 31B (Free)</option>
+                        <option value="openrouter_free">OpenRouter — Free models (auto-fallback)</option>
                         <option value="openrouter_ultra">OpenRouter — Nemotron 3 Ultra 550B (Free, richest, slower)</option>
                         <option value="openrouter_gemma4">OpenRouter — Gemma 4 31B (Free, often rate-limited)</option>
                         <option value="googleai">Google AI Studio — Gemini Flash-Lite (Free, fastest)</option>
@@ -75,7 +77,21 @@
 
                     <p id="cloudProviderNotes" class="cloud-provider-notes"></p>
 
-                    <h3>API Key:</h3>
+                    <div id="googleKeyBlock" class="hidden">
+                        <h3>Google AI Studio Key (used first):</h3>
+                        <div class="api-key-row">
+                            <input type="password" id="googleApiKeyInput" class="api-key-input" placeholder="Paste your free Google AI Studio key" autocomplete="off" spellcheck="false">
+                            <button id="googleApiKeySaveBtn" class="primary">Save</button>
+                        </div>
+                        <p class="api-key-hint">Free key: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">aistudio.google.com/apikey →</a> (use a project without billing so it stays free)</p>
+                        <h3>Second Google Key (optional, another account):</h3>
+                        <div class="api-key-row">
+                            <input type="password" id="googleApiKey2Input" class="api-key-input" placeholder="Optional: key from a second Google account" autocomplete="off" spellcheck="false">
+                            <button id="googleApiKey2SaveBtn" class="primary">Save</button>
+                        </div>
+                    </div>
+
+                    <h3 id="cloudKeyLabel">API Key:</h3>
                     <div class="api-key-row">
                         <input type="password" id="cloudApiKeyInput" class="api-key-input" placeholder="Paste your free API key here" autocomplete="off" spellcheck="false">
                         <button id="cloudApiKeySaveBtn" class="primary">Save</button>

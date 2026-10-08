@@ -10,6 +10,38 @@ function announceAIStatus(message) {
     try { globalThis.dispatchEvent?.(new CustomEvent('adv:ai-status', { detail: message })); } catch (_) { /* no DOM */ }
 }
 
+// Providers that just failed with a quota / rate / outage error, skipped
+// until the time stored here (ms). In memory only: a reload tries them again.
+const benchedUntil = new Map();
+const BENCH_MS = { rate: 5 * 60 * 1000, outage: 2 * 60 * 1000 };
+const benchKey = (p) => p.keySlot || (p.baseUrl + p.model);
+
+/** Next quota reset: midnight Pacific (Google) or midnight UTC (OpenRouter). */
+export function nextDailyReset(provider, now = Date.now()) {
+    if (provider.baseUrl.includes('googleapis')) {
+        // ponytail: Pacific as UTC-7 (PDT); an hour early in winter, harmless.
+        const pac = new Date(now - 7 * 3600e3);
+        return Date.UTC(pac.getUTCFullYear(), pac.getUTCMonth(), pac.getUTCDate() + 1) + 7 * 3600e3;
+    }
+    const d = new Date(now);
+    return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1);
+}
+
+/**
+ * Never spend OpenRouter credits: every OpenRouter model must be a ':free'
+ * variant, so the account's $10 balance stays untouched. Throws before any request.
+ */
+export function assertFreeOnly(requestData, provider) {
+    if (!provider.baseUrl.includes('openrouter')) return;
+    const ids = [requestData.model, ...(requestData.models || [])];
+    const paid = ids.filter(id => !String(id).endsWith(':free'));
+    if (paid.length) {
+        const e = new Error(`Refusing paid OpenRouter model(s): ${paid.join(', ')} (free models only)`);
+        e.httpStatus = 0;
+        throw e;
+    }
+}
+
 export class LocalAIClient {
     constructor() {
         this.applyProvider(Config.resolveCloudProvider());
@@ -19,17 +51,18 @@ export class LocalAIClient {
         this.baseUrl = provider.baseUrl;
         this.modelName = provider.model;
         this.fallbackModels = provider.fallbackModels || [];
-        this.apiKey = Config.getCloudApiKey(); // keys are stored per provider host
+        this.apiKey = Config.getCloudApiKey(); // any key in the chain
     }
 
-    /** Save the key the player pasted in AI Settings (per provider host). */
-    setApiKey(key) {
-        this.apiKey = key || null;
+    /** Save a key the player pasted in AI Settings (per provider host). */
+    setApiKey(key, providerKey = null) {
+        const provider = (providerKey && Config.CLOUD_PROVIDERS[providerKey]) || Config.resolveCloudProvider();
         try {
-            const name = Config.cloudKeyStorageName(Config.resolveCloudProvider());
+            const name = Config.cloudKeyStorageName(provider);
             if (key) window.localStorage.setItem(name, key);
             else window.localStorage.removeItem(name);
         } catch (_) { /* localStorage unavailable — runtime-only key */ }
+        this.apiKey = Config.getCloudApiKey() || key || null;
     }
 
     /** Switch provider (AI Settings dropdown) and persist the choice. */
@@ -44,24 +77,63 @@ export class LocalAIClient {
         return { available: !!this.apiKey, healthy: !!this.apiKey, url: this.baseUrl, model: this.modelName };
     }
 
+    /**
+     * Try each provider in the chain that has a key and isn't benched. A quota,
+     * rate-limit or outage error benches that provider and the same request
+     * goes to the next one, so the game carries on mid-turn.
+     */
     async makeRequest(messages, options = {}) {
-        if (!this.apiKey) {
+        const chain = Config.providerChain().map(p => ({ p, key: Config.keyForProvider(p) })).filter(x => x.key);
+        if (!chain.length) {
             const e = new Error('No AI key saved yet. Open "AI Settings" on the main menu and paste your free key.');
             e.httpStatus = 0; // configuration problem: not worth a retry
             throw e;
         }
+        const now = Date.now();
+        const ready = chain.filter(x => !(benchedUntil.get(benchKey(x.p)) > now));
+        const order = ready.length ? ready : chain; // all benched: try anyway rather than stop
+        let lastError;
+        for (let i = 0; i < order.length; i++) {
+            const { p, key } = order[i];
+            const hasNext = i < order.length - 1;
+            try {
+                const out = await this.executeRequest(this.buildRequest(p, messages, options), p, key, 0, hasNext);
+                if (this.activeName !== p.name) {
+                    if (this.activeName) announceAIStatus(`Storyteller switched to ${p.name}.`);
+                    this.activeName = p.name;
+                }
+                return out;
+            } catch (error) {
+                lastError = error;
+                const s = error.httpStatus;
+                const quota = error.dailyQuota || s === 402;
+                const rate = s === 429 || s === 403 || s === 503;
+                const outage = error.exhausted || error.network || s >= 500;
+                if (!hasNext || !(quota || rate || outage)) throw error;
+                benchedUntil.set(benchKey(p), quota ? nextDailyReset(p, now) : now + (rate ? BENCH_MS.rate : BENCH_MS.outage));
+                console.log(`AI: ${p.name} unavailable (${String(error.message).slice(0, 120)}); trying ${order[i + 1].p.name}`);
+                announceAIStatus(`${p.name} is busy; switching storyteller...`);
+            }
+        }
+        throw lastError;
+    }
+
+    buildRequest(provider, messages, options) {
         const d = Config.AI_DEFAULT_PARAMS;
+        let msgs = formatMessages(messages);
+        // Gemma on Google has no separate system role: fold it into the first user turn.
+        if (/gemma/i.test(provider.model) && provider.baseUrl.includes('googleapis')) msgs = foldSystemIntoUser(msgs);
         const requestData = {
-            model: this.modelName,
-            messages: formatMessages(messages),
+            model: provider.model,
+            messages: msgs,
             max_tokens: options.max_tokens ?? d.max_tokens,
             temperature: options.temperature ?? d.temperature,
             top_p: options.top_p ?? d.top_p,
             stream: false
         };
-        if (this.baseUrl.includes('openrouter')) {
+        if (provider.baseUrl.includes('openrouter')) {
             // Server-side failover: each model in order on rate-limit/downtime.
-            if (this.fallbackModels.length) requestData.models = [this.modelName, ...this.fallbackModels];
+            if (provider.fallbackModels?.length) requestData.models = [provider.model, ...provider.fallbackModels];
             // The free Nemotron models "think" first and that hidden reasoning
             // counts against max_tokens: live, 2 of 3 story calls came back
             // empty. Off: valid JSON 2/2 in 2.5-4 s (vs 1/2 in 12-14 s).
@@ -70,20 +142,21 @@ export class LocalAIClient {
         // json_object, not strict json_schema: free models vary in schema
         // support. Shape is enforced by the prompt and the validators.
         if (options.jsonSchema || options.jsonObject) requestData.response_format = { type: 'json_object' };
-        return this.executeRequest(requestData);
+        assertFreeOnly(requestData, provider);
+        return requestData;
     }
 
-    async executeRequest(requestData, retries = 0) {
+    async executeRequest(requestData, provider, apiKey, retries = 0, hasNext = false) {
         const { TIMEOUT_MS, MAX_RETRIES, RETRY_DELAY_MS } = Config.AI_REQUEST_CONFIG;
         try {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
-            const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiKey}` };
-            if (this.baseUrl.includes('openrouter')) {
+            const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` };
+            if (provider.baseUrl.includes('openrouter')) {
                 headers['HTTP-Referer'] = (typeof window !== 'undefined' && window.location) ? window.location.origin : 'https://adventure-stories.local';
                 headers['X-Title'] = 'Adventure Stories';
             }
-            const response = await fetch(`${this.baseUrl.replace(/\/$/, '')}/chat/completions`, {
+            const response = await fetch(`${provider.baseUrl.replace(/\/$/, '')}/chat/completions`, {
                 method: 'POST', headers, body: JSON.stringify(requestData), signal: controller.signal
             });
             clearTimeout(timeoutId);
@@ -91,15 +164,21 @@ export class LocalAIClient {
             if (!response.ok) {
                 let body = '';
                 try { body = (await response.text()).slice(0, 500); } catch (_) {}
+                // A model that refuses JSON mode: retry once without it.
+                if (response.status === 400 && requestData.response_format && /response_format|json|mime/i.test(body)) {
+                    const { response_format, ...plain } = requestData;
+                    return this.executeRequest(plain, provider, apiKey, retries, hasNext);
+                }
                 const err = new Error(`HTTP ${response.status}: ${response.statusText}${body ? ' — ' + body : ''}`);
                 err.httpStatus = response.status;
                 err.retryable = response.status >= 500 || response.status === 429;
                 err.retryAfterMs = Number(response.headers.get('retry-after')) * 1000 || 0;
-                if (response.status === 429 && /per[- ]day/i.test(body)) {
+                if (response.status === 429 && /per[- ]?day|daily|PerDay/i.test(body)) {
                     err.retryable = false; // daily quota, not a burst limit
-                    err.message = "Today's free AI requests are used up (OpenRouter allows 50/day, or 1000/day once an account has bought $10 of credits). Try again tomorrow or switch provider in AI Settings.";
+                    err.dailyQuota = true;
+                    err.message = `Today's free requests on ${provider.name} are used up. Try again after the daily reset, or add another free key in AI Settings.`;
                 } else if (response.status === 401) {
-                    err.message = 'The AI key was rejected. Open AI Settings and paste a fresh key.';
+                    err.message = `The ${provider.name} key was rejected. Open AI Settings and paste a fresh key.`;
                 }
                 throw err;
             }
@@ -116,8 +195,11 @@ export class LocalAIClient {
         } catch (error) {
             const isNetworkError = error.name === 'AbortError' || error.name === 'TypeError'
                 || (error.message || '').toLowerCase().includes('failed to fetch');
+            if (isNetworkError) error.network = true;
             const shouldRetry = isNetworkError || error.retryable === true;
             console.log(`AI: request failed (attempt ${retries + 1}, retryable=${shouldRetry}):`, error.message);
+            // With another provider waiting, fail over now instead of waiting out a 429.
+            if (shouldRetry && hasNext && error.httpStatus === 429) throw error;
             if (shouldRetry && retries < MAX_RETRIES) {
                 // A per-minute 429 needs the window to roll over: honour
                 // Retry-After, else wait 20 s (quick retries all failed).
@@ -127,16 +209,27 @@ export class LocalAIClient {
                 const why = error.httpStatus === 429 ? 'The storyteller is busy' : 'Connection hiccup';
                 announceAIStatus(`${why}. Trying again in ${Math.round(wait / 1000)} s (attempt ${retries + 2} of ${MAX_RETRIES + 1})...`);
                 await new Promise(resolve => setTimeout(resolve, wait));
-                return this.executeRequest(requestData, retries + 1);
+                return this.executeRequest(requestData, provider, apiKey, retries + 1, hasNext);
             }
             if (shouldRetry) {
                 const e = new Error(`The storyteller didn't respond after ${MAX_RETRIES + 1} tries (${error.message}). Your choices are still there; try again in a moment.`);
                 e.httpStatus = error.httpStatus ?? 0;
+                e.exhausted = true;
                 throw e;
             }
             throw error;
         }
     }
+}
+
+/** Merge system messages into the first user message (for models with no system role). */
+function foldSystemIntoUser(msgs) {
+    const sys = msgs.filter(m => m.role === 'system').map(m => m.content).join('\n\n');
+    const rest = msgs.filter(m => m.role !== 'system');
+    if (!sys) return rest;
+    const i = rest.findIndex(m => m.role === 'user');
+    if (i === -1) return [{ role: 'user', content: sys }, ...rest];
+    return rest.map((m, j) => j === i ? { ...m, content: `${sys}\n\n${m.content}` } : m);
 }
 
 function formatMessages(messages) {
