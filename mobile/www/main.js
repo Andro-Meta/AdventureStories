@@ -598,6 +598,14 @@ function setupCloudBackendListeners() {
     const saveBtn = document.getElementById('cloudApiKeySaveBtn');
 
     if (providerSelect) providerSelect.addEventListener('change', () => updateCloudProviderNotes(providerSelect.value));
+    const injury = document.getElementById('injuryDetailToggle');
+    if (injury) {
+        injury.checked = Config.injuryDetailOn();
+        injury.addEventListener('change', () => {
+            try { localStorage.setItem('adv.injuryDetail', injury.checked ? '1' : '0'); } catch (_) {}
+            UI.showPopup(injury.checked ? 'Injury details on' : 'Injury details off', 'info', 2000);
+        });
+    }
     if (saveBtn) {
         saveBtn.addEventListener('click', async () => {
             const key = apiKeyInput?.value?.trim() || '';

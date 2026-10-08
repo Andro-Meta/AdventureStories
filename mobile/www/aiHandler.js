@@ -808,11 +808,17 @@ export function generateSystemPrompt() {
     catch (error) { log(`Failed to compute age-appropriate guidelines: ${error.message}`); }
 
     const tier = playerAge < 10 ? 'L1 child' : playerAge < 15 ? 'L2 tween' : 'L3 teen/adult';
-    const policy = playerAge < 10
+    // Settings toggle (default off): blood/cuts/wounds may be shown, never gore.
+    const injuryLine = Config.injuryDetailOn()
+        ? ' Injury details are ON in settings: blood, cuts and wounds may be described briefly in fights, but never gory, lingering or gruesome.'
+        : '';
+    const policy = (injuryLine && playerAge < 15
+        ? (playerAge < 10 ? 'No death, romance or slurs. Scary moments resolve quickly; defeated foes flee, fall asleep or vanish.' : 'Exciting fantasy action; defeated foes are knocked out, captured or flee; any death happens off-screen; romance no further than blushing; no slurs.')
+        : null) ?? (playerAge < 10
         ? 'No blood, wounds, gore, death, romance or slurs. Show hits by their effect (knocked back, dizzy, a dented shield). Scary moments resolve quickly with reassurance; defeated foes flee, fall asleep or vanish in a puff of light.'
         : playerAge < 15
             ? 'Exciting fantasy action, but no blood, gore or injury detail: show hits by their effect (knocked back, stumbling, a cracked shield), a scrape or bruise at most. Defeated foes are knocked out, captured or flee; any death happens off-screen and tastefully; romance no further than blushing; no slurs.'
-            : 'Mature themes allowed in service of the story (loss, moral ambiguity, fantasy violence); no explicit sexual content or gratuitous gore.';
+            : 'Mature themes allowed in service of the story (loss, moral ambiguity, fantasy violence); no explicit sexual content or gratuitous gore.');
 
     // Pacing: every field here comes from one place (ageAppropriateReading.js)
     // so the length the narrator is asked for is the same everywhere.
@@ -826,7 +832,7 @@ export function generateSystemPrompt() {
 
 ${reading}
 
-CONTENT POLICY (${tier}): ${policy} If players ask for something off-policy, the world declines in-character.`);
+CONTENT POLICY (${tier}): ${policy}${injuryLine} If players ask for something off-policy, the world declines in-character.`);
 
     if (gameState.questProgressManager && !gameState.isGoalComplete) {
         try {

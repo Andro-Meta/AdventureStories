@@ -123,6 +123,11 @@ export function cloudKeyStorageName(provider) {
     return 'adv.apiKey.' + new URL(provider.baseUrl).hostname;
 }
 
+/** Story setting: describe blood/cuts/wounds in fights (off by default). */
+export function injuryDetailOn() {
+    try { return window.localStorage.getItem('adv.injuryDetail') === '1'; } catch (_) { return false; }
+}
+
 /** Provider, model and URL the client should use right now. */
 export function getActiveBackendConfig() {
     const provider = resolveCloudProvider();
