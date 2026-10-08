@@ -206,8 +206,15 @@ export async function handlePlayerChoice(actionType, choiceText) {
                     }
                 } catch (_) { /* keep enemies[0] fallback */ }
                 let combatLog = '';
+                // Stun/Paralysis/Sleep: the hero loses this turn whatever they
+                // picked (before, only Attack was blocked; Item and Run worked).
+                const disabled = (currentPlayer.statusEffects || []).find(fx => fx?.duration > 0 && fx.effectTickData?.cannotAct);
+                if (disabled) actionType = 'Disabled';
 
                 switch (actionType) {
+                    case 'Disabled':
+                        combatLog = `${currentPlayer.name} is held by ${disabled.name} and loses the turn.`;
+                        break;
                     case 'Attack': {
                         const r = Combat.executeWeaponAttack(currentPlayer, target);
                         if (r.missed) combatLog = `${currentPlayer.name} swings at ${target.name} and misses.`;
@@ -225,11 +232,22 @@ export async function handlePlayerChoice(actionType, choiceText) {
                         } else if ((move.mpCost || 0) > (currentPlayer.mp || 0)) {
                             combatLog = `${currentPlayer.name} reaches for ${move.name} but doesn't have enough MP.`;
                         } else {
-                            // Generic special: 1.5x weapon damage + status if move declares one.
-                            const r = Combat.executeWeaponAttack(currentPlayer, target, {
-                                baseDamageMultiplier: 1.5,
-                                applyStatusEffects: move.mechanics?.statusEffects || []
-                            });
+                            // Special: 1.5x a weapon hit, plus the move's own damage
+                            // (narrator/god-mode moves carry mechanics.directDamage),
+                            // plus its status effects. Before, it was a plain attack.
+                            const r = Combat.executeWeaponAttack(currentPlayer, target, {});
+                            if (!r.missed && !r.blocked) {
+                                const bonus = Math.round((r.actualDamage || 0) * 0.5)
+                                    + (Number(move.mechanics?.directDamage ?? move.mechanics?.damage) || 0);
+                                const before = target.hp;
+                                target.hp = Math.max(0, target.hp - bonus);
+                                r.actualDamage = (r.actualDamage || 0) + (before - target.hp);
+                                for (const fx of [].concat(move.mechanics?.statusEffects || [])) {
+                                    const name = typeof fx === 'string' ? fx : fx?.name;
+                                    const dur = (typeof fx === 'object' && fx?.duration) || Combat.lookupStatusEffect(name)?.defaultDuration || 3;
+                                    if (name) Combat.applyStatusEffect(target, name, dur, (typeof fx === 'object' && fx?.effectTickData) || {}, move.name);
+                                }
+                            }
                             move.currentCooldown = move.cooldown || 2;
                             const mpCost = move.mpCost || 0;
                             if (mpCost) currentPlayer.mp = Math.max(0, (currentPlayer.mp || 0) - mpCost);
@@ -273,6 +291,20 @@ export async function handlePlayerChoice(actionType, choiceText) {
                             }
                         }
                         cbStep('3-Item', 'done');
+                        break;
+                    }
+
+                    case 'Spell': {
+                        // Cast button / spellbook in a fight (see spellUI.js).
+                        const spells = currentPlayer.spellcasting?.knownSpells || [];
+                        const said = String(choiceText || '').toLowerCase();
+                        const spell = spells.find(sp => sp?.name && said.includes(sp.name.toLowerCase()));
+                        if (!spell) { combatLog = `${currentPlayer.name} reaches for a spell but the words won't come.`; break; }
+                        const SpellCasting = await import('./spellCasting.js');
+                        const res = await SpellCasting.castSpell(currentPlayer, spell, target);
+                        combatLog = res?.success
+                            ? `${currentPlayer.name} casts ${spell.name}!`
+                            : `${currentPlayer.name} tries ${spell.name} but it fizzles (${res?.reason || 'failed'}).`;
                         break;
                     }
 
@@ -734,7 +766,13 @@ Result: ${gameState.narrativeContext.lastOutcome?.success ? 'it works out' : 'it
         gameState.combatRoundInProgress = false;
         if (recapBefore) {
             // The win reward is granted asynchronously; include it in this recap.
-            if (gameState._rewardsPromise) { try { await gameState._rewardsPromise; } catch (_) {} delete gameState._rewardsPromise; }
+            if (gameState._rewardsPromise) {
+                try { await gameState._rewardsPromise; } catch (_) {}
+                delete gameState._rewardsPromise;
+                // Quest just won: write the ending before god mode opens.
+                try { UI.showLoading(true, 'Writing the epilogue...'); await (await import('./aiHandler.js')).writeEpilogue(); }
+                catch (e) { log(`Epilogue skipped: ${e.message}`); }
+            }
             try { UI.showTurnRecap(formatTurnRecap(recapBefore, snapshotParty(), recapActor)); } catch (_) {}
             try { (await import('./saveLoad.js')).autosave(); } catch (e) { log(`Autosave failed: ${e.message}`); }
         }
@@ -892,7 +930,7 @@ function validateAndMapActionType(actionType) {
     const log = window.displayVisualError || console.log;
     
     // Define valid action types
-    const validTypes = ['Good', 'Bad', 'Risky', 'Silly', 'Investigative', 'Attack', 'Special', 'Item', 'Run'];
+    const validTypes = ['Good', 'Bad', 'Risky', 'Silly', 'Investigative', 'Attack', 'Special', 'Item', 'Run', 'Spell'];
     
     // If already valid, return as-is
     if (validTypes.includes(actionType)) {
@@ -1477,6 +1515,13 @@ export async function useInventoryItem(itemId) {
      const item = player.inventory[itemIndex];
      log(`Found item: ${item.name} (${item.type})`);
 
+     // In a fight, drinking from the pack is the battle Item action: it costs
+     // the turn and the enemies answer (before, heals here were free).
+     if (gameState.inCombat && item.type === 'Consumable' && !item.stats?.revive) {
+         UI.showScreen('gameScreen');
+         return handlePlayerChoice('Item', `Use ${item.name}`);
+     }
+
      let consumed = false;
      let requiresAICall = false;
      let actionLog = "";
@@ -1484,19 +1529,20 @@ export async function useInventoryItem(itemId) {
 
      if (item.type === 'Consumable') {
         // Heal Effect (with trust-based penalties)
-        if (item.stats?.heal && typeof item.stats.heal === 'number' && item.stats.heal > 0) {
+        const baseHeal = (Number(item.stats?.heal) || 0) + Math.round((player.maxHp || 100) * (Number(item.stats?.healPercent) || 0));
+        if (baseHeal > 0) {
             consumed = true;
             const oldHp = player.hp;
             
             // Apply trust-based healing penalty
-            let healAmount = item.stats.heal;
+            let healAmount = baseHeal;
             if (gameState.reputationSystem) {
                 const trustModifiers = getTrustDifficultyModifiers(gameState.reputationSystem.factions);
                 healAmount = Math.round(healAmount * trustModifiers.healingEfficiency);
                 
                 if (trustModifiers.healingEfficiency < 1.0) {
                     const penaltyPercent = Math.round((1 - trustModifiers.healingEfficiency) * 100);
-                    log(`Healing reduced by ${penaltyPercent}% due to poor reputation (${item.stats.heal} -> ${healAmount})`);
+                    log(`Healing reduced by ${penaltyPercent}% due to poor reputation (${baseHeal} -> ${healAmount})`);
                 }
             }
             
@@ -1505,7 +1551,7 @@ export async function useInventoryItem(itemId) {
             actionLog = `${player.name} uses ${item.name}. Result: Restored ${actualHeal} HP.`;
             
             // Show different messages based on trust penalty
-            if (gameState.reputationSystem && healAmount < item.stats.heal) {
+            if (gameState.reputationSystem && healAmount < baseHeal) {
                 const trustLevel = getTrustDifficultyModifiers(gameState.reputationSystem.factions).trustLevel;
                 if (actualHeal > 0) {
                     UI.showPopup(`${item.name} restored ${actualHeal} HP (reduced effectiveness due to ${trustLevel} reputation)`, 'healing');
@@ -1634,8 +1680,10 @@ export async function useInventoryItem(itemId) {
 
      // Remove Consumed Item
      if (consumed) {
-         player.inventory.splice(itemIndex, 1);
-         log(`${item.name} removed from inventory.`);
+         // One from a stack (before, drinking one of 3 potions deleted all 3).
+         if ((item.quantity ?? 1) > 1) item.quantity -= 1;
+         else player.inventory.splice(itemIndex, 1);
+         log(`${item.name} used (${item.quantity > 1 ? item.quantity + ' left' : 'removed'}).`);
      }
 
      // Update UI (player cards handled within turn advance or AI call completion)
@@ -1955,6 +2003,12 @@ export async function useSpecialMove(moveId) {
         log(`Move ${move.name} cannot be used in combat.`);
         UI.showPopup(`${move.name} cannot be used during combat!`, 'warning');
         return;
+    }
+    // In a fight the Moves screen runs the battle Special action: same
+    // damage and effects, and the turn passes (before: 0 damage, free turn).
+    if (gameState.inCombat) {
+        UI.showScreen('gameScreen');
+        return handlePlayerChoice('Special', `Use ${move.name}`);
     }
     if (!gameState.inCombat && move.usageContext === 'combat') {
         log(`Move ${move.name} cannot be used outside combat.`);

@@ -32,19 +32,7 @@ import * as Config from './config.js';
  * value's `name` field has the user-visible form. We try both.
  */
 function lookupStatusEffectCatalog(name) {
-    if (!name || typeof name !== 'string') return null;
-    const catalog = Config.STATUS_EFFECTS || {};
-    const upper = name.toUpperCase();
-    if (catalog[upper]) return catalog[upper];
-    // Fall back to a name-match search (handles "Burn" vs "BURN" mismatch
-    // when the LLM is creative with capitalization).
-    for (const entry of Object.values(catalog)) {
-        if (entry && typeof entry.name === 'string'
-            && entry.name.toLowerCase() === name.toLowerCase()) {
-            return entry;
-        }
-    }
-    return null;
+    return Combat.lookupStatusEffect(name);
 }
 
 /**
@@ -120,7 +108,7 @@ const PATHS = [
             const item = {
                 id: value.id || `item_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
                 name: value.name,
-                type: value.type || 'Misc',
+                type: itemType(value),
                 tier: value.tier || 'Low',
                 effect: value.effect || '',
                 stats: value.stats || {},
@@ -163,10 +151,8 @@ const PATHS = [
             const idx = Number(m[1]);
             if (!gs.players?.[idx]) return `players[${idx}] does not exist`;
             if (value !== null && typeof value !== 'string') return 'equipment value must be item id (string) or null';
-            if (typeof value === 'string') {
-                if (!(gs.players[idx].inventory || []).some(it => it && it.id === value)) {
-                    return `item ${value} not in inventory`;
-                }
+            if (typeof value === 'string' && !findOwnedItem(gs.players[idx], value)) {
+                return `item ${value} not in inventory`;
             }
             return null;
         },
@@ -174,6 +160,8 @@ const PATHS = [
             const idx = Number(m[1]);
             const slot = m[2];
             const player = gs.players[idx];
+            // The narrator never sees generated ids, so it may name the item.
+            if (typeof value === 'string') value = findOwnedItem(player, value)?.id ?? value;
             player.equipment = player.equipment || { weapon: null, armor: null };
             const old = player.equipment[slot];
             if (old) {
@@ -232,6 +220,11 @@ const PATHS = [
             const idx = Number(m[1]);
             const field = m[2];
             const player = gs.players[idx];
+            // atk/def are recomputed from baseAtk/baseDef + gear + effects on
+            // every equip or status change; move the base by the same amount
+            // so a god-mode ATK 50 doesn't fall back to 15.
+            if (field === 'atk') player.baseAtk = (player.baseAtk ?? Config.BASE_ATK) + (value - (player.atk || 0));
+            if (field === 'def') player.baseDef = (player.baseDef ?? Config.BASE_DEF) + (value - (player.def || 0));
             player[field] = value;
             // Raise current to new max if max increased
             if (field === 'maxHp' && (player.hp || 0) > value) player.hp = value;
@@ -495,8 +488,14 @@ const PATHS = [
             // narrator forgets "isBoss" (live: it did, and the climax was a
             // 35-HP spirit).
             const msNames = (gs.questProgress?.milestones || []).map(m => m.name);
-            const climaxFoe = msNames.includes('final_confrontation') && !msNames.includes('final_blow')
-                && !(gs.enemies || []).some(e => e.isBoss);
+            const villain = gs.questProgress?.villain;
+            const bare = (n) => String(n || '').toLowerCase().replace(/^the\s+/, '').trim();
+            const sameName = (a, b) => !!bare(a) && !!bare(b) && (bare(a).includes(bare(b)) || bare(b).includes(bare(a)));
+            // Known villain: they are the boss whenever they fight (live: the
+            // narrator skipped final_confrontation and Brinebeard fell at 30 HP),
+            // and a minion at the climax stays a minion.
+            const climaxFoe = !msNames.includes('final_blow') && !(gs.enemies || []).some(e => e.isBoss)
+                && (villain ? sameName(value.name, villain) : msNames.includes('final_confrontation'));
             if (value.isBoss || climaxFoe) {
                 const party = Math.max(1, (gs.players || []).length);
                 enemy.isBoss = true;
@@ -655,6 +654,9 @@ const PATHS = [
                 completed: true
             };
             gs.questProgress.milestones.push(milestone);
+            if (canonicalName === 'antagonist_revealed' && typeof value.villain === 'string' && value.villain.trim()) {
+                gs.questProgress.villain = value.villain.trim().slice(0, 60); // the final boss, by name
+            }
             try { recordStoryBeat('milestone', canonicalName, 0.7); } catch (_) {}
             // Phase 2: jail mini-quest hook. Pass the canonical name — the
             // jailSystem.tryApplyJailMilestone now matches "jail_assessed"
@@ -856,14 +858,60 @@ export function validateOp(op) {
  * op first and only invoke applyDiff if all pass — but understand that an
  * exception in handler.apply still leaves partial state.
  */
+// Narrator items arrive typed "weapon", "potion" or not at all; the game
+// only uses Weapon/Armor/Consumable, so map them (live-like: an untyped
+// "Healing Potion" became Misc and could never be drunk).
+function itemType(value) {
+    const t = String(value.type || '').trim().toLowerCase();
+    const known = { weapon: 'Weapon', armor: 'Armor', armour: 'Armor', consumable: 'Consumable', potion: 'Consumable',
+        food: 'Consumable', revival: 'Revival', quest: 'Quest', key: 'Quest', misc: 'Misc' };
+    if (known[t]) return known[t];
+    const st = value.stats || {};
+    if (st.heal || st.healPercent || st.mp || /potion|elixir|tonic|salve|bandage|herb|antidote|ration|draught/i.test(value.name || '')) return 'Consumable';
+    if (st.atk && !st.def) return 'Weapon';
+    if (st.def && !st.atk) return 'Armor';
+    return value.type ? String(value.type) : 'Misc';
+}
+
+// An owned item by id, or by name (case-insensitive) as the narrator writes it.
+function findOwnedItem(player, ref) {
+    const inv = (player?.inventory || []).filter(Boolean);
+    const low = String(ref).trim().toLowerCase();
+    return inv.find(it => it.id === ref) || inv.find(it => String(it.name || '').trim().toLowerCase() === low);
+}
+
 export function applyDiff(ops, opts = {}) {
     const log = window.displayVisualError || console.log;
     if (!Array.isArray(ops)) throw new Error('ops must be an array');
 
-    // Two-phase commit: validate everything first, then apply.
+    // Enemies must exist before /inCombat true builds the turn order; with
+    // the ops the other way round combat got an empty initiative list and
+    // enemy turns recursed until the stack overflowed.
+    const ordered = ops.map(normalizeOp)
+        .sort((a, b) => (a?.path === '/inCombat') - (b?.path === '/inCombat'));
+
+    // Non-strict (every narrator turn): validate each op against the state
+    // the earlier ops produced, so "pick up the sword" + "equip it" in one
+    // reply works (before, the equip was checked against the old pack).
+    if (!opts.strict) {
+        const applied = [];
+        for (const op of ordered) {
+            const result = validateOp(op);
+            if (!result.ok) { log(`engine.applyDiff rejected op: ${result.error}`); continue; }
+            try {
+                const summary = result.handler.apply(result.match, op.value, gameState);
+                applied.push(summary);
+                log(`engine: applied ${op.op} ${op.path} -> ${summary}`);
+            } catch (e) {
+                log(`engine: apply failed for ${op.op} ${op.path}: ${e.message}`);
+            }
+        }
+        return applied;
+    }
+
+    // Strict: two-phase commit, validate everything first, then apply.
     const planned = [];
-    for (const rawOp of ops) {
-        const op = normalizeOp(rawOp);
+    for (const op of ordered) {
         const result = validateOp(op);
         if (!result.ok) {
             const msg = `engine.applyDiff rejected op: ${result.error}`;
@@ -875,11 +923,6 @@ export function applyDiff(ops, opts = {}) {
         }
         planned.push({ op, result });
     }
-
-    // Enemies must exist before /inCombat true builds the turn order; with
-    // the ops the other way round combat got an empty initiative list and
-    // enemy turns recursed until the stack overflowed.
-    planned.sort((a, b) => (a.op.path === '/inCombat') - (b.op.path === '/inCombat'));
 
     const applied = [];
     for (const { op, result } of planned) {
@@ -913,7 +956,7 @@ export function describeAllowedPaths() {
         '/players/0/level     (replace, number)',
         '/players/0/inventory/- (add, {name, type, tier, effect, stats})',
         '/players/0/inventory/<id> (remove)',
-        '/players/0/equipment/weapon|armor (replace, item id or null)',
+        '/players/0/equipment/weapon|armor (replace, item name or id, or null)',
         '/players/0/statusEffects/- (add, {name, duration, effectTickData})',
         '/players/0/specialMoves/- (add, {name, description, cooldown, mpCost, usageContext, mechanics})',
         '/inCombat            (replace, boolean) - true to enter combat',

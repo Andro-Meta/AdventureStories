@@ -2,7 +2,7 @@
 // Handles combat calculations, enemy generation, status effects, and combat state checks.
 
 // --- Module Imports ---
-import { gameState, determineContext } from './state.js'; // Needs gameState to access players/enemies
+import { gameState, determineContext, getCurrentPlayer } from './state.js'; // Needs gameState to access players/enemies
 import * as Config from './config.js'; // Needs config values
 // Import specific functions from utils needed here
 import { getRandomInt, getRandomElement, clamp, generateId } from './utils.js';
@@ -692,10 +692,15 @@ export function calculateDamage(attacker, defender, options = {}) {
     }
 
     // Base damage calculation
-    let damage = Math.max(1, attacker.atk - defender.def / 2);
+    // Enemies' flat ATK/DEF mods (e.g. Shadow Weakness DEF -2) apply here;
+    // players' are already in their atk/def.
+    const flat = (c, k) => c.id?.startsWith('player') ? 0 : (c.statusEffects || []).reduce((n, e) => n + (Number(e?.effectTickData?.[k]) || 0), 0);
+    let damage = Math.max(1, (attacker.atk + flat(attacker, 'atkMod')) - Math.max(0, defender.def + flat(defender, 'defMod')) / 2);
     
-    // Apply attacker status effect modifiers
-    if (attacker.statusEffects) {
+    // Attacker ATK multipliers (Berserk, Weakness): a player's atk already
+    // has them baked in by recalculateCharacterStats, so only enemies get
+    // them here (before, Weakness hit players twice: x0.25).
+    if (attacker.statusEffects && !attacker.id?.startsWith('player')) {
         attacker.statusEffects.forEach(effect => {
             if (effect.effectTickData) {
                 // Apply ATK multipliers (Berserk, Weakness, etc.)
@@ -944,9 +949,26 @@ export function executeWeaponAttack(attacker, target, options = {}) {
  * @param {object} [effectData={}] - Data associated with the effect (e.g., { hpPerTurn: -5, defMod: 10 }).
  * @param {string} [source='Unknown'] - Source of the effect (e.g., move name, item name).
  */
+/**
+ * Catalog entry for a status name, case-insensitive; also matches word forms
+ * like "Burning" / "Poisoned" (spells and the narrator write those).
+ */
+export function lookupStatusEffect(name) {
+    if (!name || typeof name !== 'string') return null;
+    const catalog = Config.STATUS_EFFECTS || {};
+    const low = name.trim().toLowerCase();
+    if (catalog[low.toUpperCase()]) return catalog[low.toUpperCase()];
+    const entries = Object.values(catalog).filter(e => e && typeof e.name === 'string');
+    return entries.find(e => e.name.toLowerCase() === low)
+        || entries.find(e => low.startsWith(e.name.toLowerCase()))
+        || null;
+}
+
 export function applyStatusEffect(target, effectName, duration, effectData = {}, source = 'Unknown') {
-    // (Unchanged)
     const log = window.displayVisualError || console.log;
+    // Fill in the catalog's mechanics (spells and special moves passed {} or
+    // flat fields, so a "Burning" spell never burned). Given data wins.
+    effectData = { ...(lookupStatusEffect(effectName)?.defaultData || {}), ...(effectData || {}) };
     if (!target || !effectName || typeof duration !== 'number' || duration <= 0) {
         log(`Combat Warning: Invalid parameters for applyStatusEffect: Target=${!!target}, Effect=${effectName}, Duration=${duration}`);
         return;
@@ -1178,6 +1200,10 @@ export function recalculateCharacterStats(character) {
      log(`Combat: Recalculating stats for ${character.name} (ID: ${character.id})...`);
      let currentAtk, currentDef;
      const isPlayer = character.id?.startsWith('player');
+     // ponytail: enemies keep their raw atk/def; their multipliers apply at
+     // attack time (calculateDamage). Baking them in here compounded on every
+     // recalculation and never wore off. Flat mods on enemies are ignored.
+     if (!isPlayer) return;
      if (isPlayer) {
          currentAtk = character.baseAtk ?? Config.BASE_ATK;
          currentDef = character.baseDef ?? Config.BASE_DEF;
@@ -1511,8 +1537,7 @@ export async function handleEnemyTurn(enemyId) {
         showPopup(`\u{1F451} ${enemy.name} unleashes ${move}! (${hits.join(', ')})`, 'damage', 4000);
         try { (await import('./ui.js')).appendCombatLog?.(`${enemy.name} unleashes ${move}: ${hits.join(', ')}`, 'attack'); } catch (_) {}
         renderPlayerCards();
-        if (enemy.statusEffects?.length > 0) await processStatusEffectTicks(enemy);
-        await advanceCombatTurn();
+        await advanceCombatTurn(); // ticks the enemy's status effects (once)
         return;
     }
 
@@ -1525,12 +1550,8 @@ export async function handleEnemyTurn(enemyId) {
     // Execute the action
     await executeEnemyAction(enemy, action, target);
 
-    // Process any post-action effects
-    if (enemy.statusEffects?.length > 0) {
-        await processStatusEffectTicks(enemy);
-    }
-
-    // Advance the turn (awaited: see boss branch above)
+    // Advance the turn (awaited: see boss branch above); it also ticks the
+    // enemy's status effects, so they are not ticked here too.
     await advanceCombatTurn();
 }
 

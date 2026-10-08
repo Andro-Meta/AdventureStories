@@ -342,6 +342,10 @@ function setupEventListeners(UI, setup, actionHandler, saveLoad) { // Added acti
     safeAddListener('customActionBtn', 'click', actionHandler.handleCustomAction, 'customActionBtn'); // Is async
     safeAddListener('resumeBtn', 'click', () => UI.showScreen('gameScreen'), 'resumeBtn');
     safeAddListener('saveGameBtn', 'click', saveLoad.openSaveGameModal, 'saveGameBtn');
+    safeAddListener('readStoryBtn', 'click', UI.showStoryBook, 'readStoryBtn');
+    safeAddListener('saveStoryBtn', 'click', UI.saveStoryBook, 'saveStoryBtn');
+    safeAddListener('copyStoryBtn', 'click', UI.copyStoryBook, 'copyStoryBtn');
+    safeAddListener('closeStoryBtn', 'click', () => UI.showScreen('menuScreen'), 'closeStoryBtn');
     safeAddListener('exitToMainMenuBtn', 'click', () => saveLoad.confirmExitToMainMenu(true), 'exitToMainMenuBtn');
     safeAddListener('exitWithoutSavingBtn', 'click', () => saveLoad.confirmExitToMainMenu(false), 'exitWithoutSavingBtn');
     safeAddListener('confirmNoBtn', 'click', () => UI.hideModal('confirmationModal'), 'confirmNoBtn');

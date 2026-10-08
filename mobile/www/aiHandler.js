@@ -180,14 +180,8 @@ ${buildDiffInstructions(pIdx)}`;
         }
         if (!choices) choices = await requestChoicesOnly(cleanNarrative, nowInCombat);
 
-        const shuffled = [...choices];
-        for (let i = shuffled.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-        }
-        gameState.currentChoices = shuffled;
-        UI.renderChoices(shuffled);
-        return { narrative: cleanNarrative, choices: shuffled };
+        UI.renderChoices(choices); // shuffles and sets gameState.currentChoices
+        return { narrative: cleanNarrative, choices: gameState.currentChoices };
     } catch (error) {
         log(`processAIResponse failed: ${error.message}`);
         UI.showLoading(false);
@@ -196,6 +190,37 @@ ${buildDiffInstructions(pIdx)}`;
 }
 
 /** Small call: choices for an already-written scene (optionally for a named hero). */
+/**
+ * The ending after the boss falls: one extra call so the win reads as a
+ * finished story (world changes, reactions, each hero) before god mode.
+ * Shown below the final turn's narration; failure just skips it.
+ */
+export async function writeEpilogue() {
+    const heroes = (gameState.players || []).map(p => p.name).join(', ');
+    const villain = gameState.questProgress?.villain;
+    const payload = await API.getAIResponseJSON([
+        { role: 'system', content: `You write the ending of a ${getThemeName()} text adventure. Reply with one JSON object only.` },
+        { role: 'user', content: `QUEST WON: ${gameState.adventureGoal || 'the main quest'}${villain ? `
+VILLAIN DEFEATED: ${villain}` : ''}
+HEROES: ${heroes}
+FINAL SCENE:
+${gameState.currentNarrative || ''}
+
+Write the epilogue in 2-3 short paragraphs, third person, past tense: how the world changed, how the people react, and one line for each hero about what they do next. End with a hint that more adventures wait. Reply exactly as {"epilogue":"..."}` }
+    ], { type: 'object', properties: { epilogue: { type: 'string' } }, required: ['epilogue'] },
+    { jsonSchemaName: 'epilogue', max_tokens: 900, temperature: 0.8 });
+    const text = String(payload?.epilogue || '').trim();
+    if (text.length < 40) throw new Error('epilogue too short');
+    gameState.epilogue = text;
+    gameState.currentNarrative = `${gameState.currentNarrative || ''}
+
+— Epilogue —
+
+${text}`.trim();
+    UI.updateNarrative(gameState.currentNarrative);
+    return text;
+}
+
 export async function requestChoicesOnly(narrative, inCombat, forHero = null) {
     const types = inCombat ? COMBAT_CHOICE_TYPES : EXPLORATION_CHOICE_TYPES;
     const enemies = inCombat ? `\nEnemies: ${(gameState.enemies || []).filter(e => !e.isDefeated).map(e => e.name).join(', ')}` : '';

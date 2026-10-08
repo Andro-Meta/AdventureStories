@@ -58,7 +58,9 @@ export const MAIN_QUEST_ARC = [
 - Use these EXACT milestone names verbatim, in order:
    1. "ally_found"              — when an ally NPC joins or commits to help.
    2. "first_obstacle_overcome" — when the player wins a meaningful trial (combat, puzzle, social).
-   3. "antagonist_revealed"     — when the antagonist's identity / reach is shown. THIS IS REQUIRED to advance to Act 3.
+   3. "antagonist_revealed"     — when the antagonist's identity is shown. THIS IS REQUIRED to advance to Act 3.
+      The villain must have a NAME native to the theme, and the milestone value must carry it:
+      {"name":"antagonist_revealed","description":"...","villain":"<Villain Name>"}. That villain is the final boss.
 - PACING: emit AT MOST ONE milestone per turn. Space these milestones across multiple turns.
 - After EACH milestone, emit a /questProgress/completionPercentage replace op.
   Suggested cumulative ranges in Act 2: 35%, 50%, 65% (when antagonist_revealed fires).
@@ -71,6 +73,7 @@ export const MAIN_QUEST_ARC = [
         targetTurnRange: [31, 50],
         narratorHint:
 `- The main villain is a BOSS: when the final fight starts, add it with /enemies/- including "isBoss": true.
+  If a MAIN VILLAIN is named below, the boss IS that villain: use that exact name.
 This is Act 3 of the main quest. The player is at the climax.
 - Stage a climactic encounter — usually combat, sometimes a moral choice or sacrifice.
 - Use these EXACT milestone names verbatim, in order:
@@ -250,7 +253,8 @@ DO NOT in god mode:
     }
     const act = determineCurrentAct(gameState);
     if (!act) return '';
-    return `\n\nMAIN QUEST STAGE — ${act.name}:
+    const villain = gameState.questProgress?.villain;
+    return `\n\nMAIN QUEST STAGE — ${act.name}:${villain ? `\nMAIN VILLAIN: ${villain} (the final boss; keep them present in the story)` : ''}
 ${gameState.adventureGoal ? act.narratorHint.replace(/^- By turn 4-6, you MUST set \/adventureGoal.*\n/m, '') : act.narratorHint}
 
 When you reach a milestone listed above, emit a /questProgress/milestones/- diff op so the
