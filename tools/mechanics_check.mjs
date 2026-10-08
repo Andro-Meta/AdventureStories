@@ -1153,12 +1153,12 @@ await block(async () => {
   const h = Prog.ensureStats({ stats: {} });
   const pct = (t) => Math.round(Prog.chanceFor(t, h) * 100);
   check(pct('Good') === 70 && pct('Investigative') === 60 && pct('Risky') === 40 && pct('Bad') === 45 && pct('Silly') === 55, `odds at stat 1: Good ${pct('Good')}% Inv ${pct('Investigative')}% Risky ${pct('Risky')}% Bad ${pct('Bad')}% Silly ${pct('Silly')}%`);
-  h.stats.brave = 5;
-  check(pct('Risky') === 60, `Brave 5 raises Risky odds 40% -> ${pct('Risky')}%`);
+  h.stats.sneaky = 5; // untagged Risky = Sneaky
+  check(pct('Risky') === 60, `Sneaky 5 raises Risky odds 40% -> ${pct('Risky')}%`);
   const seq = (v) => () => v;
   check(Prog.rollCheck('Risky', h, seq(0.99)).band === 'crit' && Prog.rollCheck('Risky', h, seq(0)).band === 'fumble', 'natural 20 is a crit, natural 1 a fumble');
   const r = Prog.rollCheck('Risky', h, seq(0.30)); // die 7 + 5 = 12 vs 14: within 3 -> partial
-  check(r.band === 'partial', `7 + Brave 5 = 12 vs 14 is a success at a cost (${r.band})`);
+  check(r.band === 'partial', `7 + Sneaky 5 = 12 vs 14 is a success at a cost (${r.band})`);
 });
 await block(async () => {
   // Harm only from failed Risky/Bad (and tiny silly fails); successes never hurt.
@@ -1267,9 +1267,9 @@ await block(async () => {
     { type: 'Risky', text: 'Slip past the sleeping guards', stat: 'sneaky' }, { type: 'Silly', text: 'Challenge the parrot to a staring contest', stat: 'luck' },
     { type: 'Investigative', text: "Search the captain's desk", stat: 'nonsense' }] }, false);
   check(v[1].stat === 'brave' && v[2].stat === 'sneaky' && v[3].stat === 'luck' && !v[4].stat, `choice stats kept, junk dropped (${v.map(c => c.stat || '-').join(',')})`);
-  const h = Prog.ensureStats({ stats: { brave: 1, clever: 1, sneaky: 4, kind: 1 } });
-  const risky = Math.round(Prog.chanceFor('Risky', h, 'sneaky') * 100), riskyDefault = Math.round(Prog.chanceFor('Risky', h) * 100);
-  check(risky === 55 && riskyDefault === 40, `a sneaky Risky move uses Sneaky 4 (${risky}%), untagged uses Brave 1 (${riskyDefault}%)`);
+  const h = Prog.ensureStats({ stats: { brave: 4, clever: 1, sneaky: 1, kind: 1 } });
+  const risky = Math.round(Prog.chanceFor('Risky', h, 'brave') * 100), riskyDefault = Math.round(Prog.chanceFor('Risky', h) * 100);
+  check(risky === 55 && riskyDefault === 40, `a brave Risky move uses Brave 4 (${risky}%), untagged uses Sneaky 1 (${riskyDefault}%)`);
   check(Prog.CHECKS.Bad.stat === 'brave', `untagged Bad choices use Brave, not Sneaky (${Prog.CHECKS.Bad.stat})`);
 });
 await block(async () => {
@@ -1317,6 +1317,67 @@ await block(async () => {
   for (let i = 0; i < 5; i++) { gameState.isLoading = false; await AH.handlePlayerChoice('Risky', 'Leap the gap'); }
   const after = snap();
   check(before === after, `5 choices with the storyteller down: hero unchanged (${after === before ? 'same' : before + ' -> ' + after})`);
+});
+
+// =====================================================================
+section('Batch 19: always five different approaches (phone 10-08: two luck, no sneaky)');
+await block(async () => {
+  const Prog = await import('../progression.js');
+  const AIH = await import('../aiHandler.js');
+  const ALL = Prog.APPROACHES;
+  const distinct = (cs) => new Set(cs.map(c => c.stat)).size === 5 && cs.every(c => ALL.includes(c.stat));
+  // The screenshot's set.
+  const phone = [
+    { type: 'Silly', stat: 'luck', text: 'Balance a wobbling hubcap on your head to mimic the moving shadows.' },
+    { type: 'Investigative', stat: 'clever', text: 'Inspect the tracks in the dust beneath your Salvaged Tire Armor.' },
+    { type: 'Risky', stat: 'brave', text: 'Vault across the jagged alleyway using the Makeshift Pipe Wrench.' },
+    { type: 'Good', stat: 'kind', text: 'Share a ration of filtered water with the shivering scavenger.' },
+    { type: 'Bad', stat: 'luck', text: 'Lick the suspicious frost off the vibrating metallic sign.' }];
+  const plan = Prog.approachPlan(phone);
+  check(plan.length === 1 && plan[0].index === 4 && plan[0].stat === 'sneaky', `screenshot set: only the licking choice changes, to sneaky (${JSON.stringify(plan)})`);
+  // Every combination of stats (incl. missing/invalid) on every type order.
+  const TYPES = ['Good', 'Bad', 'Risky', 'Silly', 'Investigative'];
+  const opts = [...ALL, undefined];
+  let bad = 0, sets = 0, keptWrong = 0;
+  const rec = (pre) => {
+    if (pre.length === 5) {
+      sets++;
+      const cs = pre.map((stat, i) => ({ type: TYPES[(i + sets) % 5], stat, text: `choice ${i}` }));
+      const out = Prog.fillApproaches(cs);
+      if (!distinct(out)) bad++;
+      // a choice whose approach is the only one of its kind is never touched
+      cs.forEach((c, i) => { if (c.stat && cs.filter(d => d.stat === c.stat).length === 1 && out[i].text !== c.text) keptWrong++; });
+      return;
+    }
+    for (const o of opts) rec([...pre, o]);
+  };
+  rec([]);
+  check(bad === 0 && keptWrong === 0, `all ${sets} possible stat sets end with exactly one of each approach (${bad} failed), unique choices untouched (${keptWrong})`);
+  check(new Set(['Good', 'Bad', 'Risky', 'Silly', 'Investigative'].map(t => Prog.CHECKS[t].stat ?? 'luck')).size === 5, 'default stats per type are five different approaches (Risky = Sneaky)');
+
+  // Storyteller down (network off here): gaps get plain choices, still five approaches.
+  const down = await AIH.ensureFiveApproaches(phone, 'A frozen alley.', []);
+  check(distinct(down) && down[4].text === Prog.APPROACH_FALLBACK.sneaky && down[0].text === phone[0].text, `AI down: the gap gets "${down[4].text}", the other four unchanged`);
+
+  // Storyteller up: the one choice is rewritten as a sneaky action.
+  const offline = globalThis.fetch; let asked = '';
+  globalThis.fetch = window.fetch = async (u, o) => { asked = JSON.parse(o.body).messages[1].content; return { ok: true, status: 200, statusText: '200', headers: { get: () => null }, json: async () => ({ choices: [{ message: { content: '{"texts":["Creep along the shadowed wall and slip past the sign unseen."]}' } }] }), text: async () => '' }; };
+  localStorage.setItem('adv.cloudProvider', 'groq_qwen'); localStorage.setItem('adv.apiKey.api.groq.com', 'test');
+  try {
+    const fixed = await AIH.ensureFiveApproaches(phone, 'A frozen alley.', []);
+    check(distinct(fixed) && /slip past/.test(fixed[4].text) && /SNEAKY/.test(asked) && fixed.filter((c, i) => c.text !== phone[i].text).length === 1, `AI up: one small call rewrites only that choice ("${fixed[4].text}")`);
+    // A rewrite that just repeats another choice is not accepted.
+    globalThis.fetch = window.fetch = async () => ({ ok: true, status: 200, statusText: '200', headers: { get: () => null }, json: async () => ({ choices: [{ message: { content: '{"texts":["Share a ration of filtered water with the shivering scavenger."]}' } }] }), text: async () => '' });
+    const dup = await AIH.ensureFiveApproaches(phone, 'A frozen alley.', []);
+    check(distinct(dup) && dup[4].text === Prog.APPROACH_FALLBACK.sneaky, 'a rewrite that copies another choice is refused (plain sneaky choice instead)');
+  } finally { globalThis.fetch = window.fetch = offline; localStorage.removeItem('adv.apiKey.api.groq.com'); localStorage.removeItem('adv.cloudProvider'); }
+
+  // Render time: whatever path produced the set, the screen gets five approaches.
+  fresh(); gameState.inCombat = false;
+  UI.renderChoices(phone.map(c => ({ ...c })));
+  check(distinct(gameState.currentChoices), `on screen: ${gameState.currentChoices.map(c => c.stat).sort().join(', ')}`);
+  UI.renderChoices(['Good', 'Bad', 'Risky', 'Silly', 'Investigative'].map(type => ({ type, text: type })));
+  check(gameState.currentChoices.every(c => !c.stat) || distinct(gameState.currentChoices), 'stat-less fallback choices: defaults are five approaches');
 });
 
 console.error = realError;
