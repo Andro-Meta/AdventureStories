@@ -539,6 +539,25 @@ await block(async () => {
   check(res?.success && p.mp === mp0 - 4, `spell from an unknown school casts and costs MP (${res?.success ? 'ok' : res?.reason}, MP ${mp0} -> ${p.mp})`);
 });
 
+await block(async () => {
+  // Classic-RPG layer: XP/levels, no escaping bosses, battle menus list real options.
+  const Battle = await import('../battle.js');
+  const { p, e } = fresh(); p.level = 1; p.xp = 0;
+  const hp0 = p.maxHp;
+  const r = Battle.awardXp({ name: 'Ogre', maxHp: 80, isBoss: true });
+  check(p.level >= 2 && p.maxHp > hp0, `boss kill gives XP and a level-up (+${r.xp} XP, level ${p.level}, max HP ${hp0} -> ${p.maxHp})`);
+  e.isBoss = true; startFight(); pinRandom(0.01);
+  await AH.handlePlayerChoice('Run', 'Flee');
+  unpinRandom();
+  check(gameState.inCombat === true, 'cannot run from a boss (still in combat after a lucky roll)');
+  p.inventory = [{ id: 'pot', name: 'Health Potion', type: 'Consumable', stats: { heal: 30 }, quantity: 2 }];
+  const items = Battle.battleOptions('Item', p);
+  check(items.length === 1 && items[0].label.includes('×2') && items[0].detail.includes('heals 30'), `Item menu lists real items (${items.map(o => o.label + ': ' + o.detail).join('; ')})`);
+  const specials = Battle.battleOptions('Special', p);
+  check(specials.some(o => o.label === 'Power Strike'), 'Special menu always offers Power Strike');
+  check(Battle.battleOptions('Attack', p) === null, 'one foe: Attack needs no target menu');
+});
+
 console.error = realError;
 out(`\nfetch attempts blocked: ${fetchCalls}; elapsed ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 out(failed ? `✗ ${failed} mechanics check(s) failed` : '✓ all mechanics checks passed');

@@ -3070,3 +3070,17 @@ body { padding-top: calc(env(safe-area-inset-top) + 0.5rem); padding-bottom: cal
 
 /* Scrolling to a new scene stops below the status bar. */
 #storyCard { scroll-margin-top: calc(env(safe-area-inset-top) + 8px); }
+
+/* ---- Battle command picker (battle.js) ---- */
+#battlePicker { position: fixed; inset: 0; z-index: 1002; background: rgba(0,0,0,0.55); display: flex; align-items: flex-end; justify-content: center; }
+#battlePicker .bp-panel { width: min(100%, 560px); max-height: 70vh; overflow-y: auto; background: var(--card-bg); border: 1px solid var(--border-color);
+    border-radius: 16px 16px 0 0; padding: 1rem 1rem calc(1rem + env(safe-area-inset-bottom)); animation: bp-up 0.18s ease-out; }
+@keyframes bp-up { from { transform: translateY(30px); opacity: 0; } to { transform: none; opacity: 1; } }
+#battlePicker .bp-title { font-weight: 700; font-size: 1.1rem; margin-bottom: 0.6rem; }
+#battlePicker .bp-option { display: flex; flex-direction: column; align-items: flex-start; width: 100%; margin: 0 0 0.5rem; padding: 0.7rem 0.9rem;
+    background: var(--input-bg); border: 1px solid var(--border-color); text-align: left; }
+#battlePicker .bp-option:disabled { opacity: 0.45; }
+#battlePicker .bp-label { font-weight: 700; color: var(--text-color); }
+#battlePicker .bp-detail { font-size: 0.85rem; color: var(--text-muted-color); font-weight: 400; margin-top: 2px; }
+#battlePicker .bp-cancel { width: 100%; margin-top: 0.3rem; }
+.hero-level { font-size: 0.7em; color: var(--coins-color); font-weight: 600; margin-left: 0.3rem; }

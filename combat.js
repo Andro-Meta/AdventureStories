@@ -1292,7 +1292,16 @@ export async function handleEnemyDefeat(enemyId) {
      enemy.hp = 0;
 
      log(`Combat: ${enemy.name} defeated! Processing loot and coins...`);
-     showPopup(`${enemy.name} defeated!`, 'success');
+     // Experience for the whole party; level-ups raise stats (battle.js).
+     try {
+         const { awardXp } = await import('./battle.js');
+         const { xp, ups } = awardXp(enemy);
+         showPopup(`${enemy.name} defeated! +${xp} XP`, 'success');
+         for (const p of gameState.players || []) if (p) recalculateCharacterStats(p);
+         ups.forEach(u => showPopup(`⭐ ${u}`, 'legendary', 3500));
+     } catch (e) {
+         showPopup(`${enemy.name} defeated!`, 'success');
+     }
 
      // --- Generate Loot Using Dynamic Item System ---
      log(` -> Generating dynamic loot (Chance: ${enemy.lootChance}, MaxTier: ${enemy.lootTier}, Type: ${enemy.isBoss ? 'Boss' : enemy.isElite ? 'Elite' : 'Regular'})`);

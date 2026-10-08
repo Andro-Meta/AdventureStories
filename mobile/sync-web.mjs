@@ -12,7 +12,7 @@ const WWW  = resolve(__dirname, 'www');
 
 const INCLUDE_FILES = [
   'index.html', 'style.css', 'manifest.json', 'sw.js', 'mobile-bootstrap.js', 'icon-192.png', 'icon-512.png',
-  'main.js', 'setup.js', 'state.js', 'engine.js', 'config.js', 'ui.js', 'fx.js',
+  'main.js', 'setup.js', 'state.js', 'engine.js', 'config.js', 'ui.js', 'fx.js', 'battle.js',
   'aiHandler.js', 'actionHandler.js', 'gameLoop.js', 'turnManager.js',
   'combat.js', 'resolution.js', 'questProgress.js', 'questDefinitions.js',
   'storyHooks.js',
