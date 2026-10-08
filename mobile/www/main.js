@@ -53,7 +53,8 @@ window.__advBack = () => {
         inventoryScreen: 'gameScreen', shopScreen: 'gameScreen', specialMovesScreen: 'gameScreen',
         playerCountScreen: 'mainMenuScreen', adventureTypeScreen: 'playerCountScreen',
         ageInputScreen: 'adventureTypeScreen', nameInputScreen: 'ageInputScreen',
-        gameOverScreen: 'gameOverScreen'
+        gameOverScreen: 'gameOverScreen',
+        localAIScreen: document.getElementById('aiSettingsBackBtn')?.dataset.target || 'mainMenuScreen'
     }[active] || 'mainMenuScreen';
     import('./ui.js').then(UI => UI.showScreen(prev)).catch(() => {});
     return true;
@@ -173,7 +174,8 @@ displayVisualError("main.js: DOMContentLoaded listener logic executed/scheduled.
 //      identifies SWs by URL and a different URL = different SW instance.
 //
 // Skipped on file:// and `?nosw=1`.
-if ('serviceWorker' in navigator && location.protocol !== 'file:' && !/[?&]nosw=1\b/.test(location.search)) {
+// Not inside the Android app: mobile-bootstrap.js removes it there on every launch.
+if ('serviceWorker' in navigator && !window.Capacitor?.isNativePlatform?.() && location.protocol !== 'file:' && !/[?&]nosw=1\b/.test(location.search)) {
     window.addEventListener('load', async () => {
         try {
             // Once per browser, not per tab: sessionStorage made every new tab
@@ -316,6 +318,8 @@ function setupEventListeners(UI, setup, actionHandler, saveLoad) { // Added acti
     // yet. Phase 0 audit P0 #8.
     safeAddListener('loadGameBtn', 'click', () => { UI.showScreen('loadGameScreen'); saveLoad.listSaves(); }, 'loadGameBtn');
     safeAddListener('localAIBtn', 'click', () => showLocalAIStatus(), 'localAIBtn');
+    // Mid-game route to the keys (a dead key used to mean quitting to the main menu).
+    safeAddListener('menuAISettingsBtn', 'click', () => showLocalAIStatus('menuScreen'), 'menuAISettingsBtn');
     safeAddListener('checkLocalAIBtn', 'click', () => runConnectionCheck(), 'checkLocalAIBtn');
     // Phase 0: cloud backend selection + API key save
     setupCloudBackendListeners();
@@ -396,8 +400,16 @@ function setupEventListeners(UI, setup, actionHandler, saveLoad) { // Added acti
             p.isDowned = false; p.downedTurns = 0; p.statusEffects = [];
             try { Combat.recalculateCharacterStats(p); } catch (_) {}
         });
+        // Out of the lost fight, with something to press.
+        gameState.inCombat = false;
+        if (gameState.combat) gameState.combat.isActive = false;
         UI.showScreen('gameScreen');
         UI.renderPlayerCards();
+        UI.renderEnemyCards();
+        UI.renderChoices(gameState.currentChoices?.length ? gameState.currentChoices : [
+            { type: 'Explore', text: 'Get back on your feet and take stock' },
+            { type: 'Social', text: 'Look for help nearby' }
+        ]);
         UI.showPopup('You rise again — battered, but unbowed.', 'info', 4000);
     }, 'gameOverContinueBtn');
     safeAddListener('gameOverSaveBtn', 'click', () => saveLoad.openSaveGameModal(), 'gameOverSaveBtn');
@@ -551,6 +563,9 @@ function setupEventListeners(UI, setup, actionHandler, saveLoad) { // Added acti
 /**
  * Updates the visibility of the Continue Last Game button based on available saves
  */
+// Re-checked whenever the main menu shows (was boot-only: Continue stayed
+// hidden after the first save of a session).
+window.__refreshContinue = () => updateContinueButtonVisibility();
 function updateContinueButtonVisibility() {
     const continueBtn = document.getElementById('continueGameBtn');
     if (!continueBtn) return;
@@ -584,8 +599,10 @@ function updateContinueButtonVisibility() {
  * AI Settings screen: pick an online provider, paste a free key, test it.
  * (Local and on-device models were removed; the game only uses online AI.)
  */
-async function showLocalAIStatus() {
+async function showLocalAIStatus(backTo = 'mainMenuScreen') {
     if (!document.getElementById('localAIStatus')) return;
+    const back = document.getElementById('aiSettingsBackBtn');
+    if (back) back.dataset.target = backTo;
     UI.showScreen('localAIScreen');
 
     const providerKey = (() => {

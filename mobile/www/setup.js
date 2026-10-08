@@ -424,7 +424,9 @@ export async function completeSetupAndStartGameIntelligent() {
         
         if (result.success) {
             log("Setup: Intelligent initialization completed successfully!");
-            gameState.gameId = Date.now().toString(36); // names this game's autosave slot
+            // names this game's autosave slot; keep one an early turn's autosave
+            // already made (overwriting it left two slots for one game)
+            gameState.gameId = gameState.gameId || Date.now().toString(36);
             try { (await import('./saveLoad.js')).autosave(); } catch (_) { /* first autosave is best-effort */ }
             log("Setup: Results:", result.results);
             
@@ -435,7 +437,7 @@ export async function completeSetupAndStartGameIntelligent() {
             log("Setup: Partial results:", result.results);
             
             loadingManager.hideLoading();
-            UI.showPopup(`Initialization failed: ${result.error}. Some features may not work properly.`, 'error');
+            UI.showPopup(`The storyteller didn't answer in time. Pick an action to begin.`, 'warning');
             
             // Try to show game screen anyway if players were created.
             // Wrap in its own try/catch: if renderPlayerCards throws for any
@@ -445,6 +447,16 @@ export async function completeSetupAndStartGameIntelligent() {
             if (result.results?.completed?.includes('createPlayers')) {
                 log("Setup: Players were created, attempting to continue...");
                 try { UI.renderPlayerCards(); } catch (e) { log(`Setup: renderPlayerCards failed in recovery: ${e.message}`); }
+                // No opening story: still give the player something to press
+                // (before, an empty screen with no choices).
+                if (!gameState.currentChoices?.length) {
+                    gameState.currentChoices = [
+                        { type: 'Explore', text: 'Look around and get your bearings' },
+                        { type: 'Social', text: 'Find someone nearby to talk to' },
+                        { type: 'Explore', text: 'Set off toward the nearest sign of trouble' }
+                    ];
+                }
+                try { UI.renderChoices(gameState.currentChoices); } catch (_) {}
                 UI.showScreen('gameScreen');
             } else {
                 UI.showScreen('mainMenuScreen');
@@ -454,7 +466,7 @@ export async function completeSetupAndStartGameIntelligent() {
     } catch (error) {
         log("Setup CRITICAL ERROR: Initialization system failed:", error);
         loadingManager.hideLoading();
-        UI.showPopup(`Critical initialization error: ${error.message}. Please restart the game.`, 'error');
+        UI.showPopup(`Couldn't start the adventure. Please try again.`, 'error');
         UI.showScreen('mainMenuScreen');
     }
 }

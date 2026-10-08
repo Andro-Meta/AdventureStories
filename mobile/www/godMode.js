@@ -201,10 +201,8 @@ export class GodModeManager {
 </div>
         `;
         
-        UI.showPopup(unlockMessage, 'god_mode_unlock', 0, [
-            { text: '⚡ Activate God Mode', action: () => this.activateGodMode() },
-            { text: 'Continue Normal Play', action: () => {} }
-        ]);
+        // ponytail: no unlock toast. showPopup has no buttons, and the engine
+        // activates god mode right after, whose tutorial toast says the same.
         
         log("GodMode: UNLOCKED! Player has achieved creative freedom!");
     }
@@ -220,8 +218,9 @@ export class GodModeManager {
         // Update UI to show God Mode is active
         this.updateGodModeUI();
         
-        // Show God Mode tutorial
-        this.showGodModeTutorial();
+        // Tutorial once per game, not on every re-activation.
+        if (!this.tutorialShown) { this.tutorialShown = true; this.showGodModeTutorial(); }
+        try { UI.renderChoices(gameState.currentChoices || []); } catch (_) {}
         
         log("GodMode: ACTIVATED! Player now has unlimited creative control");
     }
@@ -234,6 +233,7 @@ export class GodModeManager {
         if (this.isActive) { try { this.deactivateGodMode(); } catch (_) {} }
         this.isUnlocked = false;
         this.isActive = false;
+        this.tutorialShown = false;
     }
 
     deactivateGodMode() {
@@ -241,6 +241,7 @@ export class GodModeManager {
         
         this.isActive = false;
         this.updateGodModeUI();
+        try { UI.renderChoices(gameState.currentChoices || []); } catch (_) {} // hide the wish box now
         
         log("GodMode: Deactivated - returning to normal gameplay");
     }
@@ -420,7 +421,7 @@ export class GodModeManager {
      */
     updateGodModeUI() {
         // Add God Mode indicator to the UI
-        const gameHeader = document.querySelector('.game-header');
+        const gameHeader = document.getElementById('gameHeader'); // (was '.game-header', which doesn't exist)
         if (!gameHeader) return;
         
         // Remove existing god mode indicator
@@ -429,14 +430,15 @@ export class GodModeManager {
             existingIndicator.remove();
         }
         
-        if (this.isActive) {
+        // Shown once unlocked, both ways: switching off must not be one-way.
+        if (this.isActive || (this.isUnlocked && gameState.allowCustomActions)) { // retired: no way back on
             const godModeIndicator = document.createElement('div');
             godModeIndicator.className = 'god-mode-indicator';
-            godModeIndicator.innerHTML = `
+            godModeIndicator.innerHTML = this.isActive ? `
                 <span class="god-mode-icon">⚡</span>
                 <span class="god-mode-text">GOD MODE</span>
-                <button class="god-mode-toggle" onclick="window.godModeManager.deactivateGodMode()">Deactivate</button>
-            `;
+                <button class="god-mode-toggle" onclick="window.godModeManager.deactivateGodMode()">Turn off</button>
+            ` : `<button class="god-mode-toggle" onclick="window.godModeManager.activateGodMode()">⚡ God Mode</button>`;
             gameHeader.appendChild(godModeIndicator);
         }
     }

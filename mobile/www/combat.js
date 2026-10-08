@@ -437,8 +437,10 @@ export function initializeCombat(enemies) {
     });
 
     // Get all valid combatants
+    // Downed heroes are in the order too (their turns are skipped while down),
+    // so one revived mid-fight gets turns again.
     const allCombatants = [
-        ...gameState.players.filter(p => p && !p.isDowned),
+        ...gameState.players.filter(Boolean),
         ...enemies
     ];
 
@@ -1815,7 +1817,9 @@ async function executeEnemyAttack(enemy, target, action, context) {
     }
     
     // Show the attack result
-    showPopup(`${attackDescription}: ${target.name} −${damageResult.damage}${damageResult.isCritical ? ' (critical!)' : ''}`, 'damage');
+    if (damageResult.missed) showPopup(`${enemy.name} attacks ${target.name} and misses!`, 'info');
+    else if (damageResult.blocked) showPopup(`${enemy.name} can't land a blow on ${target.name}!`, 'info');
+    else showPopup(`${attackDescription}: ${target.name} −${damageResult.damage}${damageResult.isCritical ? ' (critical!)' : ''}`, 'damage');
     
     // Check for defeat
     if (target.hp <= 0) {

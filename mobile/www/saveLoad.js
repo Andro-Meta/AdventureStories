@@ -12,7 +12,7 @@ import { gameState } from './state.js'; // Import gameState
 import * as Config from './config.js';
 import * as UI from './ui.js';
 // Import functions from other new modules statically
-import { pruneMessageHistory, getThemeName } from './aiHandler.js';
+import { getThemeName } from './aiHandler.js';
 // CORRECTED IMPORT: resetGameState is in state.js
 import { resetGameState } from './state.js';
 // Need item generation for potential shop refresh on load
@@ -154,7 +154,8 @@ export function saveGameToLocalStorage(slotName) {
         delete stateToSave.activeModals;
         stateToSave.combatRoundInProgress = false;
         log("SaveLoad: Pruning message history for save...");
-        stateToSave.messageHistory = pruneMessageHistory(stateToSave.messageHistory);
+        // Last 20 turns (compressing to 3 left the arc summary blind after a load).
+        stateToSave.messageHistory = (stateToSave.messageHistory || []).slice(-20);
         stateToSave.isLoading = false;
         stateToSave.pendingConfirmation = null;
         stateToSave.handlingPartyWipe = false;
@@ -270,6 +271,9 @@ function rememberNames() {
         const em = gameState.entityMemory || {};
         const fresh = [...Object.keys(em.npcs || {}), ...Object.keys(em.locations || {}), gameState.questProgress?.villain]
             .filter(n => n && !(gameState.players || []).some(p => p?.name === n));
+        // This game's own names stay usable here even after they drop out of
+        // entity memory (the storyteller was told never to reuse its own villain).
+        gameState.ownNames = [...new Set([...(gameState.ownNames || []), ...fresh])].slice(-80);
         const old = JSON.parse(localStorage.getItem('adv.usedNames') || '[]');
         const all = [...old.filter(n => !fresh.includes(n)), ...fresh].slice(-80);
         localStorage.setItem('adv.usedNames', JSON.stringify(all));
@@ -283,8 +287,9 @@ function pruneAutosaves(keep, exceptKey = null) {
         for (let i = 0; i < localStorage.length; i++) {
             const k = localStorage.key(i);
             if (k && k !== exceptKey && k.startsWith(Config.SAVE_GAME_PREFIX + 'Autosave ')) {
-                let date = 0;
-                try { date = JSON.parse(localStorage.getItem(k))?.saveDate || 0; } catch (_) {}
+                // The slot name ends in the game id (Date.now() in base 36), so
+                // age comes from the key: no full parse of every save each turn.
+                const date = parseInt(k.split(' ').pop(), 36) || 0;
                 autos.push([k, date]);
             }
         }

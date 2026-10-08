@@ -229,7 +229,7 @@ ${buildDiffInstructions(pIdx)}`;
 function usedNamesLine() {
     let names = [];
     try { names = JSON.parse(localStorage.getItem('adv.usedNames') || '[]'); } catch (_) {}
-    const mine = new Set(Object.keys(gameState.entityMemory?.npcs || {}).concat(Object.keys(gameState.entityMemory?.locations || {})));
+    const mine = new Set(Object.keys(gameState.entityMemory?.npcs || {}).concat(Object.keys(gameState.entityMemory?.locations || {}), gameState.ownNames || [], [gameState.questProgress?.villain]));
     names = names.filter(n => !mine.has(n)).slice(-40);
     return names.length ? ` Names from earlier games, never reuse them or close variants: ${names.join(', ')}.` : '';
 }
@@ -877,13 +877,8 @@ ${reading}
 
 CONTENT POLICY (${tier}): ${policy}${injuryLine} If players ask for something off-policy, the world declines in-character.`);
 
-    if (gameState.questProgressManager && !gameState.isGoalComplete) {
-        try {
-            const guidance = gameState.questProgressManager.generateAIGuidance();
-            const s = gameState.questProgressManager.getProgressSummary();
-            parts.push(`QUEST PACE: phase ${s.phase} (${s.percentage}% complete), urgency ${guidance.urgency}. Direction: ${guidance.storyDirection}${s.activeObjectives?.length ? ` Active objectives: ${s.activeObjectives.join(', ')}.` : ''}`);
-        } catch (e) { log(`Quest guidance unavailable: ${e.message}`); }
-    }
+    // (The old QUEST PACE line read questProgressManager.currentPhase, which
+    // never left "beginning"; the MAIN QUEST STAGE block carries the real act.)
 
     parts.push(`THEME: ${gameState.adventureTheme}${gameState.customThemeDescription ? ` (${gameState.customThemeDescription})` : ''}. ${getThemeSpecificGuidance(gameState.adventureTheme)}
 Atmosphere: ${getThemeAtmosphere(gameState.adventureTheme)}
@@ -1308,7 +1303,8 @@ This opening may run up to half again the READING LEVEL length. Third person, li
         }
 
         gameState.messageHistory.push(historyEntry);
-        pruneMessageHistory(gameState.messageHistory);
+        // (pruneMessageHistory's result was thrown away, so this grew all session)
+        if (gameState.messageHistory.length > 40) gameState.messageHistory.splice(0, gameState.messageHistory.length - 40);
 
         // One line per turn for the RECENT TURNS block and arc summaries:
         // the model used to see only the last scene.

@@ -42,6 +42,14 @@ export async function advanceTurn() {
         return; // Combat system handles its own turns
     }
 
+    // Effects, regen, cooldowns and downed timers are per ROUND: with 3
+    // heroes they used to run on every hero's turn (Poison ticked 3x a round,
+    // downed heroes woke after one round). Solo: every turn ends the round.
+    let lastActive = -1;
+    gameState.players.forEach((p, i) => { if (p && !p.isDowned) lastActive = i; });
+    const endsRound = gameState.currentPlayerIndex >= lastActive;
+
+    if (endsRound) {
     // --- Process End-of-Turn Effects for ALL Players & Enemies ---
     log("Processing end-of-turn status effects...");
     // Process status effects for all characters (async)
@@ -73,6 +81,7 @@ export async function advanceTurn() {
         }
     });
     log("Finished resource regeneration.");
+    }
 
      // --- Check Win/Loss Conditions ---
      log("Checking win/loss conditions...");
@@ -101,7 +110,7 @@ export async function advanceTurn() {
     log("Processing cooldowns and downed timers...");
     let recoveredPlayer = false;
     gameState.players.forEach(player => {
-        if (!player) return;
+        if (!player || !endsRound) return;
         // Cooldowns tick down
         player.specialMoves?.forEach(move => { if (move && move.currentCooldown > 0) move.currentCooldown--; });
         // Downed timer ticks up
