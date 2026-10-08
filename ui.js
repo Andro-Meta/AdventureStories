@@ -1002,12 +1002,14 @@ export function renderChoices(choices, handler = null) {
         }
         gameState.currentChoices = choices;
     }
-    // Defend is a fixed battle command (like the classics): always offered,
-    // last, without costing the storyteller any words.
-    // (Added at render time only: stored, it was reshuffled into a random
-    // slot on every re-render.)
+    // Battle menu in a fixed order (Michael): Attack, Special, Item, Defend,
+    // Run. Defend is a fixed command added here at render time (never
+    // stored, so it costs the storyteller no words and can't be reshuffled).
     if (gameState.inCombat && !handler && Array.isArray(choices) && choices.length) {
-        choices = [...choices, { type: 'Defend', text: 'Raise your guard: half damage until your next turn, and catch your breath' }];
+        const ORDER = ['Attack', 'Special', 'Item', 'Defend', 'Run'];
+        const rank = (c) => { const i = ORDER.indexOf(c?.type); return i === -1 ? ORDER.length : i; };
+        choices = [...choices, { type: 'Defend', text: 'Raise your guard: half damage until your next turn, and catch your breath' }]
+            .sort((a, b) => rank(a) - rank(b));
     }
     if (!handler && !gameState.inCombat && (gameState.players || []).some(p => p?.statPoints > 0)) setTimeout(() => promptStatPoints(), 700);
     log(`UI: Rendering choices. Data type: ${typeof choices}, Is Array: ${Array.isArray(choices)}, Handler Mode: ${!!handler}`);

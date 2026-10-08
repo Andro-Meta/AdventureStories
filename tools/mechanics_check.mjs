@@ -883,10 +883,10 @@ await block(async () => {
   try {
   UI.elements.choicesContainer = { set innerHTML(_) { buttons.length = 0; }, get innerHTML() { return ''; }, appendChild(b) { buttons.push(b); }, querySelectorAll: () => [] };
   fresh(); startFight();
-  UI.renderChoices([{ type: 'Attack', text: 'Hit the goblin' }, { type: 'Run', text: 'Flee' }]);
+  UI.renderChoices([{ type: 'Run', text: 'Flee' }, { type: 'Item', text: 'Drink a potion' }, { type: 'Attack', text: 'Hit the goblin' }, { type: 'Special', text: 'Power Strike' }]);
   UI.renderChoices(gameState.currentChoices); // a re-render
   const types = buttons.map(b => b.dataset?.actionType);
-  check(types[types.length - 1] === 'Defend' && !gameState.currentChoices.some(c => c.type === 'Defend'), `battle buttons end with Defend after a re-render (${types.join(',')}), not stored`);
+  check(types.join(',') === 'Attack,Special,Item,Defend,Run' && !gameState.currentChoices.some(c => c.type === 'Defend'), `battle menu order after a re-render: ${types.join(', ')} (Defend not stored)`);
   const atk = buttons.find(b => b.dataset?.actionType === 'Attack');
   check(atk?.dataset?.text === 'Hit the goblin', `choice text sent is the choice, not the badge ("${atk?.dataset?.text}")`);
   gameState.inCombat = false;
