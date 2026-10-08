@@ -206,8 +206,15 @@ export async function handlePlayerChoice(actionType, choiceText) {
                     }
                 } catch (_) { /* keep enemies[0] fallback */ }
                 let combatLog = '';
+                // Stun/Paralysis/Sleep: the hero loses this turn whatever they
+                // picked (before, only Attack was blocked; Item and Run worked).
+                const disabled = (currentPlayer.statusEffects || []).find(fx => fx?.duration > 0 && fx.effectTickData?.cannotAct);
+                if (disabled) actionType = 'Disabled';
 
                 switch (actionType) {
+                    case 'Disabled':
+                        combatLog = `${currentPlayer.name} is held by ${disabled.name} and loses the turn.`;
+                        break;
                     case 'Attack': {
                         const r = Combat.executeWeaponAttack(currentPlayer, target);
                         if (r.missed) combatLog = `${currentPlayer.name} swings at ${target.name} and misses.`;

@@ -500,6 +500,18 @@ await block(async () => {
   check(first !== second, `2 heroes: after ${first} acts, control passes to ${second} (initiative ${order.join(', ')})`);
 });
 
+await block(async () => {
+  // A stunned hero can't drink a potion or flee either.
+  const { p } = fresh();
+  p.inventory.push(potion(30, 1));
+  p.hp = 40;
+  startFight();
+  Combat.applyStatusEffect(p, 'Stun', 2, {}, 'test');
+  await AH.handlePlayerChoice('Item', 'Use Healing Potion');
+  const kept = p.inventory.some(i => i.id === 'item_potion');
+  check(kept, `stunned hero cannot use an item (potion still in pack: ${kept}, HP ${p.hp})`);
+});
+
 console.error = realError;
 out(`\nfetch attempts blocked: ${fetchCalls}; elapsed ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 out(failed ? `✗ ${failed} mechanics check(s) failed` : '✓ all mechanics checks passed');
