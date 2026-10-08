@@ -209,7 +209,7 @@ if (FULL) {
     let type = 'Attack';
     if (s.hp < s.max * 0.6 && s.potions > 0) type = 'Item';
     else if (s.ready && rounds % 2 === 0) type = 'Special';
-    else if (!seen.defend && rounds === 1) type = 'Defend';
+    else if (!seen.defend && rounds >= 1) type = 'Defend'; // first round free of potion/special needs
     const before = s;
     const picked = await clickType(type, type === 'Item' ? 'Healing Potion' : null);
     if (type === 'Defend') seen.defend = await gs(g => g.players.some(p => p.statusEffects?.some(x => x.name === 'Guarding')) || /braces behind their guard/.test(document.getElementById('combatLogStrip')?.innerText || ''));
@@ -223,6 +223,7 @@ if (FULL) {
     if (/unleashes/i.test(after.log)) seen.signature = true;
     note(`round ${rounds + 1}: ${picked} | hero HP ${before.hp} -> ${after.hp} | boss ${before.boss?.hp} -> ${after.bossHp}`);
   }
+  fs.writeFileSync(`${ROOT}test-results/fightlog_${args.includes("--tag") ? args[args.indexOf("--tag") + 1] : "boss"}.txt`, (await page.evaluate(() => (window.__advLog || []).filter(l => /deals|damage|Combat:|Applying status|status:|sluggish|confused|hasted|misses|blocks|Recalc|ATK|DEF|Power Strike|special|Special/i.test(l)).join(String.fromCharCode(10)))));
   const fin = await gs(g => ({ won: !!g.isGoalComplete, boss: g.enemies.find(e => e.isBoss), poisonLeft: g.players[0].statusEffects.some(x => x.name === 'Poison'), downed: g.players.every(p => p.isDowned || p.hp <= 0) }));
   check(seen.potion > 0, `potion drunk in the fight (${seen.potion}x, stack went down by one each time)`);
   check(seen.special > 0, `Special used (${seen.special}x)`);

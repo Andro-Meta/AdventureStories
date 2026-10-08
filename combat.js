@@ -356,7 +356,8 @@ export function calculateDamage(attacker, defender, options = {}) {
     }
     
     // High DEF vs ATK can reduce accuracy
-    const defenseAdvantage = Math.max(0, defender.def - attacker.atk) / attacker.atk;
+    // capped at 10% (it was unbounded: DEF 30 vs ATK 5 hit 40% of the time) and safe at ATK 0
+    const defenseAdvantage = Math.min(1, Math.max(0, (defender.def || 0) - (attacker.atk || 0)) / Math.max(1, attacker.atk || 0));
     accuracy -= defenseAdvantage * 0.1; // Up to 10% accuracy reduction
     
     // Accuracy check

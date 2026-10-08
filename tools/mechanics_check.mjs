@@ -1108,6 +1108,19 @@ await block(async () => {
   check(/Frontier towns/.test(sys) && !/Theme appropriate/.test(sys), 'wild_west prompt gets its own theme notes');
 });
 
+// =====================================================================
+section('Batch 11: accuracy');
+await block(async () => {
+  // Penalty was uncapped (DEF 30 vs ATK 5: 40% to hit) and ATK 0 divided by zero.
+  const { p, e } = fresh(); startFight();
+  p.atk = 5; e.def = 30; pinRandom(0.75); // hits at the capped 80%, missed at the old 40%
+  const r = Combat.executeWeaponAttack(p, e); unpinRandom();
+  check(!r.missed, `ATK 5 vs DEF 30 lands a 0.75 roll (80% to hit, not 40%) (missed ${r.missed})`);
+  p.atk = 0; pinRandom(0.5);
+  const z = Combat.executeWeaponAttack(p, e); unpinRandom();
+  check(!z.missed, `ATK 0 attack is a normal roll, no divide-by-zero (missed ${z.missed})`);
+});
+
 console.error = realError;
 out(`\nfetch attempts blocked: ${fetchCalls}; elapsed ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 out(failed ? `✗ ${failed} mechanics check(s) failed` : '✓ all mechanics checks passed');
