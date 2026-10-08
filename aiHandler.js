@@ -809,9 +809,9 @@ export function generateSystemPrompt() {
 
     const tier = playerAge < 10 ? 'L1 child' : playerAge < 15 ? 'L2 tween' : 'L3 teen/adult';
     const policy = playerAge < 10
-        ? 'No gore, death, romance or slurs. Scary moments resolve quickly with reassurance; defeated foes flee, fall asleep or vanish in a puff of light.'
+        ? 'No blood, wounds, gore, death, romance or slurs. Show hits by their effect (knocked back, dizzy, a dented shield). Scary moments resolve quickly with reassurance; defeated foes flee, fall asleep or vanish in a puff of light.'
         : playerAge < 15
-            ? 'Fantasy violence is fine (no gore or dismemberment); death described tastefully; romance no further than blushing; no slurs.'
+            ? 'Exciting fantasy action, but no blood, gore or injury detail: show hits by their effect (knocked back, stumbling, a cracked shield), a scrape or bruise at most. Defeated foes are knocked out, captured or flee; any death happens off-screen and tastefully; romance no further than blushing; no slurs.'
             : 'Mature themes allowed in service of the story (loss, moral ambiguity, fantasy violence); no explicit sexual content or gratuitous gore.';
 
     // Pacing: every field here comes from one place (ageAppropriateReading.js)
