@@ -23,6 +23,7 @@
     }
   },
   "server": {
-    "androidScheme": "https"
+    "androidScheme": "https",
+    "hostname": "localhost"
   }
 }
