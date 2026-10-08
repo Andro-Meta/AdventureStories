@@ -169,6 +169,7 @@ export async function handlePlayerChoice(actionType, choiceText) {
             // comes back only while the story of the round is written.
             UI.showLoading(false);
             gameState.combatRoundInProgress = true; // cleared in finally
+            if (gameState.combat) gameState.combat.heroTicked = false; // set if this hero's combat turn ticks (see advanceTurn afterCombat)
 
             // Special-move cooldowns count down once per combat action
             // (turnManager only ticks them on exploration turns).
@@ -508,7 +509,7 @@ Fight round ${gameState.combat?.round || 1}. Narrate this round so the fight CHA
                         // Skip the round tick only if this hero's combat turn already ticked
                         // (the storyteller ended the fight after the enemy phase); a killing
                         // blow ends it before any combat tick, so that round still ticks once.
-                        await advanceTurn({ afterCombat: gameState.combat?.tickedTurn === gameState.turn });
+                        await advanceTurn({ afterCombat: !!gameState.combat?.heroTicked });
                         // The reply's choices were written for the fighter; with 2+
                         // players the turn has just passed to someone else.
                         if (gameState.players.length > 1 && gameState.currentPlayerIndex !== fighter) {
