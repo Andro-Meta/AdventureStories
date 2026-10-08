@@ -12,7 +12,7 @@ await p.evaluate(async () => {
   const h = createNewPlayer('Michael', 40); h.stats = { brave: 2, clever: 3, sneaky: 1, kind: 1 }; h.xp = 60; h.sparks = { clever: 4 };
   gameState.players = [h]; gameState.currentPlayerIndex = 0; gameState.adventureTheme = 'pirate'; gameState.turn = 6;
   gameState.adventureGoal = 'Find the drowned captain\'s map.'; gameState.inCombat = false; gameState.enemies = [];
-  gameState.shopItems = [];
+  gameState.shopItems = (await import('/items.js')).generateShopItems('fantasy', 6);
   UI.showScreen('gameScreen'); UI.renderPlayerCards();
   UI.renderChoices([{ type: 'Good', text: 'Help the old fisherman haul his net' }, { type: 'Bad', text: 'Kick the guard dog to get past it' },
     { type: 'Risky', text: 'Leap across the broken bridge' }, { type: 'Silly', text: 'Challenge the parrot to a staring contest' },

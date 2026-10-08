@@ -5,6 +5,7 @@
 import { gameState } from './state.js';
 import * as Config from './config.js';
 import { generateId } from './utils.js';
+import { itemValue } from './items.js';
 
 /**
  * Dynamic Item Registry - Stores learned patterns and contextual items for this game session
@@ -235,12 +236,13 @@ Respond with a JSON object containing: name, effect, stats (object with relevant
             tier: tier,
             effect: `A ${tier.toLowerCase()} ${type.toLowerCase()} from ${customTheme || theme}.`,
             stats: this.generateFallbackStats(tier, type),
-            cost: Config.DefaultItemCosts[tier] || 10,
+            cost: 0, // set from what it does, below
             quantity: type === 'Consumable' ? 1 : undefined,
             equippedSlot: null,
             isAIGenerated: false,
             isFallback: true
         };
+        item.cost = itemValue(item); // priced by its stats, like the shop
 
         return item;
     }

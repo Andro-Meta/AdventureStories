@@ -15,7 +15,7 @@ import { describeQuestStep, friendlyMilestone } from './questDefinitions.js';
 // Import functions from other new modules
 import { getCurrentPlayer } from './state.js';
 // Import themedItemData directly if it's exported from items.js
-import { themedItemData } from './items.js';
+import { themedItemData, itemValue } from './items.js';
 // Import reputation price calculation
 import { calculateItemPrice } from './actionHandler.js';
 // Import reputation system functions
@@ -1313,6 +1313,11 @@ export function renderShop() {
     if (!elements.shopDisplay) return;
     log("UI: Rendering shop.");
     elements.shopDisplay.innerHTML = '';
+    const nextStock = 5 - ((gameState.turn || 1) % 5); // restocks when the turn reaches a multiple of 5
+    const note = document.createElement('p');
+    note.className = 'shop-note';
+    note.textContent = `New stock in ${nextStock} turn${nextStock === 1 ? '' : 's'} (it follows your level). Sell from your Bag for half price.`;
+    elements.shopDisplay.appendChild(note);
     const hero = gameState.players?.[gameState.currentPlayerIndex];
     if (hero) {
         const price = Progression.innPrice(hero);
@@ -1488,16 +1493,21 @@ function createItemCard(item, context) {
     if (equippedSlot) card.dataset.slot = equippedSlot; // Store slot if equipped for unequip button
 
     // Build stats string, filtering out zero/false values unless specifically needed
-    const statsString = Object.entries(item.stats || {})
-        .map(([key, value]) => {
-            if (value === true && key === 'revive') return sanitizeText(key); // Show 'revive' flag
-            if (typeof value === 'number' && value !== 0) return `${sanitizeText(key.toUpperCase())}: ${value}`;
-            if (key === 'cure' && value) return `Cures: ${sanitizeText(String(value))}`;
-            if (key === 'applyStatus' && value) return `Applies: ${sanitizeText(String(value))}${item.stats.duration ? `(${item.stats.duration}t)` : ''}`;
-            return null;
-         })
-         .filter(s => s !== null)
-         .join(' | ');
+    // Plain words ("Revives a downed ally", "Heals 25%"), not "revive | HEALPERCENT: 0.25".
+    const st = item.stats || {};
+    const statsString = [
+        st.atk ? `⚔️ ATK +${st.atk}` : '',
+        st.def ? `🛡️ DEF +${st.def}` : '',
+        st.revive ? `Revives a downed ally (${Math.round((st.healPercent || 0.25) * 100)}% HP)` : '',
+        st.heal ? `Heals ${st.heal} HP` : '',
+        st.healPercent && !st.revive ? `Heals ${Math.round(st.healPercent * 100)}% HP` : '',
+        st.cure ? `Cures ${sanitizeText(String(st.cure))}` : '',
+        st.applyStatus ? `Gives ${sanitizeText([].concat(st.applyStatus).join(', '))}` : '',
+        st.throwStatus ? `Throw: ${sanitizeText(String(st.throwStatus))}` : '',
+        st.luck ? `🍀 Luck +${st.luck}` : '',
+        st.onHitStatus ? `On hit: ${sanitizeText(String(st.onHitStatus))}` : '',
+        st.resistances ? `Resists ${Object.entries(st.resistances).map(([e, r]) => `${sanitizeText(e)} ${Math.round(r * 100)}%`).join(', ')}` : ''
+    ].filter(Boolean).join(' · ');
 
     const playerIsDowned = player?.isDowned ?? true; // Assume downed if no player
     
@@ -1951,6 +1961,6 @@ export { resetFx };
 
 /** What the shop pays for an item: half its price (half the tier's default when unpriced). */
 export function sellValue(item) {
-    const base = item?.boughtFor ?? item?.cost ?? Config.DefaultItemCosts?.[item?.tier] ?? 10;
+    const base = item?.boughtFor ?? item?.cost ?? itemValue(item);
     return Math.max(item?.boughtFor != null ? 0 : 1, Math.floor(base / 2));
 }
