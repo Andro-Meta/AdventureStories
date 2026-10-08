@@ -610,7 +610,11 @@ function setupCloudBackendListeners() {
     const apiKeyInput = document.getElementById('cloudApiKeyInput');
     const saveBtn = document.getElementById('cloudApiKeySaveBtn');
 
-    if (providerSelect) providerSelect.addEventListener('change', () => updateCloudProviderNotes(providerSelect.value));
+    if (providerSelect) providerSelect.addEventListener('change', async () => {
+        const { localAI } = await import('./localAI.js');
+        localAI.setCloudProvider(providerSelect.value); // remembered right away, no Save needed
+        updateCloudProviderNotes(providerSelect.value);
+    });
     const injury = document.getElementById('injuryDetailToggle');
     if (injury) {
         injury.checked = Config.injuryDetailOn();
@@ -627,7 +631,7 @@ function setupCloudBackendListeners() {
             const { localAI } = await import('./localAI.js');
             localAI.setCloudProvider(providerKey);
             localAI.setApiKey(key, mainKeyProvider(providerKey));
-            window.location.reload();
+            await afterKeySaved(providerKey);
         });
     }
     for (const [btnId, inputId, slot] of [['googleApiKeySaveBtn', 'googleApiKeyInput', 'gemma_google'], ['googleApiKey2SaveBtn', 'googleApiKey2Input', 'gemma_google_2']]) {
@@ -637,9 +641,17 @@ function setupCloudBackendListeners() {
             const { localAI } = await import('./localAI.js');
             localAI.setCloudProvider(providerSelect ? providerSelect.value : 'auto');
             localAI.setApiKey(key, slot);
-            window.location.reload();
+            await afterKeySaved(providerSelect ? providerSelect.value : 'auto');
         });
     }
+}
+
+// Stay on AI Settings after a save (it used to reload to the main menu):
+// clear the field, show "✓ Key saved", test the connection.
+async function afterKeySaved(providerKey) {
+    updateCloudProviderNotes(providerKey);
+    UI.showPopup('Key saved', 'info', 2000);
+    await runConnectionCheck();
 }
 
 // --- Global Error Handling ---
