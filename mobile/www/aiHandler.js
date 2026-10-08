@@ -74,7 +74,7 @@ ALREADY HANDLED BY THE GAME (do not emit): anything listed under "Already applie
 YOURS TO EMIT when the story makes them happen:
 - A named new place the players enter: replace /currentLocation AND add /entityMemory/locations/<Name>.
 - New named NPCs or notable items: add /entityMemory/npcs/<Name> or /entityMemory/items/<Name>; items the hero picks up: add ${P}/inventory/-.
-- A fight starts: add /enemies/- (hp, maxHp, atk, def, abilities) AND replace /inCombat true.
+- A fight starts: add /enemies/- (hp, maxHp, atk, def, abilities) AND replace /inCombat true. During a fight the game handles enemy HP and defeat itself: never emit /enemies/<n>/hp or /isDefeated, and never re-add an enemy that is already there or was defeated.
 - Status effects with narrative weight (Poison, Burn, Stun, Fear, Regen, Shield...): add ${P}/statusEffects/- {name, duration}.
 - Quest beats: add /questProgress/milestones/- using the EXACT names from the MAIN QUEST STAGE block, plus replace /questProgress/completionPercentage. Favors or rumors: add /questProgress/sideQuests/- {name, description, reward}.
 ${gameState.adventureGoal ? '' : '- Set /adventureGoal once early (turn 4-6).\n'}- Main quest truly finished: add the "final_blow" milestone (the game then completes the quest).

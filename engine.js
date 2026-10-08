@@ -464,10 +464,13 @@ const PATHS = [
     {
         regex: /^\/enemies\/-$/,
         ops: ['add'],
-        validate: (_m, value) => {
+        validate: (_m, value, gs) => {
             if (!value || typeof value !== 'object') return 'enemy must be an object';
             if (!value.name || typeof value.name !== 'string') return 'enemy.name required';
             if (typeof value.hp !== 'number' || value.hp <= 0) return 'enemy.hp must be a positive number';
+            const same = (gs.enemies || []).filter(e => String(e.name).trim().toLowerCase() === value.name.trim().toLowerCase());
+            if (same.some(e => !e.isDefeated)) return `"${value.name}" is already in the fight`;
+            if (same.some(e => e.isBoss)) return `"${value.name}" was already defeated`;
             return null;
         },
         apply: (_m, value, gs) => {
@@ -488,10 +491,16 @@ const PATHS = [
             // Bosses (the narrator marks the main threat isBoss): a sturdier
             // floor that scales with party size, a guaranteed good drop, and a
             // signature attack every other round (combat.js handleEnemyTurn).
-            if (value.isBoss) {
+            // The first enemy of the final confrontation is the boss even if the
+            // narrator forgets "isBoss" (live: it did, and the climax was a
+            // 35-HP spirit).
+            const msNames = (gs.questProgress?.milestones || []).map(m => m.name);
+            const climaxFoe = msNames.includes('final_confrontation') && !msNames.includes('final_blow')
+                && !(gs.enemies || []).some(e => e.isBoss);
+            if (value.isBoss || climaxFoe) {
                 const party = Math.max(1, (gs.players || []).length);
                 enemy.isBoss = true;
-                enemy.hp = enemy.maxHp = Math.max(enemy.maxHp, 60 + 30 * party);
+                enemy.hp = enemy.maxHp = Math.max(enemy.maxHp, 40 + 20 * party);
                 enemy.atk = Math.max(enemy.atk, 9);
                 enemy.def = Math.max(enemy.def, 4);
                 enemy.lootTier = 'High';
@@ -539,6 +548,7 @@ const PATHS = [
         validate: (m, value, gs) => {
             const idx = Number(m[1]);
             if (!gs.enemies?.[idx]) return `enemies[${idx}] does not exist`;
+            if (gs.inCombat) return 'enemy HP and defeat are handled by the combat system during fights';
             if (m[2] === 'hp') {
                 if (typeof value !== 'number' || !Number.isFinite(value)) return 'hp must be a finite number';
             } else if (m[2] === 'isDefeated') {
@@ -615,6 +625,11 @@ const PATHS = [
                 return n === norm;
             });
             if (isDup) return `duplicate milestone "${value.name}" (already recorded)`;
+            // The quest can't end while the boss still stands (live: final_blow
+            // arrived with the boss at 36/60). Killing it adds final_blow.
+            if (norm === 'final blow' && (gs?.enemies || []).some(e => e.isBoss && !e.isDefeated && e.hp > 0)) {
+                return 'final_blow must wait until the boss is defeated';
+            }
             return null;
         },
         apply: (_m, value, gs) => {
@@ -735,8 +750,9 @@ const PATHS = [
     {
         regex: /^\/isGoalComplete$/,
         ops: ['replace'],
-        validate: (_m, value) => {
+        validate: (_m, value, gs) => {
             if (typeof value !== 'boolean') return 'isGoalComplete must be boolean';
+            if (value && (gs?.enemies || []).some(e => e.isBoss && !e.isDefeated && e.hp > 0)) return 'the quest ends when the boss is defeated';
             return null;
         },
         apply: (_m, value, gs) => {
@@ -749,7 +765,7 @@ const PATHS = [
                 gs.questProgress.completionPercentage = 100;
                 if (!gs.questRewardsGranted) {
                     gs.questRewardsGranted = true; // once per main quest
-                    import('./resolution.js').then(r => r.handleGoalCompletionRewards())
+                    gs._rewardsPromise = import('./resolution.js').then(r => r.handleGoalCompletionRewards())
                         .catch(e => (window.displayVisualError || console.log)(`Quest rewards failed: ${e.message}`));
                 }
                 if (gs.godModeManager) {

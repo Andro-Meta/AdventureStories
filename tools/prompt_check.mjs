@@ -74,13 +74,31 @@ check(AI.findEntityKey({ 'Grand Foyer': {} }, 'The grand-foyer') === 'Grand Foye
 // Bosses and mid-fight reinforcements.
 Engine.applyDiff([{ op: 'add', path: '/enemies/-', value: { name: 'Kraken Queen', hp: 30, atk: 4, def: 1, isBoss: true } }], { strict: false });
 const boss = gameState.enemies.find(e => e.name === 'Kraken Queen');
-check(boss?.isBoss && boss.maxHp >= 120 && boss.lootChance === 1, `boss gets a 2-player floor (hp ${boss?.maxHp}) and a sure drop`);
+check(boss?.isBoss && boss.maxHp >= 80 && boss.lootChance === 1, `boss gets a 2-player floor (hp ${boss?.maxHp}) and a sure drop`);
 check(gameState.combat.initiative.includes(boss.id), 'an enemy added mid-fight joins the turn order');
 
 // Pacing nudge after 5 idle rounds.
 const qs = { turn: 20, adventureGoal: 'x', questProgress: { milestones: [{ name: 'call_to_adventure', turn: 2 }, { name: 'world_introduced', turn: 4 }, { name: 'stakes_clear', turn: 12 }] } };
 check(/STALLED: 8 rounds/.test(Q.buildQuestStageHint(qs)), 'stalled story (8 idle rounds) gets a pacing nudge toward the next beat');
 check(!/STALLED/.test(Q.buildQuestStageHint({ ...qs, turn: 14 })), 'no nudge when a beat happened recently');
+
+// Combat owns enemy HP; no duplicate villains.
+const bossIdx = gameState.enemies.indexOf(boss);
+check(!Engine.validateOp({ op: 'replace', path: `/enemies/${bossIdx}/hp`, value: 0 }).ok, 'narrator cannot set enemy HP during a fight');
+check(!Engine.validateOp({ op: 'add', path: '/enemies/-', value: { name: 'kraken queen', hp: 50 } }).ok, 'a second copy of a living enemy is refused');
+boss.isDefeated = true;
+check(!Engine.validateOp({ op: 'add', path: '/enemies/-', value: { name: 'Kraken Queen', hp: 90 } }).ok, 'a defeated boss cannot be re-added');
+
+// The first foe after final_confrontation is the boss even without isBoss.
+gameState.enemies = []; gameState.inCombat = false; gameState.combat = null;
+gameState.questProgress.milestones = [{ name: 'final_confrontation', turn: 30 }];
+Engine.applyDiff([{ op: 'add', path: '/enemies/-', value: { name: 'Wailing Spirit', hp: 35 } }], { strict: false });
+check(gameState.enemies[0]?.isBoss === true, 'climax foe becomes the boss automatically');
+
+check(!Engine.validateOp({ op: 'add', path: '/questProgress/milestones/-', value: { name: 'final_blow' } }).ok, 'final_blow is refused while the boss still stands');
+check(!Engine.validateOp({ op: 'replace', path: '/isGoalComplete', value: true }).ok, 'isGoalComplete is refused while the boss still stands');
+gameState.enemies[0].isDefeated = true; gameState.enemies[0].hp = 0;
+check(Engine.validateOp({ op: 'add', path: '/questProgress/milestones/-', value: { name: 'final_blow' } }).ok, 'final_blow is accepted once the boss is down');
 
 console.log(failed ? `✗ ${failed} PROMPT CHECK FAILURE(S)` : '✓ prompt checks pass');
 process.exit(failed ? 1 : 0);

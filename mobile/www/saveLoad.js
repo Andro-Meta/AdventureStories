@@ -142,6 +142,7 @@ export function saveGameToLocalStorage(slotName) {
         // Runtime-only fields: a saved in-flight promise becomes {} (truthy)
         // and blocked every later arc-memory summary after loading.
         delete stateToSave._arcMemoryRefreshInFlight;
+        delete stateToSave._rewardsPromise;
         stateToSave.combatRoundInProgress = false;
         log("SaveLoad: Pruning message history for save...");
         stateToSave.messageHistory = pruneMessageHistory(stateToSave.messageHistory);

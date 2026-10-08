@@ -733,6 +733,8 @@ Result: ${gameState.narrativeContext.lastOutcome?.success ? 'it works out' : 'it
         gameState.isLoading = false;
         gameState.combatRoundInProgress = false;
         if (recapBefore) {
+            // The win reward is granted asynchronously; include it in this recap.
+            if (gameState._rewardsPromise) { try { await gameState._rewardsPromise; } catch (_) {} delete gameState._rewardsPromise; }
             try { UI.showTurnRecap(formatTurnRecap(recapBefore, snapshotParty(), recapActor)); } catch (_) {}
             try { (await import('./saveLoad.js')).autosave(); } catch (e) { log(`Autosave failed: ${e.message}`); }
         }
