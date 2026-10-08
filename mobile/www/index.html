@@ -59,6 +59,7 @@
                         <option value="openrouter_free">OpenRouter — Free models (auto-fallback)</option>
                         <option value="openrouter_ultra">OpenRouter — Nemotron 3 Ultra 550B (Free, richest, slower)</option>
                         <option value="openrouter_gemma4">OpenRouter — Gemma 4 31B (Free, often rate-limited)</option>
+                        <option value="groq_qwen">Groq: Qwen 3.8 27B (Free, fast, no thinking)</option>
                         <option value="googleai">Google AI Studio — Gemini Flash-Lite (Free, fastest)</option>
                     </select>
 
@@ -76,6 +77,12 @@
                             <input type="password" id="googleApiKey2Input" class="api-key-input" placeholder="Optional: key from a second Google account" autocomplete="off" spellcheck="false">
                             <button id="googleApiKey2SaveBtn" class="primary">Save</button>
                         </div>
+                        <h3>Groq Key (used when Google is busy):</h3>
+                        <div class="api-key-row">
+                            <input type="password" id="groqApiKeyInput" class="api-key-input" placeholder="Paste your free Groq key" autocomplete="off" spellcheck="false">
+                            <button id="groqApiKeySaveBtn" class="primary">Save</button>
+                        </div>
+                        <p class="api-key-hint">Free key: <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer">console.groq.com/keys →</a> (no credit card)</p>
                     </div>
 
                     <h3 id="cloudKeyLabel">API Key:</h3>

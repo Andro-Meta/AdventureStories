@@ -585,6 +585,8 @@ function updateCloudProviderNotes(providerKey) {
     if (gInput) { gInput.value = ''; gInput.placeholder = saved('flashlite_google') || 'Paste your free Google AI Studio key'; }
     const g2Input = document.getElementById('googleApiKey2Input');
     if (g2Input) { g2Input.value = ''; g2Input.placeholder = saved('flashlite_google_2') || 'Optional: key from a second Google account'; }
+    const groqInput = document.getElementById('groqApiKeyInput');
+    if (groqInput) { groqInput.value = ''; groqInput.placeholder = saved('groq_qwen') || 'Paste your free Groq key'; }
     const signupUrl = (auto ? Config.CLOUD_PROVIDERS.openrouter_free : provider).signupUrl;
     const notesEl = document.getElementById('cloudProviderNotes');
     const signupEl = document.getElementById('cloudSignupLink');
@@ -648,10 +650,10 @@ function setupCloudBackendListeners() {
             await afterKeySaved(providerKey);
         });
     }
-    for (const [btnId, inputId, slot] of [['googleApiKeySaveBtn', 'googleApiKeyInput', 'flashlite_google'], ['googleApiKey2SaveBtn', 'googleApiKey2Input', 'flashlite_google_2']]) {
+    for (const [btnId, inputId, slot] of [['googleApiKeySaveBtn', 'googleApiKeyInput', 'flashlite_google'], ['googleApiKey2SaveBtn', 'googleApiKey2Input', 'flashlite_google_2'], ['groqApiKeySaveBtn', 'groqApiKeyInput', 'groq_qwen']]) {
         document.getElementById(btnId)?.addEventListener('click', async () => {
             const key = document.getElementById(inputId)?.value?.trim() || '';
-            if (!key) { UI.showPopup('Paste your Google key first.', 'warning'); return; }
+            if (!key) { UI.showPopup('Paste your key first.', 'warning'); return; }
             const { localAI } = await import('./localAI.js');
             localAI.setCloudProvider(providerSelect ? providerSelect.value : 'auto');
             localAI.setApiKey(key, slot);
