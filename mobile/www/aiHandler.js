@@ -6,6 +6,7 @@ import { gameState } from './state.js';
 import * as Config from './config.js';
 import * as UI from './ui.js';
 import * as API from './api_new.js';
+import * as AdaptiveAbilities from './adaptiveAbilities.js';
 import { getChoiceSchema, validateChoicesPayload, arcMemorySchema, validateArcMemoryPayload, storyTurnSchema, validateNarrativeTurnPayload, EXPLORATION_CHOICE_TYPES, COMBAT_CHOICE_TYPES } from './schemas.js';
 import { applyDiff, describeAllowedPaths } from './engine.js';
 import { renderMemoryBlock } from './memoryRetriever.js';
@@ -511,7 +512,8 @@ CONTENT POLICY (${tier}): ${policy}${injuryLine} If players ask for something of
     // (The old QUEST PACE line read questProgressManager.currentPhase, which
     // never left "beginning"; the MAIN QUEST STAGE block carries the real act.)
 
-    parts.push(`THEME: ${gameState.adventureTheme}${gameState.customThemeDescription ? ` (${gameState.customThemeDescription})` : ''}. ${themeNotes(gameState.adventureTheme)}
+    const noMagic = AdaptiveAbilities.isMagicWorld() ? '' : ` No magic exists in this world: special powers, moves and remedies come from technology, gear, training and know-how (${AdaptiveAbilities.getCurrentThemeAdaptation().abilityNamePlural}), never spells or mana.`;
+    parts.push(`THEME: ${gameState.adventureTheme}${gameState.customThemeDescription ? ` (${gameState.customThemeDescription})` : ''}. ${themeNotes(gameState.adventureTheme)}${noMagic}
 Use names, people, places and props native to this theme (no village elders in cyberpunk, no libraries in dinosaur times). Avoid over-used names: Sunken Library, Heart of Shadow/Darkness, Shadow Blight, Whispering Woods/Cove, anything 'Salty', the Ancient Evil, the Chosen One.${usedNamesLine()}`);
 
     if (gameState.storyHook && (gameState.turn || 0) <= 3) {

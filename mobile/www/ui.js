@@ -7,6 +7,7 @@ import { gameState } from './state.js';
 import * as Config from './config.js';
 import { loadPlayerAges, loadPlayerNames } from './inputCache.js';
 import * as Spells from './spells.js';
+import * as AdaptiveAbilities from './adaptiveAbilities.js';
 // Import specific utils needed
 import { sanitizeText } from './utils.js';
 import { describeQuestStep, friendlyMilestone } from './questDefinitions.js';
@@ -1302,7 +1303,7 @@ export function renderSpecialMoves() {
     if (spells.length > 0) {
         const spellsHeader = document.createElement('h3');
         spellsHeader.className = 'spec-section-header';
-        spellsHeader.textContent = 'Known Spells';
+        spellsHeader.textContent = `Known ${AdaptiveAbilities.getCurrentThemeAdaptation().abilityNamePlural || 'Abilities'}`;
         elements.specialMovesDisplay.appendChild(spellsHeader);
         const sortedSpells = [...spells].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
         sortedSpells.forEach(spell => {
@@ -1320,7 +1321,7 @@ export function renderSpecialMoves() {
             castBtn.className = 'castSpellCardBtn';
             const player = getCurrentPlayer();
             const enoughMp = (player?.mp ?? 0) >= (spell.mpCost || 0);
-            castBtn.textContent = enoughMp ? `Cast (${spell.mpCost || 0} MP)` : `Need ${spell.mpCost} MP`;
+            castBtn.textContent = enoughMp ? `${AdaptiveAbilities.isMagicWorld() ? 'Cast' : 'Use'} (${spell.mpCost || 0} MP)` : `Need ${spell.mpCost} MP`;
             castBtn.disabled = !enoughMp || gameState.isLoading;
             castBtn.addEventListener('click', async () => {
                 showScreen('gameScreen');
