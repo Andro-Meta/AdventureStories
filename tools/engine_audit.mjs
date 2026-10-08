@@ -76,7 +76,7 @@ const cases = [
    ] },
   { name:'reputation',ops:[{op:'replace',path:'/reputationSystem/factions/authority',value:75}] },
   { name:'sideQuest',ops:[{op:'add',path:'/questProgress/sideQuests/-',value:{name:'Find the lost cat',description:'A villager cat'}}] },
-  { name:'milestone',ops:[{op:'add',path:'/questProgress/milestones/-',value:{name:'final_blow',description:'The threat is ended.'}}] }
+  { name:'milestone',ops:[{op:'add',path:'/questProgress/milestones/-',value:{name:'first_obstacle_overcome',description:'The gate is open.'}}] }
 ];
 
 for (const c of cases) {
@@ -156,6 +156,7 @@ gameState.godModeManager = {
   activateGodMode()       { activateCalled = true; },
   deactivateGodMode()     {}
 };
+gameState.questProgress.bossDefeated = true; // the quest is won only after the boss falls
 Engine.applyDiff([{op:'replace',path:'/isGoalComplete',value:true}]);
 if (gameState.allowCustomActions === true && unlockCalled && activateCalled) {
   ok('isGoalComplete=true → allowCustomActions, checkUnlockConditions, activateGodMode all fire');

@@ -804,6 +804,54 @@ await block(async () => {
   check(p.spellcasting.maxSpellLevel >= 2, `level ${p.level} unlocks spell level ${p.spellcasting.maxSpellLevel}`);
 });
 
+// =====================================================================
+section('Batch 6: the quest is only won by beating the boss (phone run 10-08)');
+const climaxState = () => {
+  fresh();
+  gameState.enemies = [];
+  gameState.questProgress = { villain: 'High Inquisitor Malakor', milestones: ['call_to_adventure', 'world_introduced', 'stakes_clear', 'first_obstacle_overcome', 'antagonist_revealed', 'final_confrontation'].map(name => ({ name })) };
+};
+await block(async () => {
+  // The exact reply from the phone: win ops before the boss is added.
+  climaxState();
+  Engine.applyDiff([
+    { op: 'add', path: '/questProgress/milestones/-', value: { name: 'final_blow' } },
+    { op: 'replace', path: '/isGoalComplete', value: true },
+    { op: 'add', path: '/enemies/-', value: { name: 'High Inquisitor Malakor', hp: 60, isBoss: true } },
+    { op: 'replace', path: '/inCombat', value: true }
+  ]);
+  const names = gameState.questProgress.milestones.map(m => m.name);
+  check(!gameState.isGoalComplete && !names.includes('final_blow') && gameState.inCombat, `win ops sent with a fresh boss are refused (goal ${gameState.isGoalComplete}, final_blow ${names.includes('final_blow')}, in combat ${gameState.inCombat})`);
+});
+await block(async () => {
+  // No boss fight at all: the story cannot just declare victory.
+  climaxState();
+  Engine.applyDiff([{ op: 'add', path: '/questProgress/milestones/-', value: { name: 'final_blow' } }, { op: 'replace', path: '/isGoalComplete', value: true }]);
+  check(!gameState.isGoalComplete, `no boss ever fought: goal stays open (${gameState.isGoalComplete})`);
+});
+await block(async () => {
+  // Positive control: kill the boss, then the same ops win.
+  climaxState();
+  Engine.applyDiff([{ op: 'add', path: '/enemies/-', value: { name: 'High Inquisitor Malakor', hp: 60, isBoss: true } }, { op: 'replace', path: '/inCombat', value: true }]);
+  const boss = gameState.enemies[0]; boss.hp = 0; boss.isDefeated = true;
+  await Combat.handleEnemyDefeat(boss.id);
+  gameState.inCombat = false; gameState.enemies = []; // victory clears the list
+  Engine.applyDiff([{ op: 'add', path: '/questProgress/milestones/-', value: { name: 'final_blow' } }, { op: 'replace', path: '/isGoalComplete', value: true }]);
+  check(gameState.isGoalComplete === true, `after the boss falls the quest is won (${gameState.isGoalComplete})`);
+});
+await block(async () => {
+  // Story ended the fight with the drake at 2 HP: it stayed in the list, out of combat.
+  fresh();
+  gameState.enemies = [];
+  Engine.applyDiff([{ op: 'add', path: '/enemies/-', value: { name: 'Mountain Drake', hp: 25 } }, { op: 'replace', path: '/inCombat', value: true }]);
+  gameState.enemies[0].hp = 2;
+  Engine.applyDiff([{ op: 'replace', path: '/inCombat', value: false }]);
+  check(!gameState.inCombat && gameState.enemies.length === 0, `story-ended fight: live drake is driven off (enemies left ${gameState.enemies.length})`);
+  Engine.applyDiff([{ op: 'add', path: '/enemies/-', value: { name: 'Malakor', hp: 60, isBoss: true } }, { op: 'replace', path: '/inCombat', value: true }]);
+  Engine.applyDiff([{ op: 'replace', path: '/inCombat', value: false }]);
+  check(gameState.inCombat === true, `story cannot end a boss fight with the boss standing (in combat ${gameState.inCombat})`);
+});
+
 console.error = realError;
 out(`\nfetch attempts blocked: ${fetchCalls}; elapsed ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 out(failed ? `✗ ${failed} mechanics check(s) failed` : '✓ all mechanics checks passed');
