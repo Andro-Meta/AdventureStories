@@ -1251,6 +1251,41 @@ await block(async () => {
   check(errs.length === 0, `five choice types at a natural 20 raise no errors (${errs[0] || 'clean'})`);
 });
 
+// =====================================================================
+section('Batch 16: the stat follows the action; lucky charms');
+await block(async () => {
+  const S = await import('../schemas.js');
+  const v = S.validateChoicesPayload({ choices: [
+    { type: 'Good', text: 'Help the fisherman haul his net', stat: 'kind' }, { type: 'Bad', text: 'Kick the guard dog to get past it', stat: 'brave' },
+    { type: 'Risky', text: 'Slip past the sleeping guards', stat: 'sneaky' }, { type: 'Silly', text: 'Challenge the parrot to a staring contest', stat: 'luck' },
+    { type: 'Investigative', text: "Search the captain's desk", stat: 'nonsense' }] }, false);
+  check(v[1].stat === 'brave' && v[2].stat === 'sneaky' && v[3].stat === 'luck' && !v[4].stat, `choice stats kept, junk dropped (${v.map(c => c.stat || '-').join(',')})`);
+  const h = Prog.ensureStats({ stats: { brave: 1, clever: 1, sneaky: 4, kind: 1 } });
+  const risky = Math.round(Prog.chanceFor('Risky', h, 'sneaky') * 100), riskyDefault = Math.round(Prog.chanceFor('Risky', h) * 100);
+  check(risky === 55 && riskyDefault === 40, `a sneaky Risky move uses Sneaky 4 (${risky}%), untagged uses Brave 1 (${riskyDefault}%)`);
+  check(Prog.CHECKS.Bad.stat === 'brave', `untagged Bad choices use Brave, not Sneaky (${Prog.CHECKS.Bad.stat})`);
+});
+await block(async () => {
+  // The turn rolls with the stat on the chosen button.
+  const { p } = fresh(); p.stats = { brave: 0, clever: 0, sneaky: 5, kind: 0 };
+  gameState.currentChoices = [{ type: 'Risky', text: 'Slip past the sleeping guards', stat: 'sneaky' }];
+  pinRandom(0.5); // die 11 + Sneaky 5 = 16 vs 14
+  await AH.handlePlayerChoice('Risky', 'Slip past the sleeping guards'); unpinRandom();
+  const r = gameState.narrativeContext.lastOutcome?.roll;
+  check(r?.stat === 'sneaky' && r?.total === 16 && r?.band === 'success', `rolled ${r?.stat} ${r?.die}+${r?.bonus}=${r?.total} vs ${r?.dc}: ${r?.band}`);
+});
+await block(async () => {
+  const Items = await import('../items.js');
+  const h = Prog.ensureStats({ stats: {}, inventory: [] });
+  const before = Math.round(Prog.chanceFor('Silly', h) * 100);
+  h.inventory.push(Items.makeLuckyCharm('pirate', 1));
+  const after = Math.round(Prog.chanceFor('Silly', h) * 100);
+  check(Prog.luckOf(h) === 1 && after === before + 5, `a lucky charm: luck ${Prog.luckOf(h)}, Silly ${before}% -> ${after}%`);
+  check(Prog.rollCheck('Risky', h, () => 0.9).band === 'crit', 'with luck 1 a natural 19 is a critical success');
+  const shop = Items.generateShopItems('pirate', 3);
+  check(shop.some(i => i.stats?.luck === 1 && i.cost === 60), `the shop sells a lucky charm (${shop.find(i => i.stats?.luck)?.name})`);
+});
+
 console.error = realError;
 out(`\nfetch attempts blocked: ${fetchCalls}; elapsed ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 out(failed ? `✗ ${failed} mechanics check(s) failed` : '✓ all mechanics checks passed');

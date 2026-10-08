@@ -583,7 +583,9 @@ Fight round ${gameState.combat?.round || 1}. Narrate this round so the fight CHA
             // Coins, HP, items and XP follow from the result, never at random.
             const checkType = validateAndMapActionType(actionType);
             Progression.ensureStats(currentPlayer);
-            const roll = Progression.rollCheck(checkType, currentPlayer);
+            const chosen = (gameState.currentChoices || []).find(c => c?.type === actionType && String(c.text || '').trim() === String(choiceText || '').trim())
+                || (gameState.currentChoices || []).find(c => c?.type === actionType);
+            const roll = Progression.rollCheck(checkType, currentPlayer, Math.random, chosen?.stat);
             const result = Progression.outcomeFor(roll, currentPlayer);
             const won = roll.band === 'success' || roll.band === 'crit';
             success = won || roll.band === 'partial';
@@ -618,6 +620,12 @@ Fight round ${gameState.combat?.round || 1}. Narrate this round so the fight CHA
                     UI.showPopup(`Found ${newItem.name}!`, 'item');
                     outcomeNotes.push(`found ${newItem.name} (already in the inventory)`);
                 }
+            }
+            if (result.charm) {
+                const charm = Items.makeLuckyCharm(gameState.adventureTheme, result.charm);
+                currentPlayer.inventory.push(charm);
+                UI.showPopup(`🍀 Found ${charm.name}! Luck +${result.charm}`, 'legendary', 3500);
+                outcomeNotes.push(`found ${charm.name}, a lucky charm (already in the inventory)`);
             }
             if (result.fluster) {
                 Combat.applyStatusEffect(currentPlayer, 'Flustered', 3, {}, 'fumble');

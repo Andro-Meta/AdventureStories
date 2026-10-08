@@ -833,7 +833,8 @@ function heroStatsRow(hero) {
     Progression.ensureStats(hero);
     const need = Progression.xpForLevel(hero.level);
     const pct = Math.min(100, Math.round(100 * hero.xp / need));
-    const chips = Object.entries(Progression.STATS).map(([k, s]) => `<span class="stat-chip" title="${s.name}: ${s.does}">${s.icon}${hero.stats[k]}</span>`).join('');
+    const chips = Object.entries(Progression.STATS).map(([k, s]) => `<span class="stat-chip" title="${s.name}: ${s.does}">${s.icon}${hero.stats[k]}</span>`).join('')
+        + (Progression.luckOf(hero) ? `<span class="stat-chip" title="Lucky charm: helps luck rolls; crits from ${20 - Progression.luckOf(hero)}">🍀${Progression.luckOf(hero)}</span>` : '');
     return `<div class="hero-stats">${chips}
         <span class="xp-wrap" title="${hero.xp}/${need} XP to level ${hero.level + 1}"><span class="xp-bar"><span style="width:${pct}%"></span></span><small>${hero.xp}/${need} XP</small></span>
         ${hero.statPoints > 0 ? `<button class="spend-points" data-hero="${sanitizeText(hero.id)}">⭐ +${hero.statPoints} stat</button>` : ''}</div>`;
@@ -846,7 +847,7 @@ function statsExplainer(hero) {
         `<li>${s.icon} <b>${s.name} ${hero.stats[k]}</b>/${Progression.STAT_MAX}: ${s.does}. In fights: ${s.fight}.${hero.stats[k] < Progression.STAT_MAX ? ` <small>Practice ${hero.sparks[k] || 0}/${Progression.SPARKS_PER_POINT}</small>` : ' <small>Mastered</small>'}</li>`).join('');
     return `<div class="stats-explainer"><p><b>Level ${hero.level}</b> · ${hero.xp}/${Progression.xpForLevel(hero.level)} XP</p>
         <ul>${rows}</ul>
-        <p class="stats-how"><small>Every choice is a roll: d20 + the stat it uses, shown as a % on the button. Good uses Kind, Investigative Clever, Risky Brave, Bad Sneaky; Silly is pure luck. Each check gives XP; each level lets you raise a stat; ${Progression.SPARKS_PER_POINT} successes with a stat raise it too.</small></p></div>`;
+        <p class="stats-how"><small>Every choice is a roll: a 20-sided die plus the stat the action uses (the icon on the button), and the % is your chance. Each point in a stat adds +5% to every choice that uses it. 🍀 choices are pure luck: a lucky charm in your bag helps those and makes a 19 count as a critical success too.${Progression.luckOf(hero) ? ` You carry luck +${Progression.luckOf(hero)}.` : ''} Every roll gives XP; each level lets you raise a stat; ${Progression.SPARKS_PER_POINT} successes with a stat raise it as well.</small></p></div>`;
 }
 
 let statPromptOpen = false;
@@ -1108,11 +1109,12 @@ export function renderChoices(choices, handler = null) {
         const check = !gameState.inCombat && !handler && Progression.CHECKS[choice.type];
         if (check) {
             const hero = gameState.players?.[gameState.currentPlayerIndex] || gameState.players?.[0];
-            const pct = Math.round(Progression.chanceFor(choice.type, hero) * 100);
-            const icon = check.stat ? Progression.STATS[check.stat].icon : '🎲';
+            const stat = choice.stat && choice.stat !== 'luck' && Progression.STATS[choice.stat] ? choice.stat : (choice.stat === 'luck' ? null : check.stat);
+            const pct = Math.round(Progression.chanceFor(choice.type, hero, choice.stat) * 100);
+            const icon = stat ? Progression.STATS[stat].icon : '🍀';
             const danger = choice.type === 'Risky' || choice.type === 'Bad' ? ' ⚠' : '';
             button.dataset.odds = `${icon} ${pct}%${danger}`;
-            button.title = `${check.stat ? Progression.STATS[check.stat].name : 'Luck'} check, ${pct}% to succeed${danger ? ': failing can hurt' : ''}`;
+            button.title = `${stat ? Progression.STATS[stat].name : 'Luck'} check, ${pct}% to succeed${danger ? ': failing can hurt' : ''}`;
         }
         // In a fight the move type is shown: Attack/Special/Item/Run are
         // mechanics, not hidden story options.

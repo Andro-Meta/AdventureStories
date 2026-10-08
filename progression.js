@@ -27,14 +27,27 @@ export const STATS = {
 export const STAT_MAX = 5;
 export const SPARKS_PER_POINT = 6;
 
-// Choice type -> the stat it tests and how hard it is (DC on a d20).
+// Choice type -> how hard it is (DC on a d20) and the stat it uses when the
+// storyteller didn't say. The storyteller tags each choice with the stat the
+// ACTION really uses ("Kick the guard dog" is Brave, "slip past it" Sneaky);
+// the type only sets the risk. (Michael: "is kicking a guard dog sneaky?!")
 export const CHECKS = {
     Good:          { stat: 'kind',   dc: 8,  label: 'Easy' },
     Investigative: { stat: 'clever', dc: 10, label: 'Fair' },
     Silly:         { stat: null,     dc: 10, label: 'Luck' },
-    Bad:           { stat: 'sneaky', dc: 13, label: 'Tricky' },
+    Bad:           { stat: 'brave',  dc: 13, label: 'Tricky' },
     Risky:         { stat: 'brave',  dc: 14, label: 'Hard' }
 };
+const pickStat = (type, stat) => (stat === 'luck' ? null : (STATS[stat] ? stat : CHECKS[type]?.stat ?? null));
+
+/**
+ * Lucky charms: the best one carried counts (cap 3). Luck adds to luck rolls
+ * (Silly, or anything tagged luck) and widens the critical range: with luck 1
+ * a natural 19 is a crit too. (Fighting Fantasy's Luck, as an item.)
+ */
+export function luckOf(hero) {
+    return Math.min(3, Math.max(0, ...(hero?.inventory || []).map(i => Number(i?.stats?.luck) || 0)));
+}
 
 /** Give older saves and new heroes their stats (all 1 to start). */
 export function ensureStats(hero) {
@@ -54,25 +67,29 @@ export const statOf = (hero, key) => (key ? (hero?.stats?.[key] ?? 1) : 0);
 const flusterPenalty = (hero) => (hero?.statusEffects || []).some(e => e?.name === 'Flustered' && e.duration > 0) ? 2 : 0;
 
 /** Chance (0-1) to at least succeed (total >= DC) on d20 + stat. Natural 20 always wins, natural 1 always fails. */
-export function chanceFor(type, hero) {
+export function chanceFor(type, hero, statOverride = undefined) {
     const c = CHECKS[type]; if (!c) return 0.5;
-    const need = c.dc - statOf(hero, c.stat) + flusterPenalty(hero); // roll needed on the die
-    return Math.max(0.05, Math.min(0.95, (21 - need) / 20));
+    const stat = pickStat(type, statOverride);
+    const bonus = stat ? statOf(hero, stat) : luckOf(hero);
+    const need = c.dc - bonus + flusterPenalty(hero); // roll needed on the die
+    const critFrom = 20 - luckOf(hero);                // these always succeed
+    return Math.max((21 - critFrom) / 20, Math.min(0.95, (21 - need) / 20));
 }
 
 /** Roll the check. rng() returns [0,1). */
-export function rollCheck(type, hero, rng = Math.random) {
+export function rollCheck(type, hero, rng = Math.random, statOverride = undefined) {
     const c = CHECKS[type] || CHECKS.Investigative;
+    const stat = pickStat(type, statOverride);
     const die = 1 + Math.floor(rng() * 20);
-    const bonus = statOf(hero, c.stat) - flusterPenalty(hero);
+    const bonus = (stat ? statOf(hero, stat) : luckOf(hero)) - flusterPenalty(hero);
     const total = die + bonus;
     let band;
-    if (die === 20) band = 'crit';
+    if (die >= 20 - luckOf(hero)) band = 'crit';
     else if (die === 1) band = 'fumble';
     else if (total >= c.dc) band = 'success';
     else if (total >= c.dc - 3) band = 'partial';
     else band = 'fail';
-    return { type, stat: c.stat, dc: c.dc, die, bonus, total, band };
+    return { type, stat, dc: c.dc, die, bonus, total, band };
 }
 
 const levelScale = (hero) => 1 + 0.15 * ((hero?.level || 1) - 1);
@@ -104,6 +121,7 @@ export function outcomeFor(roll, hero, rng = Math.random) {
                     o.coins = Math.round((rare ? between(rng, 80, 120) : between(rng, 15, 30)) * s);
                     o.jackpot = rare; o.note = rare ? 'a rare treasure chest' : 'a hidden stash';
                 } else if (r < 0.65) o.item = { tierPool: ['Low', 'Medium'], typePool: ['Consumable', 'Weapon', 'Armor'] };
+                else if (r < 0.70 && luckOf(hero) < 1) o.charm = 1; // a lucky charm
                 else o.note = 'a useful clue';
             } else if (roll.band === 'partial') { o.coins = Math.round(between(rng, 3, 8) * s); o.note = 'a few loose coins'; }
             break;
@@ -185,7 +203,7 @@ export const innPrice = (hero) => 10 + 5 * ((hero?.level || 1) - 1);
 
 /** One readable line for the result toast and the storyteller. */
 export function describeRoll(roll) {
-    const st = roll.stat ? `${STATS[roll.stat].icon}${roll.bonus >= 0 ? '+' : ''}${roll.bonus}` : '🎲';
+    const st = roll.stat ? `${STATS[roll.stat].icon}${roll.bonus >= 0 ? '+' : ''}${roll.bonus}` : `🍀${roll.bonus >= 0 ? '+' : ''}${roll.bonus}`;
     const word = { crit: 'Critical success!', success: 'Success', partial: 'Success, at a cost', fail: 'Setback', fumble: 'Fumble!' }[roll.band];
-    return `${roll.die}${roll.stat ? ` ${st}` : ''} = ${roll.total} vs ${roll.dc}: ${word}`;
+    return `${roll.die}${roll.stat || roll.bonus ? ` ${st}` : ''} = ${roll.total} vs ${roll.dc}: ${word}`;
 }

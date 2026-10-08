@@ -111,6 +111,8 @@ await page.click('#nameInputStartBtn');
 check(await settle(180000), 'new game starts and shows choices');
 const opening = await gs(g => ({ words: (g.currentNarrative || '').split(/\s+/).length, goal: g.adventureGoal, n: g.currentChoices.length, types: g.currentChoices.map(c => c.type).sort().join(',') }));
 check(opening.words > 60 && opening.goal, `opening story (${opening.words} words), goal: "${opening.goal}"`);
+const tags = await gs(g => g.currentChoices.map(c => `${c.stat || '-'}: ${c.text}`));
+check(tags.filter(t => !t.startsWith('-')).length >= 4, `storyteller tags choices with the stat they use: ${tags.map(t => t.slice(0, 60)).join(' | ')}`);
 check(opening.types === 'Bad,Good,Investigative,Risky,Silly', `5 choices, one of each type (${opening.types})`);
 
 const TYPES = ['Investigative', 'Risky', 'Good', 'Silly', 'Bad'];
@@ -210,6 +212,7 @@ if (FULL) {
     });
     if (!s.combat || s.won) break;
     let type = 'Attack';
+    if (s.hp < s.max * 0.6) seen.lowHp = true;
     if (s.hp < s.max * 0.6 && s.potions > 0) type = 'Item';
     else if (s.ready && rounds % 2 === 0) type = 'Special';
     else if (!seen.defend && rounds >= 1) type = 'Defend'; // first round free of potion/special needs
@@ -228,7 +231,7 @@ if (FULL) {
   }
   fs.writeFileSync(`${ROOT}test-results/fightlog_${args.includes("--tag") ? args[args.indexOf("--tag") + 1] : "boss"}.txt`, (await page.evaluate(() => (window.__advLog || []).filter(l => /deals|damage|Combat:|Applying status|status:|sluggish|confused|hasted|misses|blocks|Recalc|ATK|DEF|Power Strike|special|Special/i.test(l)).join(String.fromCharCode(10)))));
   const fin = await gs(g => ({ won: !!g.isGoalComplete, boss: g.enemies.find(e => e.isBoss), poisonLeft: g.players[0].statusEffects.some(x => x.name === 'Poison'), downed: g.players.every(p => p.isDowned || p.hp <= 0) }));
-  check(seen.potion > 0, `potion drunk in the fight (${seen.potion}x, stack went down by one each time)`);
+  check(seen.potion > 0 || !seen.lowHp, seen.lowHp ? `potion drunk in the fight (${seen.potion}x, stack went down by one each time)` : 'hero never needed a potion (stayed above 60% HP)');
   check(seen.special > 0, `Special used (${seen.special}x)`);
   check(seen.defend, 'Defend raised a guard in the live fight');
   check(seen.burn, 'Special put Burn on its target');

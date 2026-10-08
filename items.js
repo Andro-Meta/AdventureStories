@@ -667,6 +667,21 @@ export function generateThemedItem(theme, tier, type) {
  * @param {number} turn - The current game turn (influences tier probability).
  * @returns {Item[]} An array of items available in the shop.
  */
+/**
+ * Lucky charm (progression.js luckOf): carried, not worn. Luck +1 helps luck
+ * rolls and makes a natural 19 a critical success; +2 also 18. Themed names.
+ */
+export function makeLuckyCharm(theme, luck = 1) {
+    const names = { pirate: ['Lucky Doubloon', 'Mermaid-Scale Charm'], space: ['Lucky Circuit Chip', 'Quantum Dice'], cyberpunk: ['Lucky Chip', 'Glitch Token'],
+        wild_west: ['Lucky Horseshoe', 'Gold-Nugget Charm'], steampunk: ['Brass Luck Cog', 'Clockwork Clover'], dinosaur: ['Lucky Amber', 'Raptor-Tooth Charm'],
+        haunted: ['Rabbit-Foot Charm', 'Blessed Candle Stub'], underwater: ['Lucky Pearl', 'Sea-Glass Charm'], arctic: ['Lucky Snow Crystal', 'Aurora Charm'],
+        jungle: ['Lucky Jade Frog', 'Parrot-Feather Charm'], post_apoc: ['Lucky Bottle Cap', 'Four-Leaf Pin'], future_utopia: ['Lucky Light Token', 'Probability Ring'] }[String(theme || '').toLowerCase()]
+        || ['Four-Leaf Clover', 'Lucky Star Charm'];
+    return { id: generateId('item'), name: names[luck >= 2 ? 1 : 0], type: 'Misc', tier: luck >= 2 ? 'High' : 'Medium',
+        effect: `Keep it in your bag: luck +${luck} (helps 🍀 rolls; a natural ${20 - luck}${luck >= 2 ? '-20' : ' or 20'} is a critical success).`,
+        stats: { luck }, cost: luck >= 2 ? 180 : 60, equippedSlot: null };
+}
+
 export function generateShopItems(theme, turn) {
     // (Unchanged)
      if (window.displayVisualError) displayVisualError(`Generating shop items for theme '${theme}', turn ${turn}...`);
@@ -710,6 +725,8 @@ export function generateShopItems(theme, turn) {
     }
 
     if (window.displayVisualError) displayVisualError(`Generated ${shopItems.length} shop items after ${attempts} attempts.`);
+    // A lucky charm is always on the shelf (a better one later in the story).
+    shopItems.push(makeLuckyCharm(theme, (turn || 0) >= 15 ? 2 : 1));
     return shopItems.filter(item => item != null).map(item => ({ ...item, id: generateId('shop') }));
 }
 

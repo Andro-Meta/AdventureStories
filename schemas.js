@@ -12,6 +12,8 @@
 
 export const EXPLORATION_CHOICE_TYPES = ['Good', 'Bad', 'Risky', 'Silly', 'Investigative'];
 export const COMBAT_CHOICE_TYPES = ['Attack', 'Special', 'Item', 'Run'];
+// The skill an exploration choice really uses (progression.js); optional.
+export const CHOICE_STATS = ['brave', 'clever', 'sneaky', 'kind', 'luck'];
 
 // =============================================================================
 // PHASE 1: Narrative state-diff schema.
@@ -78,7 +80,7 @@ export const storyTurnSchema = {
             items: {
                 type: 'object',
                 required: ['type', 'text'],
-                properties: { type: { type: 'string' }, text: { type: 'string', minLength: 1 } }
+                properties: { type: { type: 'string' }, text: { type: 'string', minLength: 1 }, stat: { type: 'string', enum: CHOICE_STATS } }
             }
         }
     }
@@ -154,7 +156,8 @@ export const explorationChoicesSchema = {
                         type: 'string',
                         minLength: 1,
                         maxLength: 240
-                    }
+                    },
+                    stat: { type: 'string', enum: CHOICE_STATS }
                 }
             }
         }
@@ -334,7 +337,8 @@ export function validateChoicesPayload(payload, inCombat) {
             throw new Error(`Duplicate choice type "${c.type}" — exactly one of each required`);
         }
         seen.add(c.type);
-        normalized.push({ type: c.type, text });
+        const stat = typeof raw.stat === 'string' ? raw.stat.trim().toLowerCase() : '';
+        normalized.push(CHOICE_STATS.includes(stat) && !inCombat ? { type: c.type, text, stat } : { type: c.type, text });
     }
 
     const missing = validTypes.filter(t => !seen.has(t));
