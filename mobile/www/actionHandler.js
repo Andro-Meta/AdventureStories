@@ -226,7 +226,9 @@ export async function handlePlayerChoice(actionType, choiceText) {
                     case 'Special': {
                         const ready = (currentPlayer.specialMoves || []).filter(m => (m.currentCooldown || 0) <= 0);
                         const lowerChoice = String(choiceText || '').toLowerCase();
-                        const move = ready.find(m => m.name && lowerChoice.includes(m.name.toLowerCase())) || ready[0];
+                        // "Power Strike" picked from the battle menu, or no learned move ready.
+                        const move = lowerChoice.startsWith('power strike') ? null
+                            : (ready.find(m => m.name && lowerChoice.includes(m.name.toLowerCase())) || ready[0]);
                         if (!move) {
                             // No learned move (most heroes early on): a Power Strike,
                             // a heavy hit usable every other round. Before, Special
@@ -278,9 +280,11 @@ export async function handlePlayerChoice(actionType, choiceText) {
                         const usable = (currentPlayer.inventory || []).filter(i => i && i.type === 'Consumable' && (i.quantity == null || i.quantity > 0));
                         const lowerChoice = String(choiceText || '').toLowerCase();
                         // The item the choice names, else one that heals, else any consumable.
-                        const item = usable.find(i => i.name && lowerChoice.includes(i.name.toLowerCase()))
+                        // "Catch a breath" (battle menu, empty pack) uses nothing.
+                        const item = lowerChoice.startsWith('catch a breath') ? null
+                            : (usable.find(i => i.name && lowerChoice.includes(i.name.toLowerCase()))
                             || usable.find(i => (i.stats?.heal || 0) + (i.stats?.healPercent || 0) > 0)
-                            || usable[0];
+                            || usable[0]);
                         cbStep('3-Item', `item=${item?.name || 'NONE'}`);
                         if (!item) {
                             // Nothing usable left: catch a breath instead of a wasted turn.
@@ -344,6 +348,11 @@ export async function handlePlayerChoice(actionType, choiceText) {
                     }
 
                     case 'Run': {
+                        // Like the classics: no running from the boss.
+                        if ((gameState.enemies || []).some(e => e.isBoss && !e.isDefeated && e.hp > 0)) {
+                            combatLog = `${currentPlayer.name} looks for a way out, but there is no escaping this fight!`;
+                            break;
+                        }
                         const fled = Math.random() < (Config.FLEE_CHANCE ?? 0.4);
                         if (fled) {
                             combatLog = `${currentPlayer.name} successfully escapes from combat.`;

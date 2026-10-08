@@ -42,6 +42,8 @@ window.displayVisualError = (message, error = null) => {
 // --- Android back button (MainActivity asks here first) ---
 // Returns true when handled. Only the main menu lets back leave the app.
 window.__advBack = () => {
+    const picker = document.getElementById('battlePicker');
+    if (picker) { picker.querySelector('.bp-cancel')?.click(); return true; }
     const open = document.querySelector('.modal:not(.hidden)');
     if (open) { open.classList.add('hidden'); return true; }
     const active = document.querySelector('.screen.active')?.id || 'mainMenuScreen';
@@ -423,8 +425,22 @@ function setupEventListeners(UI, setup, actionHandler, saveLoad) { // Added acti
         // Disable all choice buttons immediately to prevent double clicks
         document.querySelectorAll('#choicesContainer .choice-btn').forEach(btn => btn.disabled = true);
 
-        const actionType = button.dataset.actionType;
-        const choiceText = button.textContent; // Get the displayed text
+        let actionType = button.dataset.actionType;
+        let choiceText = button.textContent; // Get the displayed text
+        // Battle commands open a picker (which item / move / target), like a
+        // classic RPG menu. Cancel returns to the choices.
+        if (gameState.inCombat && ['Attack', 'Item', 'Special'].includes(actionType) && !gameState.isLoading) {
+            const Battle = await import('./battle.js');
+            const hero = gameState.players?.[gameState.currentPlayerIndex];
+            const opts = Battle.battleOptions(actionType, hero);
+            if (opts) {
+                const title = { Attack: 'Attack which foe?', Item: 'Use which item?', Special: 'Which special?' }[actionType];
+                const pick = await Battle.pickBattleOption(title, opts);
+                if (!pick) return;
+                actionType = pick.type;
+                choiceText = pick.text;
+            }
+        }
 
         if (actionType && choiceText) {
             displayVisualError(`Standard Choice clicked: Type="${actionType}", Text="${choiceText.substring(0, 30)}..."`);

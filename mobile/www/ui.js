@@ -947,6 +947,7 @@ function createCharacterCard(character, type, index, configRef) {
     card.innerHTML = `
         <div class="card-details hidden">
              ${isPlayer ? `<p>Status: <span class="${type}-status">${isDowned ? 'Downed' : 'Okay'}</span></p>` : ''}
+             ${isPlayer ? `<p>Level ${character.level || 1} · XP <span>${character.xp || 0}/${40 * (character.level || 1)}</span></p>` : ''}
              <p>ATK: <span class="${type}-atk">${character.atk ?? '?'}</span> | DEF: <span class="${type}-def">${character.def ?? '?'}</span></p>
              ${isPlayer ? `<p>Weapon: <span class="${type}-weapon">${sanitizeText(weaponName)} ${weaponTier ? `(${sanitizeText(weaponTier)})` : ''}</span></p>` : ''}
              ${isPlayer ? `<p>Armor: <span class="${type}-armor">${sanitizeText(armorName)} ${armorTier ? `(${sanitizeText(armorTier)})` : ''}</span></p>` : ''}
@@ -960,7 +961,7 @@ function createCharacterCard(character, type, index, configRef) {
              ${isPlayer && index === 0 && gameState.players?.length === 1 ? generateStoryMemoryUI() : ''}
         </div>
         <div class="card-header collapsible">
-            <span class="${type}-name">${sanitizeText(character.name)}</span>
+            <span class="${type}-name">${sanitizeText(character.name)}${isPlayer ? ` <small class="hero-level">Lv ${character.level || 1}</small>` : ''}</span>
             <div class="${type}-hp">
                 <span class="hp-icon">❤️</span>
                 <span class="hp-value">${character.hp ?? '?'}</span>&nbsp;/&nbsp;<span class="hp-max">${character.maxHp ?? '?'}</span>
@@ -1220,7 +1221,10 @@ export function updateQuickActions() {
     const menuDisabled = gameState.isLoading;
 
     elements.quickActionButtons.inventoryBtn.disabled = baseDisabled;
-    elements.quickActionButtons.shopBtn.disabled = baseDisabled;
+    // No shopping mid-battle (classic RPG rule); Bag and Moves still work there,
+    // and using an item or spell from them costs the turn.
+    elements.quickActionButtons.shopBtn.disabled = baseDisabled || !!gameState.inCombat;
+    elements.quickActionButtons.shopBtn.title = gameState.inCombat ? 'Shop is closed during battle' : 'Shop';
     elements.quickActionButtons.specialBtn.disabled = baseDisabled;
     elements.quickActionButtons.menuBtn.disabled = menuDisabled;
 
@@ -1556,11 +1560,11 @@ function createItemCard(item, context) {
         <div class="button-container vertical">
             ${context === 'inventory' ? `
                 ${item.type === 'Consumable' && !item.stats?.revive ? `<button class="useItemBtn" ${cannotAct ? 'disabled' : ''}>Use</button>` : ''}
-                ${item.type === 'Weapon' && !isEquipped ? `<button class="equipItemBtn" data-slot="weapon" ${cannotAct ? 'disabled' : ''}>Equip Weapon</button>` : ''}
-                ${item.type === 'Armor' && !isEquipped ? `<button class="equipItemBtn" data-slot="armor" ${cannotAct ? 'disabled' : ''}>Equip Armor</button>` : ''}
-                ${isEquipped ? `<button class="unequipItemBtn" ${cannotAct ? 'disabled' : ''}>Unequip</button>` : ''}
+                ${item.type === 'Weapon' && !isEquipped && !gameState.inCombat ? `<button class="equipItemBtn" data-slot="weapon" ${cannotAct ? 'disabled' : ''}>Equip Weapon</button>` : ''}
+                ${item.type === 'Armor' && !isEquipped && !gameState.inCombat ? `<button class="equipItemBtn" data-slot="armor" ${cannotAct ? 'disabled' : ''}>Equip Armor</button>` : ''}
+                ${isEquipped && !gameState.inCombat ? `<button class="unequipItemBtn" ${cannotAct ? 'disabled' : ''}>Unequip</button>` : ''}
                 ${!isEquipped && item.type !== 'Quest' && !gameState.inCombat ? `<button class="sellItemBtn btn-secondary" ${cannotAct ? 'disabled' : ''}>Sell (${sellValue(item)}💰)</button>` : ''}
-                <button class="dropItemBtn" ${cannotAct ? 'disabled' : ''}>Drop</button>
+                ${gameState.inCombat ? '' : `<button class="dropItemBtn" ${cannotAct ? 'disabled' : ''}>Drop</button>`}
             ` : ''}
             ${context === 'shop' ? `
                 <button class="buyItemBtn" ${!item.cost || !canAfford || cannotAct ? 'disabled' : ''}>
