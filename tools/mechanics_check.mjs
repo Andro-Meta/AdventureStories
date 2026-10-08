@@ -651,6 +651,159 @@ await block(async () => {
   check(p.coins <= 100 - 2, `buy for 4 then sell: coins 100 -> ${p.coins} (no profit)`);
 });
 
+// =====================================================================
+section('Batch 5: items, spells, jail, quests, engine guards');
+await block(async () => {
+  // Revival items carry healPercent: "Use" drank them on yourself.
+  const { p } = fresh();
+  p.hp = 40;
+  p.inventory.push({ id: 'item_phx', name: 'Phoenix Ash', type: 'Consumable', tier: 'High', stats: { revive: true, healPercent: 0.25 }, quantity: 1 });
+  await AH.useInventoryItem('item_phx');
+  check(p.inventory.some(i => i.id === 'item_phx') && p.hp === 40, `revival item is kept for Help Ally (in pack: ${p.inventory.some(i => i.id === 'item_phx')}, HP 40 -> ${p.hp})`);
+});
+await block(async () => {
+  // Heal items lost their cure outside battle.
+  const { p } = fresh();
+  p.hp = 40;
+  Combat.applyStatusEffect(p, 'Poison', 4, {}, 'test');
+  p.inventory.push({ id: 'item_hc', name: 'Purifying Draught', type: 'Consumable', tier: 'Low', effect: 'Heals and cures poison.', stats: { heal: 20, cure: 'Poison' }, quantity: 1 });
+  await AH.useInventoryItem('item_hc');
+  check(!p.statusEffects.some(s => s.name === 'Poison'), `heal+cure item cures Poison outside battle (effects: ${p.statusEffects.map(s => s.name).join(',') || 'none'})`);
+});
+await block(async () => {
+  // Retiring god mode left old milestones: the new quest's beats were rejected as duplicates.
+  fresh();
+  gameState.isGoalComplete = true;
+  gameState.questProgress = { milestones: [{ name: 'call_to_adventure' }, { name: 'final_blow' }], completionPercentage: 100 };
+  Engine.applyDiff(AH.extractGodModeDiffOps('I retire my godhood'));
+  const applied = Engine.applyDiff([{ op: 'add', path: '/questProgress/milestones/-', value: { name: 'call_to_adventure' } }]);
+  check(gameState.isGoalComplete === false && gameState.questProgress.milestones.length === 1, `after retiring, a new call_to_adventure is accepted (milestones: ${gameState.questProgress.milestones.map(m => m.name).join(',')})`);
+});
+await block(async () => {
+  // Second capture: old jail beats blocked the new escape; seized gear kept its ATK.
+  const Jail = await import('../jailSystem.js');
+  const { p } = fresh();
+  p.inventory.push(weapon(10)); AH.equipInventoryItem('item_sword', 'weapon');
+  gameState.questProgress = { milestones: [{ name: 'jail_assessed' }, { name: 'jail_escaped' }, { name: 'call_to_adventure' }] };
+  Jail.transitionToJail();
+  const names = gameState.questProgress.milestones.map(m => m.name);
+  check(!names.some(n => n.startsWith('jail_')) && names.includes('call_to_adventure'), `capture clears old jail beats, keeps the rest (${names.join(',')})`);
+  check(p.atk === 5, `confiscated sword's ATK leaves with it (ATK ${p.atk}, expect 5)`);
+  Jail.completeJailEscape();
+  check(p.equipment.weapon === 'item_sword' && p.atk === 15, `escape returns the sword equipped (slot ${p.equipment.weapon}, ATK ${p.atk})`);
+});
+await block(async () => {
+  // "tried to slip past the guards but was caught" counted as an escape.
+  const Jail = await import('../jailSystem.js');
+  fresh();
+  gameState.imprisoned = true;
+  gameState.currentNarrative = 'You tried to slip past the guards but were caught and dragged back.';
+  check(Jail.tryAutoCompleteEscape() === false && gameState.imprisoned, 'a failed escape attempt is not an escape');
+});
+await block(async () => {
+  // AI-made heal spells are tagged 'single' (enemy-only): they fizzled and still took MP.
+  const { p } = fresh();
+  const heal = { id: 'sp_mend', name: 'Sap Mend', level: 1, mpCost: 4, targeting: 'single', effects: { healing: 20 }, school: 'Restoration' };
+  p.spellcasting = { knownSpells: [heal], preparedSpells: [heal], maxSpellLevel: 1 };
+  p.hp = 50; p.mp = 20;
+  startFight(); pinRandom(0.5);
+  await AH.handlePlayerChoice('Spell', 'Cast Sap Mend');
+  unpinRandom();
+  check(p.hp > 50, `'single' heal spell heals the caster in battle (HP 50 -> ${p.hp}, MP 20 -> ${p.mp})`);
+  const S = await import('../spellCasting.js');
+  const bolt = { id: 'sp_bolt', name: 'Bolt', level: 1, mpCost: 4, targeting: 'single', effects: { damage: 10 } };
+  p.spellcasting.knownSpells.push(bolt); p.spellcasting.preparedSpells.push(bolt); p.mp = 20;
+  await S.castSpell(p, bolt, p); // invalid target: a damage spell on yourself
+  check(p.mp === 20, `a spell with no valid target costs no MP (MP 20 -> ${p.mp})`);
+});
+await block(async () => {
+  // A learned-but-unprepared spell (story/god mode) always fizzled.
+  const { p } = fresh();
+  const bolt = { id: 'sp_b2', name: 'Ember Dart', level: 1, mpCost: 4, targeting: 'single', effects: { damage: 12 } };
+  p.spellcasting = { knownSpells: [bolt], preparedSpells: [], maxSpellLevel: 1 };
+  p.mp = 20;
+  const Spells = await import('../spells.js');
+  check(Spells.canCastSpell(p, bolt).success, `known spell is castable without a prepare step (${Spells.canCastSpell(p, bolt).reason || 'ok'})`);
+});
+await block(async () => {
+  // Narrator item stats as text were glued onto ATK; quantity "2" stored as text; no stacking.
+  const { p } = fresh();
+  Engine.applyDiff([{ op: 'add', path: '/players/0/inventory/-', value: { name: 'Bone Club', type: 'Weapon', stats: { atk: '6' } } }]);
+  const club = p.inventory.find(i => i.name === 'Bone Club');
+  check(club?.stats.atk === 6, `item stat "6" stored as number (${JSON.stringify(club?.stats)})`);
+  Engine.applyDiff([{ op: 'add', path: '/players/0/inventory/-', value: { name: 'Healing Potion', type: 'Consumable', stats: { heal: 20 }, quantity: '2' } }]);
+  Engine.applyDiff([{ op: 'add', path: '/players/0/inventory/-', value: { name: 'healing potion', type: 'Consumable', stats: { heal: 20 } } }]);
+  const pots = p.inventory.filter(i => /healing potion/i.test(i.name));
+  check(pots.length === 1 && pots[0].quantity === 3, `potions stack: ${pots.length} entr(ies), quantity ${pots.map(x => JSON.stringify(x.quantity)).join(',')}`);
+  Engine.applyDiff([{ op: 'remove', path: '/players/0/inventory/Healing Potion' }]);
+  check(pots[0].quantity === 2, `narrator removes one by name (quantity now ${pots[0].quantity})`);
+});
+await block(async () => {
+  // Engine HP 0 did not down the hero; enemy atk "7" was text (hits for 68+).
+  const { p } = fresh();
+  Engine.applyDiff([{ op: 'replace', path: '/players/0/hp', value: 0 }]);
+  check(p.isDowned === true, `engine HP 0 downs the hero (downed ${p.isDowned})`);
+  Engine.applyDiff([{ op: 'add', path: '/enemies/-', value: { name: 'Bog Rat', hp: 10, atk: '7', def: '-3' } }]);
+  const rat = gameState.enemies.find(e => e.name === 'Bog Rat');
+  check(rat?.atk === 7 && rat?.def === 0, `enemy atk "7" -> ${JSON.stringify(rat?.atk)}, def "-3" -> ${JSON.stringify(rat?.def)}`);
+  p.level = 3; const lv = 3;
+  Engine.applyDiff([{ op: 'replace', path: '/players/0/level', value: 2 }]);
+  check(p.level === lv, `level cannot go down (${lv} -> ${p.level})`);
+});
+await block(async () => {
+  fresh();
+  const boss = AH.extractGodModeDiffOps('I summon Malgrath as a boss').find(o => o.path === '/enemies/-');
+  const wish = AH.extractGodModeDiffOps('I gain the Fireball spell');
+  check(boss?.value.isBoss === true, `god-mode summoned foe is a boss (${boss ? boss.value.isBoss : 'no summon matched'})`);
+  check(!wish.some(o => /inventory/.test(o.path)), `"I gain the Fireball spell" adds no item (ops: ${wish.map(o => o.path).join(', ')})`);
+});
+await block(async () => {
+  // "Use Greater Potion" used up "Potion".
+  const { p } = fresh();
+  p.hp = 40;
+  p.inventory.push({ id: 'i1', name: 'Potion', type: 'Consumable', stats: { heal: 10 }, quantity: 1 });
+  p.inventory.push({ id: 'i2', name: 'Greater Potion', type: 'Consumable', stats: { heal: 40 }, quantity: 1 });
+  startFight(); pinRandom(0.5);
+  await AH.handlePlayerChoice('Item', 'Use Greater Potion');
+  unpinRandom();
+  check(p.inventory.some(i => i.id === 'i1') && !p.inventory.some(i => i.id === 'i2'), `"Use Greater Potion" uses the Greater Potion (left: ${p.inventory.map(i => i.name).join(',')})`);
+});
+await block(async () => {
+  // Silence did nothing.
+  const { p, e } = fresh();
+  const dart = { id: 'sp_x', name: 'Ember Dart', level: 1, mpCost: 4, targeting: 'single', effects: { damage: 12 } };
+  p.spellcasting = { knownSpells: [dart], preparedSpells: [dart], maxSpellLevel: 1 };
+  p.mp = 20;
+  startFight();
+  Combat.applyStatusEffect(p, 'Silence', 2, {}, 'test');
+  pinRandom(0.5);
+  await AH.handlePlayerChoice('Spell', 'Cast Ember Dart');
+  unpinRandom();
+  check(p.mp >= 20, `silenced hero cannot cast (MP 20 -> ${p.mp})`);
+});
+await block(async () => {
+  // 3 heroes out of combat: Poison ticked on every hero's turn (3x a round).
+  fresh();
+  const a = createNewPlayer('A', 10), b = createNewPlayer('B', 10), c = createNewPlayer('C', 10);
+  gameState.players = [a, b, c]; gameState.currentPlayerIndex = 0;
+  Combat.applyStatusEffect(a, 'Poison', 4, {}, 'test');
+  for (let i = 0; i < 3; i++) await advanceTurn();
+  const d = a.statusEffects.find(s => s.name === 'Poison')?.duration;
+  check(d === 3, `Poison ticks once per 3-hero round (duration 4 -> ${d})`);
+});
+await block(async () => {
+  const Items = await import('../items.js');
+  const shop = Array.from({ length: 30 }, (_, i) => Items.generateShopItems('fantasy', 5 * i)).flat();
+  check(shop.every(i => typeof i.cost === 'number'), `every shop item has a price (${shop.filter(i => typeof i.cost !== 'number').map(i => i.name).join(', ') || 'all priced'})`);
+});
+await block(async () => {
+  const Battle = await import('../battle.js');
+  const { p } = fresh();
+  p.spellcasting = { knownSpells: [], preparedSpells: [], maxSpellLevel: 1 };
+  Battle.levelUp(p, 3);
+  check(p.spellcasting.maxSpellLevel >= 2, `level ${p.level} unlocks spell level ${p.spellcasting.maxSpellLevel}`);
+});
+
 console.error = realError;
 out(`\nfetch attempts blocked: ${fetchCalls}; elapsed ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 out(failed ? `✗ ${failed} mechanics check(s) failed` : '✓ all mechanics checks passed');

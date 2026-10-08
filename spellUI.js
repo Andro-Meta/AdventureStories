@@ -379,6 +379,13 @@ async function castSpellFromUI(spellId) {
     
     // Import spell casting system (will be created next)
     try {
+        // In a fight the spellbook cast is the battle Spell action (costs the
+        // turn, enemies answer), same as the quick-cast button.
+        if (gameState.inCombat) {
+            const { handlePlayerChoice } = await import('./actionHandler.js');
+            UI.showScreen?.('gameScreen');
+            return handlePlayerChoice('Spell', `Cast ${spell.name}`);
+        }
         const SpellCasting = await import('./spellCasting.js');
         await SpellCasting.castSpell(player, spell);
     } catch (error) {

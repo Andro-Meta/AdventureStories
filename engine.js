@@ -85,7 +85,12 @@ const PATHS = [
             const idx = Number(m[1]);
             const field = m[2];
             const player = gs.players[idx];
-            if (field === 'hp') player.hp = Math.min(player.maxHp, value);
+            if (field === 'hp') {
+                player.hp = Math.min(player.maxHp, value);
+                // HP 0 downs the hero (wipe/jail can follow); healing revives.
+                if (player.hp <= 0) player.isDowned = true;
+                else if (player.isDowned) { player.isDowned = false; player.downedTurns = 0; }
+            }
             else if (field === 'mp') player.mp = Math.min(player.maxMp, value);
             else if (field === 'coins') player.coins = Math.max(0, value);
             return `${player.name}.${field} = ${player[field]}`;
@@ -119,35 +124,46 @@ const PATHS = [
                 type: itemType(value),
                 tier: itemTier(value.tier),
                 effect: value.effect || '',
-                stats: value.stats || {},
-                quantity: value.quantity ?? 1
+                stats: cleanStats(value.stats),
+                // "2", -3, 1.5 -> a whole number of at least 1
+                quantity: Math.max(1, Math.floor(Number(value.quantity ?? 1) || 1))
             };
             player.inventory = player.inventory || [];
+            // Consumables stack by name instead of filling the pack with copies.
+            const stack = item.type === 'Consumable'
+                && player.inventory.find(i => i?.type === 'Consumable' && String(i.name).trim().toLowerCase() === item.name.trim().toLowerCase());
+            if (stack) {
+                stack.quantity = (Number(stack.quantity) || 1) + item.quantity;
+                return `${player.name} now has ${stack.quantity}x "${stack.name}"`;
+            }
             player.inventory.push(item);
             return `${player.name} gained item "${item.name}"`;
         }
     },
 
-    // ---- Player inventory: remove a specific item by id ----
+    // ---- Player inventory: remove one item by id or name ----
+    // The narrator is never shown ids, so names ("Healing Potion") count too.
     {
-        regex: /^\/players\/(\d+)\/inventory\/([a-zA-Z0-9_-]+)$/,
+        regex: /^\/players\/(\d+)\/inventory\/([^/]+)$/,
         ops: ['remove'],
         validate: (m, _value, gs) => {
             const idx = Number(m[1]);
-            const itemId = m[2];
             if (!gs.players?.[idx]) return `players[${idx}] does not exist`;
-            if (!(gs.players[idx].inventory || []).some(it => it && it.id === itemId)) {
-                return `item ${itemId} not in inventory`;
-            }
+            if (!findOwnedItem(gs.players[idx], decodeRef(m[2]))) return `item ${m[2]} not in inventory`;
             return null;
         },
         apply: (m, _value, gs) => {
-            const idx = Number(m[1]);
-            const itemId = m[2];
-            const player = gs.players[idx];
-            const before = player.inventory.length;
-            player.inventory = player.inventory.filter(it => it.id !== itemId);
-            return `removed item ${itemId} (${before} -> ${player.inventory.length})`;
+            const player = gs.players[Number(m[1])];
+            const item = findOwnedItem(player, decodeRef(m[2]));
+            if ((Number(item.quantity) || 1) > 1) {
+                item.quantity -= 1;
+                return `used one "${item.name}" (${item.quantity} left)`;
+            }
+            player.inventory = player.inventory.filter(it => it !== item);
+            // Losing worn gear takes its stats with it.
+            for (const slot of ['weapon', 'armor']) if (player.equipment?.[slot] === item.id) player.equipment[slot] = null;
+            Combat.recalculateCharacterStats(player);
+            return `removed item "${item.name}"`;
         }
     },
 
@@ -239,6 +255,9 @@ const PATHS = [
                 try { Combat.recalculateCharacterStats(player); } catch (_) {}
                 return `${player.name}.level = ${player.level}`;
             }
+            // Lowering the level skipped the stat loss and the next XP award
+            // re-levelled in a burst: levels only go up.
+            if (field === 'level') return `${player.name}.level stays ${player.level || 1} (levels only go up)`;
             player[field] = value;
             // Raise current to new max if max increased
             if (field === 'maxHp' && (player.hp || 0) > value) player.hp = value;
@@ -488,8 +507,8 @@ const PATHS = [
                 name: value.name,
                 hp: value.hp,
                 maxHp: value.maxHp || value.hp,
-                atk: value.atk || 5,
-                def: value.def || 2,
+                atk: Math.max(1, Math.round(Number(value.atk)) || 5),
+                def: Math.max(0, Math.round(Number(value.def)) || 2),
                 abilities: Array.isArray(value.abilities) ? value.abilities : ['Basic Attack'],
                 statusEffects: [],
                 isDefeated: false,
@@ -792,6 +811,8 @@ const PATHS = [
             if (!value && wasComplete) {
                 gs.allowCustomActions = false;
                 gs.questRewardsGranted = false; // a new main quest can pay out again
+                // New quest: old beats would block call_to_adventure/final_blow as duplicates.
+                if (gs.questProgress) { gs.questProgress.milestones = []; gs.questProgress.completionPercentage = 0; }
                 if (gs.godModeManager) {
                     try {
                         if (typeof gs.godModeManager.deactivateGodMode === 'function') {
@@ -893,6 +914,30 @@ export function questPercent(gs) {
 }
 
 // An owned item by id, or by name (case-insensitive) as the narrator writes it.
+/** Path segment -> item ref ("Healing%20Potion" / "Healing_Potion" -> "Healing Potion" too). */
+function decodeRef(seg) {
+    let s = String(seg);
+    try { s = decodeURIComponent(s); } catch (_) {}
+    return s;
+}
+
+/**
+ * Item stats from the narrator: numeric strings become numbers ("50" was
+ * glued onto ATK as text: 5 + "50" -> attack 550), junk numbers are dropped,
+ * text fields (cure, applyStatus...) are kept.
+ */
+function cleanStats(stats) {
+    const out = {};
+    if (!stats || typeof stats !== 'object') return out;
+    for (const [k, v] of Object.entries(stats)) {
+        if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
+        if (typeof v === 'number') { if (Number.isFinite(v)) out[k] = v; }
+        else if (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v))) out[k] = Number(v);
+        else out[k] = v;
+    }
+    return out;
+}
+
 function findOwnedItem(player, ref) {
     const inv = (player?.inventory || []).filter(Boolean);
     const low = String(ref).trim().toLowerCase();

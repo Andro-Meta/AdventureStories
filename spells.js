@@ -390,11 +390,9 @@ export function canCastSpell(player, spell) {
         return { success: false, reason: 'Spell not known' };
     }
     
-    // Check if spell is prepared (if using preparation system)
-    if (!player.spellcasting.preparedSpells.find(s => s.id === spell.id)) {
-        return { success: false, reason: 'Spell not prepared' };
-    }
-    
+    // ponytail: no "prepared" check: the game has no way to prepare a spell,
+    // so spells learned from the story or god mode always fizzled.
+
     // Check MP cost
     const actualMpCost = calculateSpellMpCost(player, spell);
     if (player.mp < actualMpCost) {

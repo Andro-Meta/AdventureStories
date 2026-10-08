@@ -877,13 +877,8 @@ ${reading}
 
 CONTENT POLICY (${tier}): ${policy}${injuryLine} If players ask for something off-policy, the world declines in-character.`);
 
-    if (gameState.questProgressManager && !gameState.isGoalComplete) {
-        try {
-            const guidance = gameState.questProgressManager.generateAIGuidance();
-            const s = gameState.questProgressManager.getProgressSummary();
-            parts.push(`QUEST PACE: phase ${s.phase} (${s.percentage}% complete), urgency ${guidance.urgency}. Direction: ${guidance.storyDirection}${s.activeObjectives?.length ? ` Active objectives: ${s.activeObjectives.join(', ')}.` : ''}`);
-        } catch (e) { log(`Quest guidance unavailable: ${e.message}`); }
-    }
+    // (The old QUEST PACE line read questProgressManager.currentPhase, which
+    // never left "beginning"; the MAIN QUEST STAGE block carries the real act.)
 
     parts.push(`THEME: ${gameState.adventureTheme}${gameState.customThemeDescription ? ` (${gameState.customThemeDescription})` : ''}. ${getThemeSpecificGuidance(gameState.adventureTheme)}
 Atmosphere: ${getThemeAtmosphere(gameState.adventureTheme)}

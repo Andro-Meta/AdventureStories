@@ -214,10 +214,16 @@ export async function handlePlayerChoice(actionType, choiceText) {
                 // picked (before, only Attack was blocked; Item and Run worked).
                 const disabled = (currentPlayer.statusEffects || []).find(fx => fx?.duration > 0 && fx.effectTickData?.cannotAct);
                 if (disabled) actionType = 'Disabled';
+                // Silence: no spells or special moves (Power Strike is a plain blow, still fine).
+                const silenced = !Combat.canCharacterUseAbilities(currentPlayer);
+                if (silenced && (actionType === 'Spell' || (actionType === 'Special' && !/^power strike/i.test(String(choiceText || ''))))) actionType = 'Silenced';
 
                 switch (actionType) {
                     case 'Disabled':
                         combatLog = `${currentPlayer.name} is held by ${disabled.name} and loses the turn.`;
+                        break;
+                    case 'Silenced':
+                        combatLog = `${currentPlayer.name} is silenced: no spells or special moves, and the moment passes.`;
                         break;
                     case 'Attack': {
                         const r = Combat.executeWeaponAttack(currentPlayer, target);
@@ -286,7 +292,8 @@ export async function handlePlayerChoice(actionType, choiceText) {
                         // The item the choice names, else one that heals, else any consumable.
                         // "Catch a breath" (battle menu, empty pack) uses nothing.
                         const item = lowerChoice.startsWith('catch a breath') ? null
-                            : (usable.find(i => i.name && lowerChoice.includes(i.name.toLowerCase()))
+                            // Longest name first: "Use Greater Potion" must not pick "Potion".
+                            : ([...usable].sort((a, b) => String(b.name).length - String(a.name).length).find(i => i.name && lowerChoice.includes(i.name.toLowerCase()))
                             || usable.find(i => (i.stats?.heal || 0) + (i.stats?.healPercent || 0) > 0)
                             || usable[0]);
                         cbStep('3-Item', `item=${item?.name || 'NONE'}`);
@@ -1287,7 +1294,7 @@ export function extractGodModeDiffOps(text) {
     // --- New item (weapon / armor / consumable / misc) ---
     // "I wield the Singing Sword", "give me the Aegis of Dawn", "I have a Healing Potion of Light"
     // Item match: skip if gold match already fired (gold input shouldn't also create an item).
-    const itemMatch = goldMatch ? null : t.match(/\b[Ii] (?:wield|hold|grip|wear|carry|have|gain|acquire|conjure|forge)\s+(?:the\s+|a\s+|an\s+|The\s+|A\s+|An\s+)?([A-Z][A-Za-z' -]{2,50}?)(?=[.,!?:;]|$|\s+(?:that|which|with))/);
+    const itemMatch = (goldMatch || skillMatch) ? null : t.match(/\b[Ii] (?:wield|hold|grip|wear|carry|have|gain|acquire|conjure|forge)\s+(?:the\s+|a\s+|an\s+|The\s+|A\s+|An\s+)?([A-Z][A-Za-z' -]{2,50}?)(?=[.,!?:;]|$|\s+(?:that|which|with))/);
     if (itemMatch) {
         const rawName = itemMatch[1].trim();
         const lname = rawName.toLowerCase();
@@ -1398,7 +1405,8 @@ export function extractGodModeDiffOps(text) {
                 name,
                 hp: epic ? 600 : 300, maxHp: epic ? 600 : 300,
                 atk: epic ? 50 : 30, def: epic ? 30 : 18,
-                abilities: ['Voidstrike', 'Dread Aura']
+                abilities: ['Voidstrike', 'Dread Aura'],
+                isBoss: true // else the engine clamps it like a minion (25 HP)
             }
         });
         ops.push({ op: 'replace', path: '/inCombat', value: true });
@@ -1431,8 +1439,10 @@ export function extractGodModeDiffOps(text) {
     // away and a new main-quest arc begins.
     const retireMatch = t.match(/\b(?:i\s+(?:retire|renounce|relinquish|surrender|forsake|abdicate)|i\s+(?:am|become)\s+mortal(?:\s+again)?|end\s+(?:my\s+)?(?:god(?:hood|\s*mode|\s+powers?)?|divinity)|reset\s+(?:my\s+)?(?:journey|adventure|quest))/i);
     if (retireMatch) {
-        ops.push({ op: 'replace', path: '/isGoalComplete', value: false });
+        // Reset the bar while the goal still reads complete (that 0 clears the
+        // old milestones), then reopen the goal.
         ops.push({ op: 'replace', path: '/questProgress/completionPercentage', value: 0 });
+        ops.push({ op: 'replace', path: '/isGoalComplete', value: false });
         // If the input didn't already specify a new quest goal, seed a
         // generic call-to-adventure so the narrator has something to anchor
         // Act 1 on. Otherwise the questMatch above provided one.
@@ -1628,6 +1638,12 @@ export async function useInventoryItem(itemId) {
          UI.showPopup(`${item.name} is thrown at enemies: save it for a fight.`, 'info');
          return; // not consumed, no turn used
      }
+     // Revival items also carry healPercent: check revive first, or the heal
+     // branch below drank the Phoenix Down on yourself.
+     if (item.type === 'Consumable' && item.stats?.revive === true) {
+         UI.showPopup(`Use '${item.name}' via the 'Help Ally' action on a downed ally.`, 'info');
+         return; // Do not consume or advance turn
+     }
      if (item.type === 'Consumable') {
         // Heal Effect (with trust-based penalties)
         const baseHeal = (Number(item.stats?.heal) || 0) + Math.round((player.maxHp || 100) * (Number(item.stats?.healPercent) || 0));
@@ -1665,6 +1681,14 @@ export async function useInventoryItem(itemId) {
             }
             
             log(actionLog);
+            // A heal item's cure / extra status still apply (the battle path does both).
+            if (item.stats?.cure && player.statusEffects?.length) {
+                const cure = item.stats.cure;
+                player.statusEffects = player.statusEffects.filter(e => !(e && (cure === 'All' || e.name === cure)));
+            }
+            for (const name of [].concat(item.stats?.applyStatus || [])) {
+                Combat.applyStatusEffect(player, name, Number(item.stats.duration) || 3, {}, `Used ${item.name}`);
+            }
 
              // Check if only simple healing occurred
              const otherStats = Object.keys(item.stats).filter(k => !['heal', 'revive', 'cure', 'healPercent'].includes(k));
@@ -2310,7 +2334,11 @@ export async function helpAlly(targetPlayerId) {
        }
 
       // Consume item and revive target
-      const revivalItem = helper.inventory.splice(revivalItemIndex, 1)[0]; // Remove item and get it
+      // One from the stack, not the whole stack.
+      const stacked = helper.inventory[revivalItemIndex];
+      const revivalItem = (Number(stacked.quantity) || 1) > 1
+          ? (stacked.quantity -= 1, stacked)
+          : helper.inventory.splice(revivalItemIndex, 1)[0];
       log(`Consumed revival item: ${revivalItem.name} from ${helper.name}.`);
 
       target.isDowned = false;

@@ -35,17 +35,17 @@ export async function castSpell(caster, spell, target = null) {
         // Show casting animation/effect
         showCastingEffect(caster, spell);
         
-        // Consume MP
-        const mpCost = calculateActualMpCost(caster, spell);
-        caster.mp -= mpCost;
-        log(`${caster.name} spent ${mpCost} MP casting ${spell.name}`);
-        
-        // Determine targets
+        // Determine targets (before paying: a fizzle costs no MP)
         const targets = determineSpellTargets(spell, caster, target);
         if (!targets || targets.length === 0) {
             UI.showPopup(`No valid targets for ${spell.name}!`, 'warning');
             return { success: false, reason: 'No valid targets' };
         }
+
+        // Consume MP
+        const mpCost = calculateActualMpCost(caster, spell);
+        caster.mp -= mpCost;
+        log(`${caster.name} spent ${mpCost} MP casting ${spell.name}`);
         
         // Apply spell effects
         const results = await applySpellEffects(spell, caster, targets);
@@ -204,6 +204,12 @@ function isValidTarget(spell, target, caster) {
     // Self-targeting spells
     if (spell.targeting === 'self') {
         return target.id === caster.id;
+    }
+
+    // Pure healing spells land on heroes whatever their targeting says
+    // (AI-made heals come tagged 'single', which meant enemy-only).
+    if (spell.effects?.healing > 0 && !(spell.effects?.damage > 0)) {
+        return !!target.id && target.id.startsWith('player') && !target.isDowned;
     }
     
     // Ally-targeting spells

@@ -30,6 +30,7 @@
 // the jail the consequence of dying, not just an inconvenience.
 
 import { gameState } from './state.js';
+import { recalculateCharacterStats } from './combat.js';
 
 /**
  * Theme-specific jail flavor. Each entry provides a name + description that
@@ -91,7 +92,13 @@ export function transitionToJail() {
             });
             p.inventory = inv.filter(item => item && item.type !== 'Weapon' && item.type !== 'Armor');
             p.equipment = { weapon: null, armor: null };
+            recalculateCharacterStats(p); // the gear's ATK/DEF goes with it
         });
+    }
+    // A second capture: last time's jail beats would be rejected as duplicates
+    // and the party could only get out by luck.
+    if (gameState.questProgress?.milestones) {
+        gameState.questProgress.milestones = gameState.questProgress.milestones.filter(m => !/^jail[ _]/i.test(String(m?.name || '')));
     }
 
     // Confiscate 50% of gold (rounded down).
@@ -186,8 +193,14 @@ export function completeJailEscape() {
             delete cleaned._ownerName;
             owner.inventory = owner.inventory || [];
             owner.inventory.push(cleaned);
+            // Gear that was worn goes back on.
+            if (cleaned.equippedSlot === 'weapon' || cleaned.equippedSlot === 'armor') {
+                owner.equipment = owner.equipment || {};
+                owner.equipment[cleaned.equippedSlot] = cleaned.id;
+            }
         }
     });
+    (gameState.players || []).forEach(p => p && recalculateCharacterStats(p));
 
     // Restore ~75% of gold, split across living players.
     const goldRestored = Math.floor((gameState.confiscatedGold || 0) * 0.75);
@@ -246,6 +259,8 @@ export function tryAutoCompleteEscape() {
         'past the guards',
         'into the open air'
     ];
+    // "tried to slip past the guards but was caught" is not an escape.
+    if (/\b(caught|dragged back|thrown back|recaptured|failed|tried to|attempt(ed|s)? to)\b/.test(narrative)) return false;
     const matched = escapeSignals.some(sig => narrative.includes(sig));
     if (matched) {
         completeJailEscape();

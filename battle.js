@@ -20,6 +20,9 @@ export function levelUp(p, n = 1) {
         p.baseDef = (p.baseDef ?? p.def ?? 2) + (p.level % 2 === 0 ? 1 : 0);
         p.hp = Math.min(p.maxHp, (p.hp || 0) + Math.round(p.maxHp * 0.25));
         p.mp = Math.min(p.maxMp, (p.mp || 0) + 4);
+        // Every 2 levels unlock the next spell level (nothing raised it, so
+        // level-2 reward spells could never be cast).
+        if (p.spellcasting) p.spellcasting.maxSpellLevel = Math.max(p.spellcasting.maxSpellLevel || 1, Math.min(9, Math.ceil(p.level / 2)));
     }
 }
 

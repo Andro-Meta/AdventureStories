@@ -703,7 +703,7 @@ export function generateShopItems(theme, turn) {
         else if (typeRoll < 0.95) type = 'Consumable';
         else type = 'Misc';
         const item = generateThemedItem(theme, tier, type);
-        if (item && (item.cost || type === 'Misc') && !shopItems.some(existing => existing.name === item.name)) {
+        if (item && item.cost && !shopItems.some(existing => existing.name === item.name)) {
              shopItems.push(item);
              addedCount++;
         }
