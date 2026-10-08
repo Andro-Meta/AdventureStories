@@ -26,7 +26,7 @@ const INCLUDE_FILES = [...GAME_JS,
   'dynamicItems.js',
   'dynamicSpells.js', 'inputCache.js', 'loadingManager.js',
   'loadingTips.js', 'locations.js',
-  'reputationContextualizer.js', 'themeIntelligence.js'
+  'themeIntelligence.js'
 ];
 
 await mkdir(WWW, { recursive: true });
