@@ -4,7 +4,7 @@
 // sends a paid OpenRouter model.
 import './dom_polyfill.mjs';
 const C = await import('../config.js');
-const { localAI, assertFreeOnly, nextDailyReset } = await import('../localAI.js');
+const { localAI, assertFreeOnly, nextDailyReset, parseJSONFromModelOutput } = await import('../localAI.js');
 
 let failed = 0;
 const check = (ok, msg) => { console.log(`${ok ? '  ✓' : '  ✗'} ${msg}`); if (!ok) failed++; };
@@ -27,11 +27,11 @@ globalThis.fetch = async (url, opts) => {
 };
 const ask = () => localAI.makeRequest([{ role: 'system', content: 'SYS' }, { role: 'user', content: 'hi' }], { jsonObject: true });
 
-check(C.CLOUD_PROVIDERS[C.DEFAULT_CLOUD_PROVIDER].chain?.[0] === 'gemma_google', 'default is Auto, starting with Gemma 4 on Google');
+check(C.CLOUD_PROVIDERS[C.DEFAULT_CLOUD_PROVIDER].chain?.[0] === 'flashlite_google', 'default is Auto, starting with Gemini Flash-Lite on Google');
 let out = await ask();
-check(out.includes('google') && calls[0].host.includes('google') && calls[0].req.model === 'gemma-4-31b-it', 'first request goes to Gemma 4 31B on Google');
+check(out.includes('google') && calls[0].host.includes('google') && calls[0].req.model === 'gemini-flash-lite-latest', 'first request goes to Gemini Flash-Lite on Google');
 check(calls[0].auth === 'Bearer g-key', 'Google request carries the Google key');
-check(!calls[0].req.messages.some(m => m.role === 'system') && calls[0].req.messages[0].content.startsWith('SYS'), 'Gemma gets the system prompt folded into the user turn');
+check(calls[0].req.messages[0].role === 'system', 'Flash-Lite keeps the system role (folding is Gemma-only)');
 
 // Google out of daily quota -> same request answered by OpenRouter.
 calls.length = 0;
@@ -45,7 +45,7 @@ calls.length = 0;
 out = await ask();
 check(calls.length === 1 && calls[0].host.includes('openrouter'), 'Google keys stay benched until the daily reset (no wasted calls)');
 const models = new Set(C.providerChain().map(p => p.model));
-check(models.size === 2 && models.has('gemma-4-31b-it') && models.has('nvidia/nemotron-3-super-120b-a12b:free'), `Auto uses exactly two models (${[...models].join(', ')})`);
+check(models.size === 2 && models.has('gemini-flash-lite-latest') && models.has('nvidia/nemotron-3-super-120b-a12b:free'), `Auto uses exactly two models (${[...models].join(', ')})`);
 
 // Live phone case: Gemma returned 500 'Internal error'. No retries on Google,
 // straight to the next provider (was 3 attempts + waits on each).
@@ -57,6 +57,10 @@ check(models.size === 2 && models.has('gemma-4-31b-it') && models.has('nvidia/ne
   const googleCalls = calls.filter(c => c.host.includes('google')).length;
   check(o.includes('openrouter') && googleCalls === 2, `Google 500s: each Google key tried once (${googleCalls}), then OpenRouter answers`);
 }
+
+// Live: a trailing comma made a whole turn call get re-asked.
+{ let o = null; try { o = parseJSONFromModelOutput('Here: {"narration":"x","choices":[{"type":"Good","text":"y"},],}'); } catch {}
+  check(o?.choices?.length === 1, 'the game parser repairs trailing commas instead of re-asking'); }
 
 // Paid models are refused before any request.
 let refused = false;
