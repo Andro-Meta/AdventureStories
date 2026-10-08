@@ -152,6 +152,13 @@ await block(async () => {
   Engine.applyDiff([{ op: 'add', path: '/players/0/inventory/-', value: { id: 'item_n1', name: 'Singing Sword', type: 'Weapon', stats: { atk: 24 } } },
                     { op: 'replace', path: '/players/0/equipment/weapon', value: 'item_n1' }], { strict: false });
   check(p.atk === 29, `narrator equip op recalculates ATK (5 + 24 = ${p.atk})`);
+});
+await block(async () => {
+  // The narrator never sees ids: equipping by item name works too.
+  const { p } = fresh();
+  Engine.applyDiff([{ op: 'add', path: '/players/0/inventory/-', value: { name: 'Coral Blade', type: 'Weapon', stats: { atk: 6 } } },
+                    { op: 'replace', path: '/players/0/equipment/weapon', value: 'coral blade' }], { strict: false });
+  check(p.atk === 11, `narrator equips by item name (5 + 6 = ${p.atk})`);
   // lower-case "weapon" type from the narrator
   Engine.applyDiff([{ op: 'add', path: '/players/0/inventory/-', value: { id: 'item_n2', name: 'Stick', type: 'weapon', stats: { atk: 3 } } }], { strict: false });
   const atk0 = p.atk;
