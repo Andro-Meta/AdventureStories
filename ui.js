@@ -2107,6 +2107,6 @@ export { resetFx };
 
 /** What the shop pays for an item: half its price (half the tier's default when unpriced). */
 export function sellValue(item) {
-    const base = item?.cost || Config.DefaultItemCosts?.[item?.tier] || 10;
-    return Math.max(1, Math.floor(base / 2));
+    const base = item?.boughtFor ?? item?.cost ?? Config.DefaultItemCosts?.[item?.tier] ?? 10;
+    return Math.max(item?.boughtFor != null ? 0 : 1, Math.floor(base / 2));
 }

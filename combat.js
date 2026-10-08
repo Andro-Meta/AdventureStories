@@ -968,7 +968,11 @@ export function applyStatusEffect(target, effectName, duration, effectData = {},
     const log = window.displayVisualError || console.log;
     // Fill in the catalog's mechanics (spells and special moves passed {} or
     // flat fields, so a "Burning" spell never burned). Given data wins.
-    effectData = { ...(lookupStatusEffect(effectName)?.defaultData || {}), ...(effectData || {}) };
+    const known = lookupStatusEffect(effectName);
+    // One name per effect: "stunned" / "Poisoned" are stored as Stun / Poison,
+    // so canCharacterAct, cures and icons recognise them.
+    if (known?.name) effectName = known.name;
+    effectData = { ...(known?.defaultData || {}), ...(effectData || {}) };
     if (!target || !effectName || typeof duration !== 'number' || duration <= 0) {
         log(`Combat Warning: Invalid parameters for applyStatusEffect: Target=${!!target}, Effect=${effectName}, Duration=${duration}`);
         return;
@@ -1522,6 +1526,13 @@ export async function handleEnemyTurn(enemyId) {
     }
 
     log(`Enemy Turn: ${enemy.name} is acting...`);
+
+    // Stunned / asleep / paralysed foes (bosses too) lose their turn.
+    if (!canCharacterAct(enemy)) {
+        showPopup(`${enemy.name} can't act this turn!`, 'info', 2000);
+        await advanceCombatTurn(); // ticks the disabling effect down
+        return;
+    }
     
     // Wait a moment before enemy acts for better UX
     await new Promise(resolve => setTimeout(resolve, 1000));
@@ -1609,8 +1620,8 @@ async function selectEnemyAction(enemy) {
     }
 
     // Select ability based on context
-    if (Math.random() < specialChance && abilities.length > 1) {
-        const specialAbilities = abilities.filter(a => a !== 'Basic Attack');
+    const specialAbilities = abilities.filter(a => a !== 'Basic Attack');
+    if (Math.random() < specialChance && specialAbilities.length > 0) {
         
         // Prioritize abilities based on context
         const prioritizedAbilities = specialAbilities.map(ability => {
@@ -1842,9 +1853,15 @@ async function executeEnemySpecialAbility(enemy, target, action, context) {
         case 'Web':
             await executeAbilityWeb(enemy, target, context, abilityDescription);
             break;
-        default:
-            log(`Warning: No specific execution for ability: ${ability}`);
-            showPopup(abilityDescription, 'special');
+        default: {
+            // Storyteller-named moves ("Crushing Blow"): a heavy hit, 1.3x attack.
+            const hero = Array.isArray(target) ? target[0] : target;
+            if (!hero) { showPopup(abilityDescription, 'special'); break; }
+            const damage = Math.max(3, Math.round((enemy.atk || 5) * 1.3 - (hero.def || 0) * 0.5));
+            hitHero(hero, damage);
+            showPopup(`${abilityDescription}! ${hero.name} takes ${damage} damage!`, 'damage');
+            renderPlayerCards();
+        }
     }
 }
 
@@ -1894,9 +1911,18 @@ function getContextualAbilityDescription(enemy, ability, context) {
 }
 
 // Specific ability execution functions
+/** Special-ability damage to one hero; a hero at 0 HP is downed. */
+function hitHero(target, damage) {
+    target.hp = Math.max(0, target.hp - damage);
+    if (target.hp <= 0 && !target.isDowned) {
+        target.isDowned = true;
+        showPopup(`${target.name} has been defeated!`, 'error');
+    }
+}
+
 async function executeAbilityShadowBolt(enemy, target, context, description) {
     const damage = Math.round(enemy.atk * 1.5);
-    target.hp = Math.max(0, target.hp - damage);
+    hitHero(target, damage);
     
     if (context.combatState.tacticalAdvantage === 'advantage') {
         // Apply additional effect when advantaged
@@ -1934,6 +1960,7 @@ async function executeAbilityRoar(enemy, targets, context, description) {
 }
 
 async function executeAbilityWeb(enemy, target, context, description) {
+    const duration = 2;
     applyStatusEffect(target, 'Webbed', duration, { 
         isImmobilized: true,
         defMod: -1

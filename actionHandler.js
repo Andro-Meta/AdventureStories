@@ -2050,6 +2050,7 @@ export function buyShopItem(itemData) {
          // Create a new instance for the player's inventory
          const newItem = { ...itemData, id: generateId('item'), equippedSlot: null };
          delete newItem.cost; // Remove cost from player inventory version
+         newItem.boughtFor = modifiedPrice; // sells back for half of what was paid
          if (newItem.type === 'Consumable' && newItem.quantity === undefined) { newItem.quantity = 1; }
          if (!player.inventory) player.inventory = [];
          player.inventory.push(newItem);

@@ -573,6 +573,59 @@ await block(async () => {
   check(p.hp > 40 && e.hp === foe0, `healing spell in a fight heals the hero, not the foe (hero 40 -> ${p.hp}, foe ${foe0} -> ${e.hp})`);
 });
 
+// =====================================================================
+section('Batch 4: enemy specials, disabled foes, status names, selling');
+await block(async () => {
+  // Spider 'Web' special referenced an undefined `duration`: the enemy turn threw.
+  const { p } = fresh({ enemy: { abilities: ['Web'] } });
+  startFight(); pinRandom(0.01);
+  await enemyTurn();
+  unpinRandom();
+  check(p.statusEffects.some(s => s.name === 'Webbed'), `Web special webs the hero (hero effects: ${p.statusEffects.map(s => s.name).join(',') || 'none'})`);
+});
+await block(async () => {
+  // AI-named villain abilities hit the default branch: a popup and no effect.
+  const { p } = fresh({ enemy: { abilities: ['Basic Attack', 'Crushing Blow'] } });
+  startFight(); pinRandom(0.01);
+  const hp0 = p.hp;
+  await enemyTurn();
+  unpinRandom();
+  check(p.hp < hp0, `unknown special 'Crushing Blow' deals damage (hero HP ${hp0} -> ${p.hp})`);
+});
+await block(async () => {
+  // Shadow Bolt to 0 HP left the hero standing at 0 (never downed).
+  const { p } = fresh({ enemy: { abilities: ['Basic Attack', 'Shadow Bolt'], atk: 80 } });
+  startFight(); p.hp = 5; pinRandom(0.01);
+  await enemyTurn();
+  unpinRandom();
+  check(p.hp === 0 && p.isDowned === true, `Shadow Bolt to 0 HP downs the hero (hp ${p.hp}, downed ${p.isDowned})`);
+});
+await block(async () => {
+  // A stunned boss still landed its every-other-round signature hit.
+  const { p, e } = fresh({ enemy: { isBoss: true } });
+  startFight(); gameState.combat.round = 2;
+  Combat.applyStatusEffect(e, 'Stun', 1, {}, 'test');
+  const hp0 = p.hp; pinRandom(0.5);
+  await enemyTurn();
+  unpinRandom();
+  check(p.hp === hp0, `stunned boss loses its turn (hero HP ${hp0} -> ${p.hp})`);
+});
+await block(async () => {
+  // The narrator writes "Stunned"/"poisoned": those names never matched the catalog.
+  const { e } = fresh();
+  Combat.applyStatusEffect(e, 'stunned', 1, {}, 'test');
+  check(e.statusEffects[0]?.name === 'Stun' && !Combat.canCharacterAct(e), `"stunned" is stored as Stun and disables (stored as ${e.statusEffects[0]?.name})`);
+});
+await block(async () => {
+  // Buy a potion and sell it straight back: must not make money.
+  const { p } = fresh();
+  p.coins = 100;
+  AH.buyShopItem({ id: 'shop_pot', name: 'Cheap Tonic', type: 'Consumable', tier: 'Low', cost: 4, stats: { heal: 10 } });
+  const it = p.inventory.find(i => i.name === 'Cheap Tonic');
+  AH.sellInventoryItem(it.id);
+  check(p.coins <= 100 - 2, `buy for 4 then sell: coins 100 -> ${p.coins} (no profit)`);
+});
+
 console.error = realError;
 out(`\nfetch attempts blocked: ${fetchCalls}; elapsed ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 out(failed ? `✗ ${failed} mechanics check(s) failed` : '✓ all mechanics checks passed');
