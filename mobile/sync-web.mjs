@@ -17,7 +17,7 @@ const INCLUDE_FILES = [
   'combat.js', 'resolution.js', 'questProgress.js', 'questDefinitions.js',
   'storyHooks.js',
   'godMode.js', 'memoryRetriever.js', 'schemas.js', 'localAI.js',
-  'liteRTBridge.js', 'saveLoad.js', 'utils.js',
+  'saveLoad.js', 'utils.js',
   'initializationManager.js', 'spellUI.js', 'spells.js',
   'spellCasting.js', 'jailSystem.js', 'items.js',
   'adaptiveAbilities.js', 'ageAppropriateReading.js', 'api_new.js',

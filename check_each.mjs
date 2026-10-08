@@ -3,7 +3,7 @@ const modules = [
   'state.js','config.js','utils.js','schemas.js','engine.js','storyHooks.js',
   'questDefinitions.js','godMode.js','questProgress.js','saveLoad.js',
   'aiHandler.js','actionHandler.js','gameLoop.js','turnManager.js','combat.js',
-  'resolution.js','ui.js','localAI.js','liteRTBridge.js','jailSystem.js',
+  'resolution.js','ui.js','localAI.js','jailSystem.js',
   'spells.js','spellUI.js','spellCasting.js','items.js','memoryRetriever.js',
   'adaptiveAbilities.js','ageAppropriateReading.js','reputationContextualizer.js','contextManager.js','dynamicItems.js',
   'dynamicLocations.js','dynamicSpells.js',

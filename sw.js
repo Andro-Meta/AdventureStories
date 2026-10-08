@@ -47,8 +47,8 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
     const url = new URL(event.request.url);
 
-    // Always pass-through AI backend traffic (port 8090, /v1/, /health).
-    if (url.port === '8090' || url.pathname.includes('/v1/') || url.pathname === '/health') {
+    // AI requests go to the online provider (cross-origin): never cache them.
+    if (url.pathname.includes('/v1/') || url.pathname.includes('/chat/completions')) {
         return;
     }
 

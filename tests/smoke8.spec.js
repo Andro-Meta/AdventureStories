@@ -6,7 +6,7 @@
 //   @combat-fast   Combat init, damage calc, status effects, defeat checks — no AI
 //   @quest-fast    Quest milestones, phase transitions, objectives — no AI
 //   @godmode-fast  God mode unlock conditions — no AI
-//   @live          State changes & UI rendering during a live AI game (requires llama-server :8090)
+//   @live          State changes & UI rendering during a live AI game (requires a live AI key)
 
 const { test, expect } = require('@playwright/test');
 
@@ -948,7 +948,7 @@ test.describe('God mode unlock @godmode-fast', () => {
 });
 
 // ---------------------------------------------------------------------------
-// SUITE: Live state changes (requires llama-server on :8090)
+// SUITE: Live state changes (requires a live AI key)
 // @live — boots a real game and checks UI + state after AI responses
 // ---------------------------------------------------------------------------
 

@@ -1692,25 +1692,6 @@ export function initializeApiTabs() {
         });
     });
 
-    // Initialize model selection dropdown
-    if (elements.googleModelSelect && elements.modelDescription) {
-        elements.googleModelSelect.addEventListener('change', (event) => {
-            const selectedModel = event.target.value;
-            updateModelDescription(selectedModel);
-        });
-        
-        // Set initial description
-        updateModelDescription(elements.googleModelSelect.value);
-    }
-}
-
-function updateModelDescription(modelName) {
-    // Legacy helper kept for the deprecated googleModelSelect dropdown that
-    // used to live in the setup screen (Gemini/MiniCPM picker). The active
-    // model is now driven by config.LLM_BACKEND, so this function is a
-    // no-op unless that legacy element is rendered somewhere.
-    if (!elements.modelDescription) return;
-    elements.modelDescription.textContent = `Active model is configured via LLM_BACKEND in config.js (current selection: ${modelName || 'unknown'}).`;
 }
 
 /* === QUEST PROGRESS UI FUNCTIONS === */

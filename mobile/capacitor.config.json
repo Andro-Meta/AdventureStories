@@ -5,7 +5,7 @@
   "bundledWebRuntime": false,
   "android": {
     "minWebViewVersion": 60,
-    "webContentsDebuggingEnabled": true,
+    "webContentsDebuggingEnabled": false,
     "allowMixedContent": false,
     "captureInput": true,
     "buildOptions": {

@@ -5,7 +5,7 @@
 //   @themes      All 14 theme options preserve correctly through resetGameState / initManager
 //   @setup       Multi-player setup, second-game reset (initManager.reset() fix)
 //   @saveload    Save game → reload → continue restores state (direct module calls, no AI)
-//   @integration Full game loop: combat, quests, god-mode (requires live AI on :8090)
+//   @integration Full game loop: combat, quests, god-mode (requires a live AI key)
 //
 // Usage:
 //   npm test                  — fast tests (@saveload + one theme write check)
@@ -404,8 +404,8 @@ test.describe('Save / Load round-trip @saveload', () => {
 });
 
 // ---------------------------------------------------------------------------
-// SUITE: Full game loop (requires live AI server on :8090)
-// @integration — slow, needs `python working_ai_server.py` or `start_llama_server.py`
+// SUITE: Full game loop (requires a live AI key)
+// @integration — slow, needs a saved AI key
 // ---------------------------------------------------------------------------
 
 test.describe('Full game loop @integration', () => {

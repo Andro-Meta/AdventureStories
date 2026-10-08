@@ -10,15 +10,12 @@
     "open:android": "npx cap open android",
     "build:debug": "cd android && ./gradlew assembleDebug",
     "build:release": "cd android && ./gradlew bundleRelease",
-    "run:android": "npx cap run android",
-    "postinstall": "node patches/apply.js",
-    "patches:apply": "node patches/apply.js"
+    "run:android": "npx cap run android"
   },
   "dependencies": {
     "@capacitor/android": "^8.0.0",
     "@capacitor/core": "^8.0.0",
-    "@capacitor/splash-screen": "^8.0.0",
-    "@capgo/capacitor-llm": "^8.0.0"
+    "@capacitor/splash-screen": "^8.0.0"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.0.0"

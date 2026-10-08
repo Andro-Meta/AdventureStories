@@ -17,7 +17,7 @@ const FILES = {
     'main.js', 'ui.js', 'setup.js', 'actionHandler.js', 'aiHandler.js',
     'gameLoop.js', 'turnManager.js', 'godMode.js', 'saveLoad.js',
     'initializationManager.js', 'spellUI.js', 'jailSystem.js',
-    'resolution.js', 'localAI.js', 'config.js', 'liteRTBridge.js'
+    'resolution.js', 'localAI.js', 'config.js'
   ]
 };
 
@@ -153,23 +153,13 @@ for (const f of requiredFlows) {
   else fail(`turn-advance flow MISSING: ${f.name}`);
 }
 
-// --- 7. Settings: every backend option in config.js must have a UI handle ---
-console.log(`\n\x1b[1m=== SETTINGS WIRING (backend selector) ===\x1b[0m`);
-const backendModes = ['backendModeLocal', 'backendModeCloud'];
-for (const id of backendModes) {
-  if (!html.includes(`id="${id}"`)) fail(`#${id} radio button missing from index.html`);
-  else ok(`#${id} radio present`);
-  if (!jsBundle.includes(id)) fail(`#${id} not referenced from JS`);
-  else ok(`#${id} is wired from JS`);
-}
-// Backend keys recognized by config.js
-const validBackends = ['cloud', 'llama-cpp', 'minicpm-python', 'ollama', 'litert'];
-for (const b of validBackends) {
-  if (!jsBundle.includes(`'${b}'`) && !jsBundle.includes(`"${b}"`)) {
-    warn(`backend '${b}' has no JS reference — settings UI may not let users pick it`);
-  } else {
-    ok(`backend '${b}' referenced from JS`);
-  }
+// --- 7. AI Settings: provider picker, key box and save button are wired ---
+console.log(`
+[1m=== AI SETTINGS WIRING ===[0m`);
+for (const id of ['cloudProviderSelect', 'cloudApiKeyInput', 'cloudApiKeySaveBtn']) {
+  if (!html.includes(`id="${id}"`)) fail(`#${id} missing from index.html`);
+  else if (!jsBundle.includes(id)) fail(`#${id} not referenced from JS`);
+  else ok(`#${id} present and wired`);
 }
 
 // --- 8. Save / Load / God Mode buttons reach their respective module fns ---
@@ -206,19 +196,6 @@ for (const s of unreachable) {
   // Tolerate confirmation/help popups that are toggled differently
   if (/confirm|help|warn|info|popup|gameOver/i.test(s)) continue;
   warn(`screen #${s} exists in HTML but is never a showScreen() target (may be unreachable)`);
-}
-
-// --- 10. liteRTBridge wiring ---
-console.log(`\n\x1b[1m=== ON-DEVICE LLM (LiteRT) WIRING ===\x1b[0m`);
-const litertChecks = [
-  { p: /baseUrl\s*===?\s*['"`]litert:\/\/local['"`]/, why: 'localAI.js short-circuits litert URL' },
-  { p: /isLiteRT/, why: 'config.js exposes isLiteRT flag' },
-  { p: /chatCompletion\b/, why: 'liteRTBridge exports chatCompletion' },
-  { p: /Capacitor\.isNativePlatform/, why: 'auto-select uses isNativePlatform' }
-];
-for (const c of litertChecks) {
-  if (c.p.test(jsBundle)) ok(c.why);
-  else fail(`MISSING: ${c.why}`);
 }
 
 // --- Final ---

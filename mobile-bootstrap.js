@@ -28,11 +28,6 @@
 
     if (androidApp) {
         try {
-            // Force any stale desktop-only backend choice to 'cloud'.
-            var cur = localStorage.getItem('adv.llmBackend');
-            var bad = (cur === 'llama-cpp' || cur === 'minicpm-python' || cur === 'ollama' || !cur);
-            if (bad) localStorage.setItem('adv.llmBackend', 'cloud');
-
             // Unregister any prior service worker so cached JS doesn't keep
             // shipping stale code after a new APK install.
             if ('serviceWorker' in navigator && navigator.serviceWorker.getRegistrations) {

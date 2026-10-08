@@ -57,51 +57,11 @@
         <div id="localAIScreen" class="screen hidden">
             <h1>Adventure Stories</h1>
             <div class="card">
-                <h2>AI Backend</h2>
-                <p id="localAIBanner">Choose how you want to play.</p>
-
-                <!-- Backend mode toggle -->
-                <div class="backend-mode-section">
-                    <h3>Mode:</h3>
-                    <!-- On-Device AI (Android / Capacitor only — shown by JS) -->
-                    <label class="backend-mode-label" id="litertModeLabel" style="display:none">
-                        <input type="radio" name="backendMode" id="backendModeLiteRT" value="litert">
-                        <span>On-Device AI (Qwen 2.5 1.5B - private, offline, ~1.6 GB)</span>
-                    </label>
-                    <label class="backend-mode-label" id="localModeLabel">
-                        <input type="radio" name="backendMode" id="backendModeLocal" value="local">
-                        <span>🖥️ Local AI (llama.cpp / Gemma 3 4B)</span>
-                    </label>
-                    <label class="backend-mode-label">
-                        <input type="radio" name="backendMode" id="backendModeCloud" value="cloud">
-                        <span>☁️ Cloud AI (free online — no setup)</span>
-                    </label>
-                </div>
-
-                <!-- On-Device AI section (Android only, shown when litert selected) -->
-                <div id="litertConfigSection" class="local-ai-info hidden">
-                    <h3>📱 On-Device Model Status:</h3>
-                    <p id="litertModelStatus" class="status-message checking">Checking model…</p>
-
-                    <div id="litertDownloadSection" class="hidden">
-                        <p style="color:#aaa;font-size:0.9em;margin:10px 0 6px;">
-                            The Qwen 2.5 1.5B model ships with the app — no download needed. If this card ever shows up, your install is incomplete; reinstalling the app from the Play Store will fix it.
-                        </p>
-                        <button id="downloadModelBtn" class="primary" style="width:100%;padding:14px;font-size:1rem;margin-top:4px;">
-                            ⬇️ Download AI Model
-                        </button>
-                        <div id="litertDlProgress" style="display:none;margin-top:14px;">
-                            <div style="width:100%;height:10px;background:#1a1a2e;border-radius:5px;overflow:hidden;">
-                                <div id="litertDlBar" style="height:100%;width:0%;background:linear-gradient(90deg,#c8972a,#e8b84b);border-radius:5px;transition:width 0.3s;"></div>
-                            </div>
-                            <p id="litertDlLabel" style="font-size:0.85em;color:#aaa;margin-top:6px;text-align:center;"></p>
-                        </div>
-                        <p id="litertDlError" style="display:none;color:#e05050;font-size:0.85em;margin-top:8px;"></p>
-                    </div>
-                </div>
+                <h2>AI Settings</h2>
+                <p id="localAIBanner">The storyteller is a free online AI. Pick a provider and paste your free key once; it stays on this device.</p>
 
                 <!-- Cloud provider section (visible only when cloud mode selected) -->
-                <div id="cloudConfigSection" class="cloud-config hidden">
+                <div id="cloudConfigSection" class="cloud-config">
                     <h3>Cloud Provider:</h3>
                     <!-- Static options. Keys MUST match CLOUD_PROVIDERS in
                          config.js exactly. If you add a new provider in
@@ -127,25 +87,6 @@
                     <p class="api-key-security-note">
                         🔒 Your key is stored locally on your device only.
                     </p>
-                </div>
-
-                <!-- Local AI info section (visible only when local/desktop mode selected) -->
-                <div id="localConfigSection" class="local-ai-info hidden">
-                    <h3>🚀 Local AI Benefits:</h3>
-                    <ul>
-                        <li>✅ No API limits or costs</li>
-                        <li>✅ Large context windows for rich storytelling</li>
-                        <li>✅ Complete privacy — data never leaves your computer</li>
-                    </ul>
-
-                    <div class="local-ai-instructions">
-                        <h3>📋 Setup Instructions:</h3>
-                        <ol id="localAISetupSteps">
-                            <li>Configure <code>LLM_BACKEND</code> in <code>config.js</code> (<code>llama-cpp</code> recommended).</li>
-                            <li>Run <code>python setup_local_ai.py --backend &lt;backend&gt;</code> once to prepare directories and dependencies.</li>
-                            <li>Start the model server yourself (e.g. <code>python start_llama_server.py</code>), then <code>python server.py</code>.</li>
-                        </ol>
-                    </div>
                 </div>
 
                 <div class="local-ai-status">
@@ -461,7 +402,7 @@
             <h1>About Adventure Stories</h1>
             <div class="card about-content">
                  <p>Adventure Stories is an AI-powered, text-based RPG where your choices shape the narrative, guided by an AI storyteller.</p>
-                 <p>Create characters, explore themed worlds, battle monsters, find items, and complete your adventure goal! The storyteller is a free online AI (OpenRouter or Google AI Studio key, set in AI Settings); local models are optional.</p>
+                 <p>Create characters, explore themed worlds, battle monsters, find items, and complete your adventure goal! The storyteller is a free online AI (OpenRouter or Google AI Studio key, set once in AI Settings).</p>
                  <p><strong>Features:</strong> Multiple themes, dynamic goals, combat, status effects, item tiers, AI-generated choices mapped to fixed action types (Good, Bad, Risky, Silly, Investigative) with implicit consequences, expandable story display, local saves, faction reputation system with trust-based difficulty.</p>
                  <hr>
                  <p><em>Made with ❤️ for Brookston, Vincent, Toby, and Katie by their Dad.</em></p>

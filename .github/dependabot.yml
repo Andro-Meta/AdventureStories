@@ -24,7 +24,7 @@ updates:
   #     - "dependencies"
   #     - "npm"
 
-  # Python tooling — start_game.py + start_llama_server.py are stdlib-only
+  # Python tooling — server.py is stdlib-only
   # right now, but if we add a requirements.txt later this picks it up.
   # - package-ecosystem: "pip"
   #   directory: "/"

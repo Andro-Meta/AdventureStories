@@ -11,7 +11,7 @@
 //
 //   PART B (only with --url=...): live conformance against a real backend.
 //     Sends 5 game-realistic prompts to /v1/chat/completions, scores schema
-//     compliance over RUNS samples per test. Same scoring as eval_models.
+//     compliance over RUNS samples per test.
 //
 // Usage:
 //   npm run test:llm                  # Part A only — fast, runs in CI
@@ -206,8 +206,7 @@ for (const t of corpus) {
 
 if (URL && MODELS.length > 0) {
   console.log(`\n\x1b[1m=== PART B — Live backend conformance @ ${URL} ===\x1b[0m`);
-  // Defer to eval_models.mjs's existing harness — load it as a module.
-  console.log(`  (run "npm run eval:models -- --url=${URL} --models=${MODELS.join(',')}" for the live tests)`);
+  console.log('  (live checks: run tools/key_proxy.mjs with KEY_PROXY_DUMP=1, play, then tools/turn_metrics.mjs)');
 } else {
   console.log('\n\x1b[2m(Part B skipped — pass --url=... and --models=... to run live conformance)\x1b[0m');
 }

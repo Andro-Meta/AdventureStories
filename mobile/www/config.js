@@ -1,262 +1,22 @@
 // config.js
-// Contains configuration constants for the Adventure Stories game.
+// Constants for Adventure Stories.
+//
+// The storyteller is a free online model (OpenRouter or Google AI Studio),
+// called from the browser with the player's own key, saved in AI Settings.
+// Local and on-device models were removed on purpose (2026-10-07): nothing
+// is downloaded or run on the player's machine.
 
-// --- Local AI Configuration ---
-//
-// Tier 2: backends are selectable. Both backends expose OpenAI-compatible
-// /v1/chat/completions on localhost, so consumer code stays backend-agnostic.
-//
-//   'minicpm-python'  — Legacy: working_ai_server.py + HuggingFace Transformers
-//                       Pros: works with the model the user already downloaded.
-//                       Cons: slow, no grammar/JSON-schema enforcement, ~5GB pip deps.
-//
-//   'llama-cpp'       — llama-server from llama.cpp. Recommended for new work.
-//                       Pros: native streaming, GBNF grammars, JSON schema enforcement,
-//                              MCP support, much faster on consumer GPUs.
-//                       Cons: requires user to install llama.cpp + download a GGUF model.
-//                       See OVERHAUL_PLAN.md for setup steps.
-// 'minicpm-python' | 'llama-cpp' | 'cloud'
-// 'cloud' = user-configured free OpenAI-compatible online provider (Phase 0).
-//   The active cloud provider is selected via localStorage key 'adv.cloudProvider'
-//   (one of the keys in CLOUD_PROVIDERS) and the API key via 'adv.apiKey'.
-//   Default backend remains llama-cpp; users opt into cloud via the settings UI,
-//   which writes localStorage('adv.llmBackend') to 'cloud' to persist their choice.
-// Phase 5: 'litert' = on-device LiteRT-LM (Gemma 3 1B etc.) via the
-// @capgo/capacitor-llm plugin. Only valid when running inside the
-// Capacitor Android shell — selected automatically there, ignored on
-// desktop/web (which fall through to llama-cpp).
-export const LLM_BACKEND = (() => {
-    try {
-        if (typeof window !== 'undefined') {
-            // One-time move of existing installs onto the free cloud default
-            // (older builds stored 'llama-cpp' / 'litert' automatically).
-            if (!window.localStorage.getItem('adv.cloudDefaultV2')) {
-                window.localStorage.setItem('adv.cloudDefaultV2', '1');
-                window.localStorage.setItem('adv.llmBackend', 'cloud');
-            }
-            const stored = window.localStorage.getItem('adv.llmBackend');
-            if (stored === 'cloud' || stored === 'llama-cpp' || stored === 'minicpm-python' || stored === 'ollama' || stored === 'litert') {
-                return stored;
-            }
-        }
-    } catch (_) { /* fall through to default */ }
-    // Default everywhere (desktop, phone browser, Android APK): free cloud AI.
-    // Local backends stay available but must be opted into via Settings.
-    return 'cloud';
-})();
+export const LLM_BACKEND = 'cloud';
 
-// Phase 5: LiteRT-LM (on-device) config.
-//
-// MODEL CHOICE — All filenames verified against the live
-// huggingface.co/litert-community/* file listings (May 2026), all sizes
-// pulled from the API. **All Gemma variants on HuggingFace are gated**
-// behind the Gemma license + an HF token; we ship Gemma as the default
-// because it produces the best narrative quality and the user already
-// completed the HF setup once. To enable:
-//   1. Visit huggingface.co/google/gemma-3-1b-it (and /gemma-3-4b-it for
-//      the upgrade), click "Acknowledge license".
-//   2. Create a READ token at huggingface.co/settings/tokens.
-//   3. Paste it into MODEL_HF_TOKEN below.
-//
-// SIZE / QUALITY MATRIX (q8 = 8-bit weights, fastest; q4 = 4-bit, smallest):
-//   Gemma 3 1B q8 4k ctx  → 1.05 GB   ← DEFAULT (user's S22 Ultra/S24 FE friendly)
-//   Gemma 3 1B q4 2k ctx  → 0.55 GB   ← smaller fallback
-//   Gemma 3 4B int4 web   → 2.56 GB   ← upgrade for richer narration
-//   Gemma 3 4B q4 web     → 2.89 GB   ← alt 4B quant
-//   Gemma 3 4B int8 web   → 3.90 GB   ← highest 4B quality, slowest
-// All run within Phi-4-mini's RAM ceiling on either of your phones.
-//
-// NON-GATED ALTERNATES (for users without an HF account):
-//   Qwen2.5 1.5B q8       → 1.60 GB
-//   Qwen2.5 0.5B q8       → 0.55 GB
-//   Phi-4 mini q8         → 3.91 GB
-// Switch via localStorage.adv.litertModel = '<key>' to one of ALTERNATES below.
-export const LITERT_CONFIG = {
-    MODEL_NAME: 'qwen2.5-1.5b-instruct-q8',
-    MODEL_FILE: 'Qwen2.5-1.5B-Instruct_multi-prefill-seq_q8_ekv4096.task',
-    MODEL_ASSET_PATH: 'Qwen2.5-1.5B-Instruct_multi-prefill-seq_q8_ekv4096.task',
-    // Direct .task URL from the litert-community Gemma 3 1B repo. q8
-    // weights, 4k context window, 1.05 GB. Best quality-per-MB for this
-    // game's narrator workload.
-    MODEL_DOWNLOAD_URL: 'https://huggingface.co/litert-community/Qwen2.5-1.5B-Instruct/resolve/main/Qwen2.5-1.5B-Instruct_multi-prefill-seq_q8_ekv4096.task',
-    MODEL_HF_TOKEN: '', // PASTE your HF read token here. Required for any Gemma model.
-    MODEL_EXPECTED_BYTES: 1598556720, // strict-size check; set to 0 to disable
-    CONTEXT_WINDOW: 4096,
-    DEFAULT_PARAMS: {
-        max_tokens: 1024,
-        temperature: 0.7,
-        top_k: 40,
-        top_p: 0.95
-    },
-    // Runtime-selectable via localStorage.adv.litertModel = <key>.
-    // First three are GATED (need HF token); last three are non-gated.
-    ALTERNATES: {
-        'gemma3-1b-it-int4': {
-            modelName:      'gemma3-1b-it-int4',
-            modelAssetPath: 'gemma3-1b-it-int4.task',
-            downloadUrl:    'https://huggingface.co/litert-community/Gemma3-1B-IT/resolve/main/gemma3-1b-it-int4.task',
-            expectedBytes:  554661243,
-            contextWindow:  2048,
-            defaultParams:  { max_tokens: 512, temperature: 0.7, top_k: 40, top_p: 0.95 },
-            requiresHFToken: true,
-            note: 'Smallest Gemma. ~555 MB. 2k context. Lowest quality but fastest.'
-        },
-        'gemma3-4b-it-int4-web': {
-            modelName:      'gemma3-4b-it-int4-web',
-            modelAssetPath: 'gemma3-4b-it-int4-web.task',
-            downloadUrl:    'https://huggingface.co/litert-community/Gemma3-4B-IT/resolve/main/gemma3-4b-it-int4-web.task',
-            expectedBytes:  2559442944,
-            contextWindow:  8192,
-            defaultParams:  { max_tokens: 2048, temperature: 0.7, top_k: 40, top_p: 0.95 },
-            requiresHFToken: true,
-            note: 'Upgrade to 4B for richer narration. ~2.56 GB. Best quality for S22 Ultra.'
-        },
-        'gemma3-4b-it-q4-web': {
-            modelName:      'gemma3-4b-it-q4-web',
-            modelAssetPath: 'gemma3-4b-it-q4_0-web.task',
-            downloadUrl:    'https://huggingface.co/litert-community/Gemma3-4B-IT/resolve/main/gemma3-4b-it-q4_0-web.task',
-            expectedBytes:  2890530816,
-            contextWindow:  8192,
-            defaultParams:  { max_tokens: 2048, temperature: 0.7, top_k: 40, top_p: 0.95 },
-            requiresHFToken: true,
-            note: 'Alt 4B quant (~2.89 GB). Slightly higher quality than int4-web.'
-        },
-        'qwen2.5-1.5b-instruct': {
-            modelName:      'qwen2.5-1.5b-instruct-q8',
-            modelAssetPath: 'Qwen2.5-1.5B-Instruct_multi-prefill-seq_q8_ekv4096.task',
-            downloadUrl:    'https://huggingface.co/litert-community/Qwen2.5-1.5B-Instruct/resolve/main/Qwen2.5-1.5B-Instruct_multi-prefill-seq_q8_ekv4096.task',
-            expectedBytes:  1598556720,
-            contextWindow:  4096,
-            defaultParams:  { max_tokens: 1024, temperature: 0.7, top_k: 40, top_p: 0.95 },
-            requiresHFToken: false,
-            note: 'Non-gated alternative. ~1.6 GB. Strong instruction-following.'
-        },
-        'qwen2.5-0.5b-instruct': {
-            modelName:      'qwen2.5-0.5b-instruct-q8',
-            modelAssetPath: 'Qwen2.5-0.5B-Instruct_multi-prefill-seq_q8_ekv1280.task',
-            downloadUrl:    'https://huggingface.co/litert-community/Qwen2.5-0.5B-Instruct/resolve/main/Qwen2.5-0.5B-Instruct_multi-prefill-seq_q8_ekv1280.task',
-            expectedBytes:  546660344,
-            contextWindow:  1280,
-            defaultParams:  { max_tokens: 384, temperature: 0.7, top_k: 40, top_p: 0.95 },
-            requiresHFToken: false,
-            note: 'Non-gated tiny model. ~547 MB. Lowest quality fallback.'
-        },
-        'phi-4-mini-instruct': {
-            modelName:      'phi-4-mini-instruct-q8',
-            modelAssetPath: 'Phi-4-mini-instruct_multi-prefill-seq_q8_ekv4096.task',
-            downloadUrl:    'https://huggingface.co/litert-community/Phi-4-mini-instruct/resolve/main/Phi-4-mini-instruct_multi-prefill-seq_q8_ekv4096.task',
-            expectedBytes:  3910050199,
-            contextWindow:  4096,
-            defaultParams:  { max_tokens: 1024, temperature: 0.7, top_k: 40, top_p: 0.95 },
-            requiresHFToken: false,
-            note: 'Non-gated 4B class. ~3.91 GB. Strong reasoning; slower than Gemma.'
-        }
-    }
+/** Per-request limits for the online providers. */
+export const AI_REQUEST_CONFIG = {
+    TIMEOUT_MS: 45000,   // cloud replies take seconds; 45 s per attempt
+    MAX_RETRIES: 2,      // 3 attempts in total
+    RETRY_DELAY_MS: 2000 // network hiccups; per-minute 429s wait for Retry-After / 20 s
 };
 
-export const LOCAL_AI_CONFIG = {
-    MODEL_NAME: 'MiniCPM-2B-128k',
-    CONTEXT_WINDOW: 128000, // 128k tokens
-    DEFAULT_MAX_TOKENS: 2048,
-    DEFAULT_TEMPERATURE: 0.8,
-    DEFAULT_URL: 'http://localhost:8001', // Live AI server (working_ai_server.py)
-    CONNECTION_TIMEOUT: 120000, // 120 seconds for AI generation (local models can be slow)
-    MAX_RETRIES: 3,
-    RETRY_DELAY: 2000, // 2 seconds between retries
-    HEALTH_CHECK_INTERVAL: 30000, // 30 seconds between health checks
+export const AI_DEFAULT_PARAMS = { max_tokens: 2048, temperature: 0.7, top_p: 0.95 };
 
-    // Model parameters aligned with MINICPM_OPTIMIZATIONS_APPLIED.md
-    DEFAULT_PARAMS: {
-        max_tokens: 2048,
-        temperature: 0.8,
-        top_p: 0.8,
-        top_k: 50
-    }
-};
-
-// Ollama config. Used when LLM_BACKEND === 'ollama'.
-// Ollama exposes OpenAI-compatible /v1/chat/completions so the same localAI.js
-// calling code works — only the health check path differs (/api/tags instead of /health).
-// Switch via: localStorage.setItem('adv.llmBackend', 'ollama') in the browser console.
-export const OLLAMA_CONFIG = {
-    MODEL_NAME: 'gemma3:27b',           // Best Gemma story model in typical Ollama installs
-    DEFAULT_URL: 'http://localhost:11434',
-    HEALTH_PATH: '/api/tags',           // Ollama lists models here; 200 = healthy
-    CONTEXT_WINDOW: 131072,
-    DEFAULT_PARAMS: {
-        max_tokens: 2048,
-        temperature: 0.7,
-        top_p: 0.95
-        // top_k omitted — Ollama's OpenAI endpoint ignores it
-    }
-};
-
-// llama.cpp llama-server config. Used when LLM_BACKEND === 'llama-cpp'.
-// Default: Gemma-3n-E4B-it Q4_K_M (~4.5 GB). Locked in 2026-04-29 after
-// head-to-head testing against Qwen3-4B (see TEST_REPORT_2026-04-29.md):
-// 100% arc-memory JSON reliability, ~5x faster on schema-constrained calls,
-// 5:1 sliding-window attention keeps the KV cache small (~700 MB at 32k Q8),
-// total resident ~4.5 GB — fits comfortably on 12+ GB phones. The Qwen3-4B
-// GGUF is preserved on disk for fallback comparison.
-export const LLAMA_CPP_CONFIG = {
-    MODEL_NAME: 'gemma-3n-E4B-it-Q4_K_M',
-    MODEL_FILE: './models/gemma-3n-E4B-it-Q4_K_M.gguf', // Path passed to llama-server -m
-    SERVER_BIN: './llama-cpp/llama-server.exe',  // Path to llama-server binary (Windows)
-    SERVER_BIN_UNIX: './llama-cpp/llama-server', // Path to llama-server binary (Linux/Mac)
-    CONTEXT_WINDOW: 32768,    // 32k context — Qwen3 supports up to 128k via YaRN
-    PORT: 8090,               // 8080 is commonly taken (Docker Desktop, etc.)
-    DEFAULT_URL: 'http://localhost:8090',
-    GPU_LAYERS: 999,          // Offload all layers to GPU (override to 0 for CPU-only)
-    DEFAULT_PARAMS: {
-        max_tokens: 2048,
-        temperature: 0.7,
-        top_p: 0.95,
-        top_k: 40
-    }
-};
-
-/**
- * Phase 4.0b: Resolve the AI backend URL with the following priority:
- *   1. URL query string `?backend=http://...` — one-off override (great for
- *      testing on a phone via your home network without editing config).
- *   2. localStorage `adv.backendUrl` — persistent override for installed PWAs.
- *   3. The configured DEFAULT_URL — what desktop dev uses.
- *
- * Examples:
- *   Open `http://192.168.1.50:8000/?backend=http://192.168.1.50:8090` on a
- *   phone connected to your home Wi-Fi → loads the PWA from your dev box,
- *   talks to llama-server on the same box. No native port required.
- */
-function resolveBackendUrl(defaultUrl) {
-    try {
-        if (typeof window !== 'undefined') {
-            const params = new URLSearchParams(window.location.search);
-            const fromQuery = params.get('backend');
-            if (fromQuery) {
-                // Persist the override so reloads keep working
-                try { window.localStorage.setItem('adv.backendUrl', fromQuery); } catch (_) {}
-                return fromQuery;
-            }
-            const fromStorage = window.localStorage.getItem('adv.backendUrl');
-            if (fromStorage) return fromStorage;
-        }
-    } catch (_) { /* fall through to default */ }
-    return defaultUrl;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Phase 0: Cloud AI providers
-//
-// User-configured optional cloud backends. No keys are hardcoded — users
-// paste their own free API key into the settings UI, which is persisted in
-// localStorage as 'adv.apiKey' (visible to JS, but acceptable for a
-// client-side game where the user owns the key and chooses to use it).
-//
-// All three providers are OpenAI-compatible /v1/chat/completions, so the
-// existing localAI.js calling code is reused; only the base URL, model,
-// and Authorization header differ. Phase 0 docs (IMPLEMENTATION_PLAN.md)
-// recommend OpenRouter Gemma 4 31B for users who want to stick with Gemma.
-// ─────────────────────────────────────────────────────────────────────────────
 // CLOUD MODEL IDs — re-verified 2026-10-07 against openrouter.ai/api/v1/models
 // and with a live game-shaped JSON prompt (narration + diff + 5 typed choices):
 //   nemotron-3-super-120b:free   ~10 s, valid JSON, 5/5 choice types
@@ -363,118 +123,18 @@ export function cloudKeyStorageName(provider) {
     return 'adv.apiKey.' + new URL(provider.baseUrl).hostname;
 }
 
-/**
- * Returns the active backend's URL + param defaults.
- * Used by localAI.js so a single config flag swaps the entire stack.
- */
+/** Provider, model and URL the client should use right now. */
 export function getActiveBackendConfig() {
-    if (LLM_BACKEND === 'cloud') {
-        const provider = resolveCloudProvider();
-        return {
-            url: provider.baseUrl,
-            modelName: provider.model,
-            fallbackModels: provider.fallbackModels || [],
-            contextWindow: provider.contextWindow,
-            defaultParams: {
-                max_tokens: 2048,
-                temperature: 0.7,
-                top_p: 0.95
-                // top_k intentionally omitted — not supported by most cloud APIs
-            },
-            id: 'cloud',
-            isCloud: true,
-            healthPath: null, // Cloud providers skip local health checks
-            providerName: provider.name,
-            // BUG-14 fix: cloud backends use OpenAI's nested json_schema shape.
-            // Most enforce the schema; Groq/free OpenRouter sometimes ignore it.
-            // json_object, not strict json_schema: the free router can land on
-            // models that reject json_schema with a 400. Shape is enforced by
-            // the prompt + validateChoicesPayload after parsing.
-            supportsJsonSchema: false,
-            jsonSchemaShape: null,
-            supportsJsonObject: true,
-            supportsTopK: false,
-            supportsCachePrompt: false
-        };
-    }
-    if (LLM_BACKEND === 'ollama') {
-        return {
-            url: resolveBackendUrl(OLLAMA_CONFIG.DEFAULT_URL),
-            modelName: OLLAMA_CONFIG.MODEL_NAME,
-            contextWindow: OLLAMA_CONFIG.CONTEXT_WINDOW,
-            defaultParams: OLLAMA_CONFIG.DEFAULT_PARAMS,
-            id: 'ollama',
-            isCloud: false,
-            healthPath: OLLAMA_CONFIG.HEALTH_PATH,  // /api/tags returns { models: [...] }
-            // BUG-14 fix: Ollama's OpenAI-compat layer rejects the llama.cpp
-            // bare-schema shape AND OpenAI's nested json_schema. It accepts
-            // only `{type: 'json_object'}`. Without this flag, every turn
-            // silently fell back to the legacy text-only path and diff ops
-            // never applied — HP/coins/inventory frozen.
-            supportsJsonSchema: false,
-            jsonSchemaShape: null,
-            supportsJsonObject: true,
-            supportsTopK: false,        // Ollama's OpenAI endpoint ignores top_k
-            supportsCachePrompt: false  // llama.cpp extension; Ollama doesn't recognize it
-        };
-    }
-    if (LLM_BACKEND === 'litert') {
-        // Special: on-device. URL is the synthetic 'litert://local' marker;
-        // localAI.js routes to liteRTBridge.chatCompletion() when it sees this.
-        return {
-            url: 'litert://local',
-            modelName: LITERT_CONFIG.MODEL_NAME,
-            contextWindow: LITERT_CONFIG.CONTEXT_WINDOW,
-            defaultParams: LITERT_CONFIG.DEFAULT_PARAMS,
-            id: 'litert',
-            isCloud: false,
-            isLiteRT: true,
-            healthPath: null,
-            modelAssetPath: LITERT_CONFIG.MODEL_ASSET_PATH,
-            // BUG-14 fix: MediaPipe / LiteRT-LM has no response_format hook.
-            // The bridge appends a JSON-mode instruction to the system prompt
-            // when this flag is set, so the narrator still produces JSON.
-            supportsJsonSchema: false,
-            jsonSchemaShape: null,
-            supportsJsonObject: false,
-            supportsTopK: true,
-            supportsCachePrompt: false
-        };
-    }
-    if (LLM_BACKEND === 'llama-cpp') {
-        return {
-            url: resolveBackendUrl(LLAMA_CPP_CONFIG.DEFAULT_URL),
-            modelName: LLAMA_CPP_CONFIG.MODEL_NAME,
-            contextWindow: LLAMA_CPP_CONFIG.CONTEXT_WINDOW,
-            defaultParams: LLAMA_CPP_CONFIG.DEFAULT_PARAMS,
-            id: 'llama-cpp',
-            isCloud: false,
-            healthPath: '/health',  // llama-server: { status: 'ok' }
-            // llama.cpp uses its own bare-schema shape (NOT OpenAI's nested
-            // json_schema). Strict mode is honored at sample time via GBNF.
-            supportsJsonSchema: true,
-            jsonSchemaShape: 'llama-cpp-bare',
-            supportsJsonObject: true,
-            supportsTopK: true,
-            supportsCachePrompt: true   // llama-server's prefix-cache hint
-        };
-    }
-    // minicpm-python fallback (legacy — still supported for users with
-    // working_ai_server.py running). No grammar enforcement; relies on
-    // tolerant parser.
+    const provider = resolveCloudProvider();
     return {
-        url: resolveBackendUrl(LOCAL_AI_CONFIG.DEFAULT_URL),
-        modelName: LOCAL_AI_CONFIG.MODEL_NAME,
-        contextWindow: LOCAL_AI_CONFIG.CONTEXT_WINDOW,
-        defaultParams: LOCAL_AI_CONFIG.DEFAULT_PARAMS,
-        id: 'minicpm-python',
-        isCloud: false,
-        healthPath: '/health',
-        supportsJsonSchema: false,
-        jsonSchemaShape: null,
-        supportsJsonObject: true,
-        supportsTopK: true,
-        supportsCachePrompt: false
+        id: 'cloud',
+        isCloud: true,
+        url: provider.baseUrl,
+        modelName: provider.model,
+        fallbackModels: provider.fallbackModels || [],
+        contextWindow: provider.contextWindow,
+        providerName: provider.name,
+        defaultParams: AI_DEFAULT_PARAMS
     };
 }
 
@@ -494,10 +154,8 @@ export const MAX_PLAYERS = 5;
 export const MIN_AGE = 6;
 export const MAX_AGE = 99;
 export const MAX_NAME_LENGTH = 30;
-// Max conversation history length, in user/assistant pairs. 20 pairs = 40
-// messages + a system prompt; safely fits both backends (128k MiniCPM and
-// 32k Qwen3-4B). contextManager.compressHistoryIntelligently() summarises
-// older turns when this threshold is exceeded.
+// Max conversation history kept for summaries, in user/assistant pairs.
+// contextManager.compressHistoryIntelligently() summarises older turns.
 export const MAX_HISTORY_LENGTH = 20;
 
 // --- Hierarchical memory (Tier 3) ---

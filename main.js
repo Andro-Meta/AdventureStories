@@ -529,410 +529,80 @@ function updateContinueButtonVisibility() {
 }
 
 /**
- * Phase 0: Show the AI backend settings screen. Supports both local and
- * cloud modes. The visible sections, status text, and "Test Connection"
- * button all branch on whichever mode is currently active.
+ * AI Settings screen: pick an online provider, paste a free key, test it.
+ * (Local and on-device models were removed; the game only uses online AI.)
  */
 async function showLocalAIStatus() {
-    const statusElement = document.getElementById('localAIStatus');
-    if (!statusElement) return;
-
+    if (!document.getElementById('localAIStatus')) return;
     UI.showScreen('localAIScreen');
 
-    // Sync the radio buttons + visible sections with the active backend
-    syncBackendModeUI();
-
-    // Run an initial connection check for whichever mode is active
-    await runConnectionCheck();
-}
-
-/**
- * Phase 0: Sync the radio buttons, cloud config visibility, and provider
- * dropdown to match the currently active backend. Called on screen show
- * and after any backend mode change.
- */
-function syncBackendModeUI() {
-    const backend = Config.LLM_BACKEND;
-    const isCloud  = backend === 'cloud';
-    const isLiteRT = backend === 'litert';
-    const isLocal  = !isCloud && !isLiteRT;
-
-    // Show the LiteRT radio only when running in Capacitor
-    const isCapacitor = !!(typeof window !== 'undefined' && window.Capacitor &&
-        typeof window.Capacitor.isNativePlatform === 'function' &&
-        window.Capacitor.isNativePlatform());
-    const litertLabel = document.getElementById('litertModeLabel');
-    const localLabel  = document.getElementById('localModeLabel');
-    if (litertLabel) litertLabel.style.display = isCapacitor ? '' : 'none';
-    // On Android, hide the desktop llama.cpp option (irrelevant)
-    if (localLabel) localLabel.style.display = isCapacitor ? 'none' : '';
-
-    const localRadio  = document.getElementById('backendModeLocal');
-    const cloudRadio  = document.getElementById('backendModeCloud');
-    const litertRadio = document.getElementById('backendModeLiteRT');
-    if (localRadio)  localRadio.checked  = isLocal;
-    if (cloudRadio)  cloudRadio.checked  = isCloud;
-    if (litertRadio) litertRadio.checked = isLiteRT;
-
-    const cloudSection  = document.getElementById('cloudConfigSection');
-    const localSection  = document.getElementById('localConfigSection');
-    const litertSection = document.getElementById('litertConfigSection');
-    if (cloudSection)  cloudSection.classList.toggle('hidden', !isCloud);
-    if (localSection)  localSection.classList.toggle('hidden', !isLocal);
-    if (litertSection) litertSection.classList.toggle('hidden', !isLiteRT);
-
-    // Update banner text
-    const banner = document.getElementById('localAIBanner');
-    if (banner) {
-        if (isCapacitor) {
-            banner.textContent = 'On-Device AI runs Qwen 2.5 1.5B privately on your phone — works offline, no signup. Cloud AI uses a free online provider instead.';
-        } else {
-            banner.textContent = 'Choose how you want to play. Local AI is private and unlimited; Cloud AI requires no local setup.';
-        }
-    }
-
-    // Populate cloud provider dropdown selection
     const providerKey = (() => {
         try { return localStorage.getItem('adv.cloudProvider') || Config.DEFAULT_CLOUD_PROVIDER; }
         catch (_) { return Config.DEFAULT_CLOUD_PROVIDER; }
     })();
     const select = document.getElementById('cloudProviderSelect');
     if (select) select.value = providerKey;
-
-    // Populate API key field (masked)
     const keyInput = document.getElementById('cloudApiKeyInput');
     if (keyInput) {
-        const hasKey = !!Config.getCloudApiKey();
-        keyInput.placeholder = hasKey ? '✓ Key saved (paste new key to replace)' : 'Paste your free API key here';
+        keyInput.placeholder = Config.getCloudApiKey() ? '✓ Key saved (paste a new key to replace it)' : 'Paste your free API key here';
         keyInput.value = '';
     }
-
     updateCloudProviderNotes(providerKey);
-
-    // If litert, also check model status
-    if (isLiteRT) refreshLiteRTModelStatus();
+    await runConnectionCheck();
 }
 
-/**
- * Check whether the on-device model is downloaded and update the
- * litertConfigSection UI accordingly.
- */
-async function refreshLiteRTModelStatus() {
-    const statusEl  = document.getElementById('litertModelStatus');
-    const dlSection = document.getElementById('litertDownloadSection');
-    if (!statusEl) return;
-
-    try {
-        const bridge = await import('./liteRTBridge.js');
-        const health = await bridge.checkHealth();
-
-        // Already loaded into MediaPipe → green check, exact source.
-        if (health.status === 'healthy') {
-            const name = health.model?.name || 'On-device AI';
-            const src  = health.model?.source === 'bundled-asset' ? ' (bundled)' : '';
-            statusEl.textContent = `✅ Model ready — ${name}${src}`;
-            statusEl.className = 'status-message healthy';
-            if (dlSection) dlSection.classList.add('hidden');
-            return;
-        }
-
-        // Not loaded yet, but inside the Capacitor APK we ship the model
-        // bundled as an Android asset — so it is functionally "ready, will
-        // activate on first generation". Don't nag the user about a download
-        // they don't need to perform.
-        if (bridge.isAvailable && bridge.isAvailable()) {
-            statusEl.textContent = '✅ Model bundled in app — ready to use (will load on first generation).';
-            statusEl.className = 'status-message healthy';
-            if (dlSection) dlSection.classList.add('hidden');
-            return;
-        }
-
-        // Not in Capacitor and not loaded — fall back to a legacy download
-        // hint (mostly so this UI degrades gracefully when poked from a
-        // desktop browser).
-        if (health.status === 'pending') {
-            statusEl.textContent = '⬇️ Model not present yet.';
-            statusEl.className = 'status-message warning';
-            if (dlSection) dlSection.classList.remove('hidden');
-        } else {
-            statusEl.textContent = `⚠️ ${health.reason || 'On-device AI unavailable'}`;
-            statusEl.className = 'status-message error';
-        }
-    } catch (e) {
-        statusEl.textContent = `⚠️ ${e.message || e}`;
-        statusEl.className = 'status-message error';
-    }
-}
-
-/**
- * Phase 0: Update the description and signup link for the selected provider.
- */
+/** Description and signup link for the selected provider. */
 function updateCloudProviderNotes(providerKey) {
     const provider = Config.CLOUD_PROVIDERS[providerKey];
     if (!provider) return;
     const notesEl = document.getElementById('cloudProviderNotes');
     const signupEl = document.getElementById('cloudSignupLink');
-    if (notesEl) {
-        notesEl.textContent = `${provider.notes} (${provider.rateLimit})`;
-    }
+    if (notesEl) notesEl.textContent = `${provider.notes} (${provider.rateLimit})`;
     if (signupEl) {
         signupEl.href = provider.signupUrl;
         signupEl.textContent = `Get a free key from ${new URL(provider.signupUrl).hostname} →`;
     }
 }
 
-/**
- * Phase 0: Run a connection check appropriate to the current backend.
- * For local: pings /health. For cloud: makes a tiny test completion request.
- */
+/** Tiny completion to prove the key and provider work. */
 async function runConnectionCheck() {
     const statusElement = document.getElementById('localAIStatus');
     if (!statusElement) return;
-
-    // LiteRT: no TCP health check — model status is in the litert section
-    if (Config.LLM_BACKEND === 'litert') {
-        statusElement.textContent = '📱 On-Device AI selected. See model status above.';
-        statusElement.className = 'status-message checking';
-        clearStatusInfoBlocks(statusElement);
-        return;
-    }
-
     const backend = Config.getActiveBackendConfig();
-
-    if (backend.isCloud) {
-        const apiKey = Config.getCloudApiKey();
-        if (!apiKey) {
-            statusElement.textContent = `⚠️ No API key set. Paste your free key above and click Save.`;
-            statusElement.className = 'status-message warning';
-            clearStatusInfoBlocks(statusElement);
-            return;
-        }
-        statusElement.textContent = `Testing ${backend.providerName}...`;
-        statusElement.className = 'status-message checking';
-
-        try {
-            const { localAI } = await import('./localAI.js');
-            // Minimal completion to verify auth + reachability
-            const response = await localAI.makeRequest(
-                [{ role: 'user', content: 'Reply with just the word OK.' }],
-                { max_tokens: 5, temperature: 0 }
-            );
-            if (response && response.length > 0) {
-                statusElement.textContent = `✅ Cloud AI connected — ${backend.providerName}`;
-                statusElement.className = 'status-message healthy';
-                renderInfoBlock(statusElement, 'server-info', `
-                    <h4>Active Cloud Provider:</h4>
-                    <ul>
-                        <li><strong>Provider:</strong> ${backend.providerName}</li>
-                        <li><strong>Model:</strong> ${backend.modelName}</li>
-                        <li><strong>Context Window:</strong> ${backend.contextWindow.toLocaleString()} tokens</li>
-                    </ul>
-                `);
-            } else {
-                throw new Error('Empty response');
-            }
-        } catch (error) {
-            statusElement.textContent = `❌ Cloud AI test failed.`;
-            statusElement.className = 'status-message error';
-            renderInfoBlock(statusElement, 'error-info', `
-                <h4>Troubleshooting:</h4>
-                <ul>
-                    <li>Check that your API key is valid and active.</li>
-                    <li>Verify your provider has not exceeded its daily rate limit.</li>
-                    <li>Error: ${String(error.message).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}</li>
-                </ul>
-            `);
-        }
+    if (!Config.getCloudApiKey()) {
+        statusElement.textContent = '⚠️ No key saved yet. Paste your free key above and click Save.';
+        statusElement.className = 'status-message warning';
         return;
     }
-
-    // Local mode: existing health-check flow
-    statusElement.textContent = 'Checking local AI server...';
+    statusElement.textContent = `Testing ${backend.providerName}...`;
     statusElement.className = 'status-message checking';
-    const backendName = Config.LLM_BACKEND;
-    const launchHint = backendName === 'llama-cpp'
-        ? 'python start_llama_server.py'
-        : 'python working_ai_server.py';
-
     try {
-        const { testLocalAI } = await import('./api_new.js');
-        await testLocalAI();
-
-        statusElement.textContent = `✅ Local AI Server is running and healthy! ${backend.modelName} ready.`;
+        const { localAI } = await import('./localAI.js');
+        const response = await localAI.makeRequest([{ role: 'user', content: 'Reply with just the word OK.' }], { max_tokens: 5, temperature: 0 });
+        if (!response) throw new Error('Empty response');
+        statusElement.textContent = `✅ Connected: ${backend.providerName}`;
         statusElement.className = 'status-message healthy';
-        renderInfoBlock(statusElement, 'server-info', `
-            <h4>Server Details:</h4>
-            <ul>
-                <li><strong>Backend:</strong> ${backendName}</li>
-                <li><strong>Model:</strong> ${backend.modelName}</li>
-                <li><strong>Context Window:</strong> ${backend.contextWindow.toLocaleString()} tokens</li>
-                <li><strong>Server URL:</strong> ${backend.url}</li>
-            </ul>
-        `);
     } catch (error) {
-        statusElement.textContent = `❌ Local AI Server not available at ${backend.url}.`;
+        statusElement.textContent = `❌ Test failed: ${error.message}`; // textContent: the error body is untrusted
         statusElement.className = 'status-message error';
-        renderInfoBlock(statusElement, 'error-info', `
-            <h4>Troubleshooting:</h4>
-            <ul>
-                <li>Start the server with <code>${launchHint}</code> in a separate terminal.</li>
-                <li>Wait for model load to finish (10-60s depending on model size).</li>
-                <li>Verify the URL is reachable: <code>${backend.url}/health</code></li>
-                <li>Or switch to Cloud mode above to skip local setup entirely.</li>
-                <li>Error: ${String(error.message).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}</li>
-            </ul>
-        `);
     }
 }
 
-function clearStatusInfoBlocks(statusElement) {
-    const existing = statusElement.parentNode.querySelectorAll('.error-info, .server-info');
-    existing.forEach(el => el.remove());
-}
-
-function renderInfoBlock(statusElement, className, html) {
-    clearStatusInfoBlocks(statusElement);
-    const block = document.createElement('div');
-    block.className = className;
-    block.innerHTML = html;
-    statusElement.parentNode.appendChild(block);
-}
-
-/**
- * Phase 0: Wire up cloud-mode event handlers. Called from
- * setupEventListeners() once on app start.
- */
 function setupCloudBackendListeners() {
-    const localRadio  = document.getElementById('backendModeLocal');
-    const cloudRadio  = document.getElementById('backendModeCloud');
-    const litertRadio = document.getElementById('backendModeLiteRT');
     const providerSelect = document.getElementById('cloudProviderSelect');
     const apiKeyInput = document.getElementById('cloudApiKeyInput');
     const saveBtn = document.getElementById('cloudApiKeySaveBtn');
-    const downloadBtn = document.getElementById('downloadModelBtn');
 
-    // ── LiteRT radio ──────────────────────────────────────────────────────────
-    if (litertRadio) {
-        litertRadio.addEventListener('change', async () => {
-            if (!litertRadio.checked) return;
-            try { localStorage.setItem('adv.llmBackend', 'litert'); } catch (_) {}
-            window.location.reload();
-        });
-    }
-
-    // ── Local (desktop) radio ─────────────────────────────────────────────────
-    if (localRadio) {
-        localRadio.addEventListener('change', async () => {
-            if (!localRadio.checked) return;
-            const { localAI } = await import('./localAI.js');
-            localAI.setLocalBackend();
-            window.location.reload();
-        });
-    }
-
-    // ── Cloud radio ───────────────────────────────────────────────────────────
-    if (cloudRadio) {
-        cloudRadio.addEventListener('change', async () => {
-            if (!cloudRadio.checked) return;
-            try { localStorage.setItem('adv.llmBackend', 'cloud'); } catch (_) {}
-            const cloudSection  = document.getElementById('cloudConfigSection');
-            const localSection  = document.getElementById('localConfigSection');
-            const litertSection = document.getElementById('litertConfigSection');
-            if (cloudSection)  cloudSection.classList.remove('hidden');
-            if (localSection)  localSection.classList.add('hidden');
-            if (litertSection) litertSection.classList.add('hidden');
-            updateCloudProviderNotes(providerSelect ? providerSelect.value : Config.DEFAULT_CLOUD_PROVIDER);
-        });
-    }
-
-    if (providerSelect) {
-        providerSelect.addEventListener('change', () => {
-            updateCloudProviderNotes(providerSelect.value);
-        });
-    }
-
-    // ── Cloud API key save ────────────────────────────────────────────────────
+    if (providerSelect) providerSelect.addEventListener('change', () => updateCloudProviderNotes(providerSelect.value));
     if (saveBtn) {
         saveBtn.addEventListener('click', async () => {
-            const key = (apiKeyInput && apiKeyInput.value) ? apiKeyInput.value.trim() : '';
+            const key = apiKeyInput?.value?.trim() || '';
             const providerKey = providerSelect ? providerSelect.value : Config.DEFAULT_CLOUD_PROVIDER;
-
-            if (!key) {
-                alert('Please paste your API key first.');
-                return;
-            }
-
-            try { localStorage.setItem('adv.llmBackend', 'cloud'); } catch (_) {}
-
+            if (!key) { UI.showPopup('Paste your API key first.', 'warning'); return; }
             const { localAI } = await import('./localAI.js');
             localAI.setCloudProvider(providerKey);
             localAI.setApiKey(key);
-
             window.location.reload();
-        });
-    }
-
-    // ── On-Device model download button ───────────────────────────────────────
-    if (downloadBtn) {
-        downloadBtn.addEventListener('click', async () => {
-            const dl = window.Capacitor?.Plugins?.ModelDownload;
-            if (!dl) {
-                alert('ModelDownload plugin not available.');
-                return;
-            }
-
-            downloadBtn.disabled = true;
-            downloadBtn.textContent = 'Downloading…';
-
-            const progressDiv  = document.getElementById('litertDlProgress');
-            const bar          = document.getElementById('litertDlBar');
-            const label        = document.getElementById('litertDlLabel');
-            const errorEl      = document.getElementById('litertDlError');
-            const statusEl     = document.getElementById('litertModelStatus');
-
-            if (progressDiv) progressDiv.style.display = 'block';
-            if (errorEl)     errorEl.style.display = 'none';
-
-            // Progress listener — use plugin.addListener (synchronous, reliable)
-            let progressListener = null;
-            try {
-                if (typeof dl.addListener === 'function') {
-                    progressListener = await dl.addListener('modelDownloadProgress', (data) => {
-                        if (bar)   bar.style.width = data.percent + '%';
-                        if (label) label.textContent = `${(data.bytesDownloaded / 1e6).toFixed(0)} / ${data.totalBytes > 0 ? (data.totalBytes / 1e6).toFixed(0) : '?'} MB  (${data.percent}%)`;
-                    });
-                }
-            } catch (_) {}
-
-            try {
-                const { LITERT_CONFIG } = await import('./config.js');
-                const modelFile = LITERT_CONFIG.MODEL_FILE || (LITERT_CONFIG.MODEL_NAME + '.task');
-                const downloadUrl = LITERT_CONFIG.MODEL_DOWNLOAD_URL;
-                const hfToken    = LITERT_CONFIG.MODEL_HF_TOKEN || '';
-
-                if (statusEl) { statusEl.textContent = 'Downloading model…'; statusEl.className = 'status-message checking'; }
-
-                const result = await dl.downloadModel({ modelName: modelFile, url: downloadUrl, hfToken });
-
-                if (statusEl) {
-                    statusEl.textContent = '✅ Model downloaded! Ready to play.';
-                    statusEl.className = 'status-message healthy';
-                }
-                if (progressDiv) progressDiv.style.display = 'none';
-                downloadBtn.textContent = '✅ Downloaded';
-
-            } catch (e) {
-                const msg = String(e?.message || e);
-                const friendlyMsg = msg.includes('AUTH_REQUIRED')
-                    ? 'HuggingFace login required. Accept the Gemma license at huggingface.co/google/gemma-3-4b-it and paste a read token in config.js → MODEL_HF_TOKEN.'
-                    : msg;
-                if (errorEl)  { errorEl.textContent = friendlyMsg; errorEl.style.display = 'block'; }
-                if (statusEl) { statusEl.textContent = '❌ Download failed.'; statusEl.className = 'status-message error'; }
-                downloadBtn.disabled = false;
-                downloadBtn.textContent = '⬇️ Retry Download';
-            } finally {
-                if (progressListener && typeof progressListener.remove === 'function') progressListener.remove();
-            }
         });
     }
 }

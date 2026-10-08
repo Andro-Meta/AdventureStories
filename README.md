@@ -1,6 +1,6 @@
 # Adventure Stories
 
-An AI-driven, on-device text adventure that runs entirely in your browser. Plays on desktop, mobile, and everything in between — no cloud account required.
+An AI-driven text adventure for 1–5 friends that runs in your browser or as an Android app. The storyteller is a free online AI (OpenRouter or Google AI Studio); you paste a free key once.
 
 > *Made with ❤️ for Brookston, Vincent, Toby, and Katie by their Dad.*
 
@@ -14,6 +14,7 @@ An AI-driven, on-device text adventure that runs entirely in your browser. Plays
 - **Deterministic JSON-Patch engine** (`engine.js`) is the single mutation point — the narrator proposes state ops; the engine validates and applies them. Items can't be hallucinated, choices can't be meaningless, combat can't break down.
 - **Hybrid retrieval memory** — TF-IDF + recency over scene summaries, plus mention-aware entity scoring. The narrator remembers the NPC you saved 60 turns ago.
 - **130 distinct opening hooks** (13 themes × 10 archetypes) so each new game opens with a different inciting incident.
+- **Clear path to win** — every game gets a goal and a 3-act quest; the header shows the chapter and the next step, and a one-line recap after each turn shows what changed.
 - **God-mode endgame** — finish the main quest, earn 1,000 coins + a legendary weapon per player, then type anything: *"I have a million gold"*, *"I summon Ember the phoenix"*, *"Face me, Hollow King!"*. Earned items and stats persist when you start a new arc.
 
 ## Themes
@@ -46,11 +47,6 @@ is 1 request (a second small one only if the choices come back unusable), plus a
 5 rounds. On 50/day that is ~40 turns; with the $10 credit (1,000/day) a long group session fits easily.
 If the daily quota runs out the game says so instead of failing silently.
 
-### Local AI (optional)
-
-llama.cpp, Ollama and the old MiniCPM server still work for offline play: pick **Local AI** in
-AI Settings and start the server yourself (`python start_llama_server.py`, port 8090). Not needed for normal play.
-
 ### Play on your phone (same Wi-Fi)
 
 `server.py` prints a LAN URL like `http://192.168.x.y:8321`. Open it on the phone, paste a key in AI Settings
@@ -58,36 +54,16 @@ AI Settings and start the server yourself (`python start_llama_server.py`, port 
 
 ---
 
-## Android (on-device LLM, Play Store-ready)
+## Android
 
-The Android build wraps this web app in Capacitor 8 and runs **Gemma 3 1B** (int4, ~600 MB) on-device through Google's **LiteRT-LM** runtime — no network required after install. Same web codebase, same prompts; the swap happens in `liteRTBridge.js`.
-
-```bash
-cd mobile
-npm install
-npm run add:android
-# drop gemma3-1b-it-int4.task into android/app/src/main/assets/ (or wire Play Asset Delivery)
-npm run sync && npm run open:android
-```
-
-The full guide — including Play Asset Delivery for the model, signing, and Play Console metadata — is in [`mobile/README.md`](mobile/README.md).
-
-### Pick the right model for your phone
-
-Before you commit to a default model, run the head-to-head benchmark against your local Ollama:
-
-```bash
-ollama pull gemma3:270m gemma3:1b gemma3:4b
-npm run eval:models -- --models gemma3:270m,gemma3:1b,gemma3:4b
-```
-
-The script generates a markdown report scoring each model on the *actual* game prompts (5-of-each-type choices, narrative-with-diff, god-mode declarations, final-blow milestone trio). Score ≥ 0.85 means ship.
+The Android app is the same game in a Capacitor wrapper, using the same online AI. See
+[`mobile/README.md`](mobile/README.md) to build the APK (about 67 MB).
 
 ---
 
 ## Saves
 
-Save files use the prefix `AG-` in `localStorage`. Opening the game on an existing save automatically migrates any old `advStorySave_*` keys.
+Every game autosaves after each turn into its own slot ("Autosave <names> (<theme>) <id>"; the newest 5 are kept), and you can save named copies from the menu. **Continue Last Game** opens the newest save. Saves live in this browser's `localStorage` (prefix `AG-`).
 
 ---
 
@@ -134,20 +110,16 @@ formats, prompt size budget, multiplayer op targeting, tolerant parsing, fight-o
 | `godMode.js` | Post-main-quest free-form authoring (unlock = main quest done, period) |
 | `memoryRetriever.js` | TF-IDF + recency arc-memory retrieval |
 | `schemas.js` | JSON schemas for narrator output |
-| `config.js` | Backend selection, game constants, save prefix, LiteRT config |
-| `localAI.js` | HTTP client for all AI backends (LiteRT short-circuit included) |
-| `liteRTBridge.js` | On-device LiteRT-LM bridge (Capacitor → @capgo/capacitor-llm) |
+| `config.js` | Online AI providers (OpenRouter free models, Google AI Studio), game constants |
+| `localAI.js` | Client for the online AI: retries, rate limits, JSON parsing |
 | `saveLoad.js` | localStorage save/load + AG- migration |
 | `ui.js` | All DOM updates — narrative, choices, player cards, quest panel |
 | `server.py` | Static site server (port 8321+) |
-| `start_llama_server.py` | llama-server launcher (port 8090) |
-| `start_game.py` | Top-level orchestrator |
 | `easy.bat` | One-click launcher (Windows): runs `server.py` |
 | `mobile/` | Capacitor wrapper + Android build instructions |
 | `tools/audit.mjs` | Static validation: themes, hooks, quest hints, schemas |
 | `tools/engine_audit.mjs` | Engine applyDiff coverage (every god-mode path) |
 | `tools/godmode_audit.mjs` | Unlock condition matches README spec |
-| `tools/eval_models.mjs` | Head-to-head benchmark of small Gemma variants |
 | `tests/smoke7.spec.js` | 26-test Playwright suite (themes, setup, save/load, full game loop) |
 
 ---
@@ -159,13 +131,13 @@ formats, prompt size budget, multiplayer op targeting, tolerant parsing, fight-o
 - ✅ **Phase 2** — Jail-escape mechanic, death handling, status effects
 - ✅ **Phase 3** — Arc memory, story hooks, god-mode reward + retirement loop
 - ✅ **Phase 3.5** — Combat log, reputation, side-quest engine, 130 opening variations
-- ✅ **Phase 4** — God mode completion, quest rewards (1000 coins + legendary weapon), 5-player co-op, Ollama backend, UI sync fixes, 26/26 tests green
-- ✅ **Phase 5** — Capacitor + LiteRT-LM on-device LLM for Android. Gemma 3 1B default. Play Asset Delivery-ready. God Mode unlock fixed (was gated by 3 conditions instead of 1). Offline audit suite (30+ deep checks) green.
+- ✅ **Phase 4** — God mode completion, quest rewards (1000 coins + legendary weapon), 5-player co-op, UI sync fixes, 26/26 tests green
+- ✅ **2026-10** — Cloud-only AI (local/on-device models removed), one AI call per turn, story matches the dice, multiplayer turn fixes, quest win path with rewards, turn recap, per-game autosave, security fixes. Android APK rebuilt.
 
-See `IMPLEMENTATION_PLAN.md` for the full roadmap and `OVERHAUL_PLAN.md` for the architecture audit.
+See `IMPLEMENTATION_PLAN.md` for the older roadmap.
 
 ---
 
 ## License
 
-To be decided. Models, llama.cpp binaries, and third-party assets follow their respective upstream licenses.
+To be decided. Third-party assets follow their upstream licenses; AI output is generated by the provider you choose.

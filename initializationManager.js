@@ -575,11 +575,9 @@ Respond with ONLY a JSON object: {"goal": "Your specific goal sentence here."}`;
     }
 
     /**
-     * Check local AI server health
+     * Is the online AI ready? (No health URL exists; a saved key is the check.)
      */
     async checkLocalAIHealth() {
-        // One health check for every backend (cloud = key present, litert =
-        // bridge, local = health path). Cloud providers have no /health URL.
         const { testLocalAI } = await import('./api_new.js');
         await testLocalAI();
         this.log('InitManager: AI backend ready');
