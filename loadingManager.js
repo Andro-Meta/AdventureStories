@@ -31,7 +31,6 @@ export class LoadingManager {
             overlay.className = 'loading-overlay hidden';
             overlay.innerHTML = `
                 <div class="loading-container">
-                    <div class="loading-spinner"></div>
                     <div class="loading-title">Adventure Stories</div>
                     <div class="loading-status" id="loadingStatus">Initializing...</div>
                     <div class="loading-progress">

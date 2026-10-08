@@ -146,22 +146,12 @@ export class LoadingTipsManager {
         if (!tipsSection) {
             tipsSection = document.createElement('div');
             tipsSection.className = 'loading-tips-section';
+            // Tip only: the overlay (loadingManager.js) owns the one status
+            // line and the one progress bar (there were two of each, plus two spinners).
             tipsSection.innerHTML = `
-                <div class="loading-progress-container">
-                    <div class="loading-progress-bar">
-                        <div class="loading-progress-fill" id="loadingProgressFill"></div>
-                    </div>
-                    <div class="loading-progress-text" id="loadingProgressText">Initializing...</div>
-                </div>
                 <div class="loading-tip-container">
                     <div class="loading-tip-icon">💡</div>
                     <div class="loading-tip-text" id="loadingTipText">Welcome to Adventure Stories!</div>
-                </div>
-                <div class="loading-animation">
-                    <div class="loading-spinner"></div>
-                    <div class="loading-dots">
-                        <span>.</span><span>.</span><span>.</span>
-                    </div>
                 </div>
             `;
             loadingContainer.appendChild(tipsSection);
@@ -169,8 +159,8 @@ export class LoadingTipsManager {
         
         // Store references to elements
         this.tipElement = document.getElementById('loadingTipText');
-        this.progressElement = document.getElementById('loadingProgressText');
-        this.progressFill = document.getElementById('loadingProgressFill');
+        this.progressElement = document.getElementById('loadingStatus');
+        this.progressFill = document.getElementById('loadingProgressBar');
         
         // Add CSS styles
         this.addLoadingStyles();
@@ -193,39 +183,6 @@ export class LoadingTipsManager {
                 padding: 20px;
                 max-width: 600px;
                 margin: 0 auto;
-            }
-            
-            .loading-progress-container {
-                margin-bottom: 30px;
-            }
-            
-            .loading-progress-bar {
-                width: 100%;
-                height: 8px;
-                background: rgba(255, 255, 255, 0.2);
-                border-radius: 4px;
-                overflow: hidden;
-                margin-bottom: 10px;
-            }
-            
-            .loading-progress-fill {
-                height: 100%;
-                background: linear-gradient(90deg, #4CAF50, #8BC34A, #CDDC39);
-                width: 0%;
-                transition: width 0.5s ease;
-                border-radius: 4px;
-                animation: progressGlow 2s ease-in-out infinite alternate;
-            }
-            
-            @keyframes progressGlow {
-                0% { box-shadow: 0 0 5px rgba(76, 175, 80, 0.5); }
-                100% { box-shadow: 0 0 20px rgba(76, 175, 80, 0.8); }
-            }
-            
-            .loading-progress-text {
-                color: #fff;
-                font-size: 14px;
-                opacity: 0.8;
             }
             
             .loading-tip-container {
@@ -266,53 +223,6 @@ export class LoadingTipsManager {
                 100% { opacity: 1; transform: translateY(0); }
             }
             
-            .loading-animation {
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                gap: 20px;
-                margin-top: 20px;
-            }
-            
-            .loading-spinner {
-                width: 40px;
-                height: 40px;
-                border: 3px solid rgba(255, 255, 255, 0.3);
-                border-top: 3px solid #fff;
-                border-radius: 50%;
-                animation: spin 1s linear infinite;
-            }
-            
-            @keyframes spin {
-                0% { transform: rotate(0deg); }
-                100% { transform: rotate(360deg); }
-            }
-            
-            .loading-dots {
-                display: flex;
-                gap: 5px;
-            }
-            
-            .loading-dots span {
-                color: #fff;
-                font-size: 24px;
-                animation: dotBounce 1.4s ease-in-out infinite;
-            }
-            
-            .loading-dots span:nth-child(1) { animation-delay: -0.32s; }
-            .loading-dots span:nth-child(2) { animation-delay: -0.16s; }
-            .loading-dots span:nth-child(3) { animation-delay: 0s; }
-            
-            @keyframes dotBounce {
-                0%, 80%, 100% { 
-                    transform: scale(0);
-                    opacity: 0.5;
-                }
-                40% { 
-                    transform: scale(1);
-                    opacity: 1;
-                }
-            }
         `;
         document.head.appendChild(style);
     }

@@ -585,7 +585,8 @@ export async function loadGame(slotName) {
             }
         }
 
-        UI.showPopup(`Game "${slotName}" loaded successfully!`, 'success');
+        // Autosave slot names carry an internal id ("Autosave Michael (custom) muz4k0sy"): show the game instead.
+        UI.showPopup(`Welcome back${gameState.players?.length ? ', ' + gameState.players.map(p => p.name).join(' & ') : ''}!`, 'success', 2500);
         log(`SaveLoad: Game "${slotName}" loaded successfully!`);
 
     } catch (error) {

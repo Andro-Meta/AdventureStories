@@ -402,7 +402,7 @@ export async function completeSetupAndStartGameIntelligent() {
         // Set up progress monitoring
         const progressInterval = setInterval(() => {
             const progress = initManager.getProgress();
-            loadingManager.updateStatus(`Initializing... ${progress.completed}/${progress.total} tasks complete (${progress.percentage}%)`);
+            loadingManager.updateProgress(progress.percentage); // the status line is the phase text from loadingTips
             
             // Show current running tasks
             if (progress.running > 0) {
