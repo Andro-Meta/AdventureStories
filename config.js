@@ -388,6 +388,30 @@ export const STATUS_EFFECTS = {
         defaultData: { atkMultiplier: 1.5, defMultiplier: 0.75 },
         resistanceType: 'Mental',
         canStack: false
+    },
+    // The narrator prompt names Regen and Fear; without entries they showed
+    // a ❓ and did nothing.
+    REGEN: {
+        name: 'Regen',
+        type: 'heal_over_time',
+        description: 'Recovers health each turn',
+        icon: '💚',
+        color: '#44cc66',
+        defaultDuration: 3,
+        defaultData: { hpPerTurn: 5 },
+        resistanceType: null,
+        canStack: false
+    },
+    FEAR: {
+        name: 'Fear',
+        type: 'debuff',
+        description: 'Shaken: attacks land weaker',
+        icon: '😨',
+        color: '#9966cc',
+        defaultDuration: 2,
+        defaultData: { atkMultiplier: 0.7 },
+        resistanceType: 'Mental',
+        canStack: false
     }
 };
 
