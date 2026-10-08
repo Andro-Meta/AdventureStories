@@ -225,11 +225,22 @@ export async function handlePlayerChoice(actionType, choiceText) {
                         } else if ((move.mpCost || 0) > (currentPlayer.mp || 0)) {
                             combatLog = `${currentPlayer.name} reaches for ${move.name} but doesn't have enough MP.`;
                         } else {
-                            // Generic special: 1.5x weapon damage + status if move declares one.
-                            const r = Combat.executeWeaponAttack(currentPlayer, target, {
-                                baseDamageMultiplier: 1.5,
-                                applyStatusEffects: move.mechanics?.statusEffects || []
-                            });
+                            // Special: 1.5x a weapon hit, plus the move's own damage
+                            // (narrator/god-mode moves carry mechanics.directDamage),
+                            // plus its status effects. Before, it was a plain attack.
+                            const r = Combat.executeWeaponAttack(currentPlayer, target, {});
+                            if (!r.missed && !r.blocked) {
+                                const bonus = Math.round((r.actualDamage || 0) * 0.5)
+                                    + (Number(move.mechanics?.directDamage ?? move.mechanics?.damage) || 0);
+                                const before = target.hp;
+                                target.hp = Math.max(0, target.hp - bonus);
+                                r.actualDamage = (r.actualDamage || 0) + (before - target.hp);
+                                for (const fx of [].concat(move.mechanics?.statusEffects || [])) {
+                                    const name = typeof fx === 'string' ? fx : fx?.name;
+                                    const dur = (typeof fx === 'object' && fx?.duration) || Combat.lookupStatusEffect(name)?.defaultDuration || 3;
+                                    if (name) Combat.applyStatusEffect(target, name, dur, (typeof fx === 'object' && fx?.effectTickData) || {}, move.name);
+                                }
+                            }
                             move.currentCooldown = move.cooldown || 2;
                             const mpCost = move.mpCost || 0;
                             if (mpCost) currentPlayer.mp = Math.max(0, (currentPlayer.mp || 0) - mpCost);
