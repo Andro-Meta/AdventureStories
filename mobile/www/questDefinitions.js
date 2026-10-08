@@ -258,7 +258,12 @@ DO NOT in god mode:
     const act = determineCurrentAct(gameState);
     if (!act) return '';
     const villain = gameState.questProgress?.villain;
-    return `\n\nMAIN QUEST STAGE — ${act.name}:${villain ? `\nMAIN VILLAIN: ${villain} (the final boss; keep them present in the story)` : ''}
+    // Fights were rare (live: 14 turns, no fight, with a goblin chieftain on stage).
+    const sinceFight = (gameState.turn || 0) - (gameState.lastCombatTurn || 0);
+    const fightNudge = act.id !== 'act1' && !gameState.inCombat && sinceFight >= 5
+        ? `\nACTION: no fight for ${sinceFight} rounds. Unless the hero is resting somewhere safe, start one this turn: add a foe native to the story with /enemies/- and replace /inCombat true.`
+        : '';
+    return `\n\nMAIN QUEST STAGE — ${act.name}:${villain ? `\nMAIN VILLAIN: ${villain} (the final boss; keep them present in the story)` : ''}${fightNudge}
 ${gameState.adventureGoal ? act.narratorHint.replace(/^- By turn 4-6, you MUST set \/adventureGoal.*\n/m, '') : act.narratorHint}
 
 When you reach a milestone listed above, emit a /questProgress/milestones/- diff op so the

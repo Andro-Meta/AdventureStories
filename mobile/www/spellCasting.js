@@ -505,7 +505,8 @@ function getDurationInTurns(duration) {
  * @param {Spell} spell - The spell
  */
 function showCastingEffect(caster, spell) {
-    const school = Spells.MAGIC_SCHOOLS[spell.school];
+    // Generated spells name schools freely ("Divination"): unknown -> sparkle, not a crash.
+    const school = Spells.MAGIC_SCHOOLS[String(spell.school || '').toUpperCase()] || { icon: '✨' };
     const message = `${caster.name} casts ${spell.name}! ${school.icon}`;
     UI.showPopup(message, 'skill', 2000);
 }

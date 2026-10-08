@@ -100,6 +100,13 @@ const PATHS = [
             if (!gs.players?.[idx]) return `players[${idx}] does not exist`;
             if (!value || typeof value !== 'object') return 'inventory item must be an object';
             if (!value.name || typeof value.name !== 'string') return 'item.name is required';
+            // Live: the game's loot and the narrator both added the same spear in
+            // one turn. Gear can't be owned twice; consumables may stack.
+            const t = itemType(value);
+            const low = value.name.trim().toLowerCase();
+            if (t !== 'Consumable' && (gs.players[idx].inventory || []).some(i => i?.name?.trim().toLowerCase() === low)) {
+                return `${value.name} is already in the pack`;
+            }
             return null;
         },
         apply: (m, value, gs) => {
@@ -424,6 +431,7 @@ const PATHS = [
         apply: (_m, value, gs) => {
             const wasInCombat = !!gs.inCombat;
             gs.inCombat = value;
+            if (value) gs.lastCombatTurn = gs.turn || 0; // for the "no fight lately" nudge
             // A7: When the narrator flips inCombat false→true, the combat
             // machinery (initiative, currentTurnIndex, isActive, formation)
             // needs proper initialization. Without this, advanceCombatTurn
