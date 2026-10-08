@@ -272,10 +272,14 @@ function showNextPopup() {
 }
 
 /** Shows a screen and hides others. */
+let gameScreenScrollY = 0;
 export function showScreen(screenId) {
     const log = window.displayVisualError || console.log;
     log(`Showing screen: ${screenId}`);
 
+    // Leaving the game screen for Bag/Shop/Moves: remember where the reader was.
+    if (gameState.currentScreen === 'gameScreen' && screenId !== 'gameScreen') gameScreenScrollY = window.scrollY || 0;
+    const backToGame = screenId === 'gameScreen' && ['inventoryScreen', 'shopScreen', 'specialMovesScreen', 'storyBookScreen', 'menuScreen'].includes(gameState.currentScreen);
     // Update state
     gameState.currentScreen = screenId;
 
@@ -292,8 +296,9 @@ export function showScreen(screenId) {
         screen.classList.add('active');
         // Fill the header now, not when the background goal task finishes
         // (the screen opened showing "Adventure Name / Objective").
-        if (screenId === 'gameScreen') { try { updateGameHeader(); } catch (_) {} }
-        window.scrollTo?.(0, 0);
+        if (screenId === 'gameScreen') { try { updateGameHeader(); gameState.godModeManager?.updateGodModeUI?.(); } catch (_) {} }
+        if (screenId === 'mainMenuScreen') { try { window.__refreshContinue?.(); } catch (_) {} }
+        window.scrollTo?.(0, backToGame ? gameScreenScrollY : 0);
     } else {
         log(`ERROR: Screen ${screenId} not found`);
     }
@@ -353,7 +358,7 @@ export function showGameOverScreen(info = {}) {
         return;
     }
     const milestones = (gameState.questProgress?.milestones || []).map(m => m.name);
-    const items = (gameState.players?.[0]?.inventory || []).map(i => i.name);
+    const items = (gameState.players || []).flatMap(p => p?.inventory || []).map(i => i.name); // whole party, not hero 1
     const npcs = Object.keys(gameState.entityMemory?.npcs || {});
     const locs = Object.keys(gameState.entityMemory?.locations || {});
     const flavorText = info.reason === 'party_wipe'
@@ -730,7 +735,7 @@ export function renderEnemyCards() {
         });
         updateCollapsibleListeners();
         renderBattleHud();
-        playHpEffects(activeEnemies);
+        playHpEffects(gameState.enemies || []); // defeated too: the killing blow gets its number
     } else {
         elements.enemyContainer.classList.add('hidden');
         renderBattleHud();
@@ -1128,13 +1133,19 @@ export function showStoryBook() {
 export async function saveStoryBook() {
     const text = storyBookText();
     const name = `${(gameState.adventureGoal || 'adventure-story').replace(/[^a-z0-9]+/gi, '-').slice(0, 40)}.txt`;
+    // The Android app's web view ignores download links (nothing happened):
+    // share the text there, else copy it.
+    if (window.Capacitor?.isNativePlatform?.()) {
+        try { if (navigator.share) { await navigator.share({ title: name, text }); return; } } catch (_) { return; /* share cancelled */ }
+        return copyStoryBook();
+    }
     try {
         const a = document.createElement('a');
         a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
         a.download = name;
         a.click();
         setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-    } catch (_) { /* phone web views may block downloads; Copy still works */ }
+    } catch (_) { return copyStoryBook(); }
 }
 
 export async function copyStoryBook() {
@@ -1655,7 +1666,9 @@ function createSpecialMoveCard(move) {
     let player; try { player = getCurrentPlayer(); } catch(e) {}
     const isReady = move.currentCooldown <= 0;
     const hasEnoughMP = !move.mpCost || (player?.mp >= move.mpCost);
-    const isDisabled = player?.isDowned || !isReady || !hasEnoughMP || gameState.isLoading;
+    // Wrong place for the move (exploration-only in a fight, or combat-only outside one) too.
+    const wrongPlace = (move.usageContext === 'exploration' && gameState.inCombat) || (move.usageContext === 'combat' && !gameState.inCombat);
+    const isDisabled = player?.isDowned || !isReady || !hasEnoughMP || gameState.isLoading || wrongPlace;
 
     // Determine context badge
     const contextBadge = move.usageContext === 'both' ? 'Combat & Exploration' :
@@ -1711,14 +1724,8 @@ function createSpecialMoveCard(move) {
         </div>
     `;
 
-    // Add event listener for the use button
-    const useButton = card.querySelector('.useMoveBtn');
-    if (useButton && !isDisabled) {
-        useButton.addEventListener('click', () => {
-            useSpecialMove(move.id);
-        });
-    }
-
+    // Clicks are handled by the delegated .useMoveBtn listener in main.js
+    // (a listener here called an unimported useSpecialMove and threw).
     return card;
 }
 

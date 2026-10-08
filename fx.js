@@ -27,6 +27,7 @@ function play(characters) {
         const diff = c.hp - prev;
         const isPlayer = String(c.id).startsWith('player');
         if (card) floatNumber(card, diff);
+        else if (diff < 0 && !isPlayer) killNumber(diff); // its card is already gone
         if (diff < 0 && isPlayer) heroHurt(card, -diff, c.maxHp || 100);
         else if (diff > 0) healed(card);
         else if (diff < 0) foeHurt(card, -diff, c.maxHp || 30);
@@ -57,6 +58,14 @@ function healed(card) { restart(card, 'fx-heal'); }
 
 function foeHurt(card, amount, maxHp) {
     restart(card, amount >= maxHp * 0.3 ? 'fx-foe-crit' : 'fx-foe-hit');
+}
+
+function killNumber(diff) {
+    const n = document.createElement('span');
+    n.className = 'fx-float fx-float-dmg fx-kill';
+    n.textContent = `−${-diff}`;
+    document.body.appendChild(n);
+    setTimeout(() => n.remove(), 1200);
 }
 
 function floatNumber(card, diff) {

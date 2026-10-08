@@ -1216,11 +1216,12 @@ footer { margin-top: 2rem; text-align: center; }
 .popup.info { background-color: var(--info-color); }
 /* Toasts from ui.showPopup. They had no CSS, so each one sat in the page as a
    flex sibling of .container and squeezed the game into ~55% of a phone. */
-.popup-message { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%) translateY(20px); z-index: 1001;
+.popup-message { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%) translateY(20px); z-index: 1003; /* above the battle picker (1002) */
     width: max-content; max-width: min(92vw, 520px); padding: 0.7rem 1.1rem; border-radius: var(--border-radius);
     background: var(--info-color); color: #fff; font-weight: 600; line-height: 1.35; text-align: center;
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45); opacity: 0; transition: opacity 0.3s ease, transform 0.3s ease; pointer-events: none; }
-.popup-damage, .popup-error, .popup-combat { background: var(--bad-color); }
+.popup-damage, .popup-error { background: var(--bad-color); }
+.popup-combat { background: #34405a; } /* neutral: your own hits and heals are not errors */
 .popup-healing, .popup-success { background: var(--good-color); }
 .popup-coins { background: var(--coins-color); color: #222; }
 .popup-item { background: var(--tier-medium-color); }
@@ -3111,3 +3112,5 @@ body { padding-top: calc(env(safe-area-inset-top) + 0.5rem); padding-bottom: cal
 body.in-battle #enemyContainer { display: none; }
 #battleHud .bh-fx { font-size: 0.85em; }
 #loadingIndicator.loading-overlay { z-index: 1000; }
+/* killing blow: the foe's card is gone, so the number floats mid-screen */
+.fx-kill { position: fixed; left: 0; right: 0; top: 30%; text-align: center; font-size: 2.2rem; z-index: 1500; }

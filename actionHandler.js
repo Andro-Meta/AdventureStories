@@ -391,7 +391,7 @@ export async function handlePlayerChoice(actionType, choiceText) {
                 }
 
                 cbStep(4, 'switch done, calling showPopup + combat log');
-                try { UI.showPopup(combatLog, 'combat', 4000); } catch(e) { cbStep(4, `showPopup THREW: ${e?.message}`); }
+                // (no toast: the combat log strip below shows this same line)
                 // P4: stream mechanical event to in-game combat log strip
                 try {
                     const kind = actionType === 'Attack' || actionType === 'Special' ? 'attack'

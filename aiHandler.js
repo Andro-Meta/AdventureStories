@@ -229,7 +229,7 @@ ${buildDiffInstructions(pIdx)}`;
 function usedNamesLine() {
     let names = [];
     try { names = JSON.parse(localStorage.getItem('adv.usedNames') || '[]'); } catch (_) {}
-    const mine = new Set(Object.keys(gameState.entityMemory?.npcs || {}).concat(Object.keys(gameState.entityMemory?.locations || {})));
+    const mine = new Set(Object.keys(gameState.entityMemory?.npcs || {}).concat(Object.keys(gameState.entityMemory?.locations || {}), gameState.ownNames || [], [gameState.questProgress?.villain]));
     names = names.filter(n => !mine.has(n)).slice(-40);
     return names.length ? ` Names from earlier games, never reuse them or close variants: ${names.join(', ')}.` : '';
 }
@@ -1303,7 +1303,8 @@ This opening may run up to half again the READING LEVEL length. Third person, li
         }
 
         gameState.messageHistory.push(historyEntry);
-        pruneMessageHistory(gameState.messageHistory);
+        // (pruneMessageHistory's result was thrown away, so this grew all session)
+        if (gameState.messageHistory.length > 40) gameState.messageHistory.splice(0, gameState.messageHistory.length - 40);
 
         // One line per turn for the RECENT TURNS block and arc summaries:
         // the model used to see only the last scene.

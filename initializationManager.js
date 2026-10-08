@@ -325,6 +325,10 @@ export class InitializationManager {
 
                 const theme = gameState.adventureTheme || 'fantasy';
                 const narrative = gameState.currentNarrative || '';
+                // A timed-out attempt keeps running; when it lands after a retry
+                // (or the fallback) set the goal, it must not swap it mid-game.
+                const goalAtStart = gameState.adventureGoal;
+                const goalUnchanged = () => gameState.adventureGoal === goalAtStart;
                 const hookDesc = gameState.storyHook ? `${gameState.storyHook.archetype}; twist: ${gameState.storyHook.motif || ''}` : ''; // field is .flavor, not .flavorText (was always blank)
 
                 const prompt = `You are setting the main quest goal for a ${theme} adventure game.
@@ -354,7 +358,7 @@ Respond with ONLY a JSON object: {"goal": "Your specific goal sentence here."}`;
                     );
 
                     const goal = result?.goal?.trim();
-                    if (goal && goal.length > 5) {
+                    if (goal && goal.length > 5 && goalUnchanged()) {
                         gameState.adventureGoal = goal;
                         if (gameState.questProgressManager) {
                             gameState.questProgressManager.updateObjectives([goal], true);
@@ -383,6 +387,7 @@ Respond with ONLY a JSON object: {"goal": "Your specific goal sentence here."}`;
                         custom: 'Complete your quest and return victorious.',
                     };
                     const fallbackGoal = fallbacks[theme] || 'Complete the adventure and emerge victorious.';
+                    if (!goalUnchanged()) return { goalSet: true, source: 'late' };
                     gameState.adventureGoal = fallbackGoal;
                     if (gameState.questProgressManager) {
                         gameState.questProgressManager.updateObjectives([fallbackGoal], true);

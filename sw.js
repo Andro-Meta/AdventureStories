@@ -58,7 +58,8 @@ self.addEventListener('fetch', (event) => {
     }
 
     const path = url.pathname;
-    const isCodeOrData = /\.(js|mjs|json|html)$|\/$/i.test(path);
+    // css too: cache-first kept an old style.css (the version bump script is stale)
+    const isCodeOrData = /\.(js|mjs|json|html|css)$|\/$/i.test(path);
 
     if (isCodeOrData) {
         // NETWORK-FIRST: fetch fresh, save a copy to cache, fall back to
