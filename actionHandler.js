@@ -810,7 +810,7 @@ Result: ${gameState.narrativeContext.lastOutcome?.success ? 'it works out' : 'it
         }
 
         // Re-render existing choices
-        UI.renderChoices();
+        UI.renderChoices(gameState.currentChoices || []); // (empty call left only a dead placeholder)
     } finally {
         // BUG-30 fix: force-clear isLoading here. The 90s safety-net timeout
         // can fire before makeAICallForSystemAction's own finally runs, which
@@ -1792,7 +1792,7 @@ export async function useInventoryItem(itemId) {
              await makeAICallForSystemAction(actionLog, false); // Let AI handle narrative & turn advance
          } catch (error) {
              log(`Error during AI call in useInventoryItem: ${error.message}`);
-              UI.renderChoices(); // Re-render fixed choices on failure
+              UI.renderChoices(gameState.currentChoices || []); // re-render the last choices on failure (empty call left only 'Waiting for storyteller')
          } finally {
              UI.showLoading(false);
               // Close inventory if open after AI call completes (success or fail)
@@ -2237,7 +2237,7 @@ export async function useSpecialMove(moveId) {
             player.mp = Math.min(player.maxMp || 100, (player.mp || 0) + mpSpent);
             log(`Refunded ${mpSpent} MP to ${player.name} after special-move AI error.`);
         }
-        UI.renderChoices();
+        UI.renderChoices(gameState.currentChoices || []); // (empty call left only a dead placeholder)
     } finally {
         UI.showLoading(false);
         if (gameState.currentScreen === 'specialMovesScreen') {
