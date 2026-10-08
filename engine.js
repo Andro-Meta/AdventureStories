@@ -433,41 +433,6 @@ const PATHS = [
         }
     },
 
-    // ---- Reputation factions (Phase 3.5 P2) ----
-    // Lets the narrator nudge faction trust based on player choices
-    // (helping a noble → +authority, robbing a merchant → -common, etc).
-    // The legacy reputation system already maintains priceModifiers and
-    // service availability based on these values; we just need a way to
-    // mutate them via the narrator's diff. Clamped to [-100, 100].
-    {
-        regex: /^\/reputationSystem\/factions\/(authority|warriors|naturalists|shadows|scholars|common)$/,
-        ops: ['replace'],
-        validate: (m, value) => {
-            if (typeof value !== 'number' || !Number.isFinite(value)) return 'reputation value must be a finite number';
-            if (value < -100 || value > 100) return 'reputation must be in [-100, 100]';
-            return null;
-        },
-        apply: (m, value, gs) => {
-            const faction = m[1];
-            gs.reputationSystem = gs.reputationSystem || { factions: {} };
-            gs.reputationSystem.factions = gs.reputationSystem.factions || {};
-            const old = gs.reputationSystem.factions[faction] || 0;
-            gs.reputationSystem.factions[faction] = value;
-            // Track history so the narrator's next turn knows this just changed.
-            gs.reputationSystem.reputationHistory = gs.reputationSystem.reputationHistory || [];
-            gs.reputationSystem.reputationHistory.push({
-                turn: gs.turn, faction, from: old, to: value, delta: value - old
-            });
-            // Keep history bounded.
-            if (gs.reputationSystem.reputationHistory.length > 50) {
-                gs.reputationSystem.reputationHistory = gs.reputationSystem.reputationHistory.slice(-50);
-            }
-            gs.reputationSystem.lastReputationUpdate = gs.turn;
-            const dir = value > old ? '+' : '';
-            return `reputation.${faction}: ${old} → ${value} (${dir}${value - old})`;
-        }
-    },
-
     // ---- Combat: enter / exit ----
     {
         regex: /^\/inCombat$/,
@@ -1121,6 +1086,5 @@ export function describeAllowedPaths() {
         '/entityMemory/npcs/<name>      (add|replace, {name, description, traits, relationship})',
         '/entityMemory/locations/<name> (add|replace, {name, description, traits})',
         '/entityMemory/items/<name>     (add|replace, {name, description, traits})',
-        '/reputationSystem/factions/<f> (replace, -100..100; f = authority|warriors|naturalists|shadows|scholars|common)'
     ].join('\n');
 }

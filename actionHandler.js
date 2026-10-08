@@ -10,15 +10,13 @@ import * as Items from './items.js';
 import * as Progression from './progression.js';
 import { levelUp } from './battle.js';
  // May not be needed if all calls go through aiHandler
-import { generateId, getRandomElement, getRandomInt, clamp } from './utils.js';
+import { generateId, getRandomElement, clamp } from './utils.js';
 // Import aiHandler functions statically
 import { makeAICallForSystemAction } from './aiHandler.js';
 // Import turnManager functions statically
 import { advanceTurn } from './turnManager.js';
 // Import game loop
 import { processPlayerAction as gameLoopProcessAction } from './gameLoop.js';
-// Import reputation system
-import { calculatePriceModifiers, getTrustDifficultyModifiers, getContextualizedFactions } from './reputationContextualizer.js';
 // Import intelligent compression helpers
 import { recordPlayerChoice, recordStoryBeat } from './state.js';
 
@@ -644,9 +642,6 @@ Fight round ${gameState.combat?.round || 1}. Narrate this round so the fight CHA
                 outcomeNotes.push(`${currentPlayer.name}'s ${Progression.STATS[grew].name} grew from practice`);
             }
 
-            // Faction standing still reacts to the kind of choice.
-            const repConfig = Config.ChoiceOutcomeConfig.baseOutcomes[checkType]?.reputation;
-            if (repConfig) await applyReputationChanges(repConfig, actionType, choiceText);
         }
 
         // Update UI
@@ -913,9 +908,6 @@ function calculateChoiceSignificance(actionType, outcomeSet) {
         if (outcomes.narrative) {
             if (outcomes.narrative.informationGain) significance += 0.2;
             if (outcomes.narrative.specialAbility) significance += 0.3;
-            if (outcomes.narrative.reputationChange && Math.abs(outcomes.narrative.reputationChange) >= 2) {
-                significance += 0.2;
-            }
         }
     }
     
@@ -1465,40 +1457,18 @@ export async function useInventoryItem(itemId) {
          return; // Do not consume or advance turn
      }
      if (item.type === 'Consumable') {
-        // Heal Effect (with trust-based penalties)
+        // Heal Effect
         const baseHeal = Math.round(((Number(item.stats?.heal) || 0) + (player.maxHp || 100) * (Number(item.stats?.healPercent) || 0)) * Progression.kindHealing(player)); // Kind: +10% per point
         if (baseHeal > 0) {
             consumed = true;
             const oldHp = player.hp;
             
-            // Apply trust-based healing penalty
-            let healAmount = baseHeal;
-            if (gameState.reputationSystem) {
-                const trustModifiers = getTrustDifficultyModifiers(gameState.reputationSystem.factions);
-                healAmount = Math.round(healAmount * trustModifiers.healingEfficiency);
-                
-                if (trustModifiers.healingEfficiency < 1.0) {
-                    const penaltyPercent = Math.round((1 - trustModifiers.healingEfficiency) * 100);
-                    log(`Healing reduced by ${penaltyPercent}% due to poor reputation (${baseHeal} -> ${healAmount})`);
-                }
-            }
-            
-            player.hp = clamp(player.hp + healAmount, 0, player.maxHp);
+            player.hp = clamp(player.hp + baseHeal, 0, player.maxHp);
             const actualHeal = player.hp - oldHp;
             actionLog = `${player.name} uses ${item.name}. Result: Restored ${actualHeal} HP.`;
             
-            // Show different messages based on trust penalty
-            if (gameState.reputationSystem && healAmount < baseHeal) {
-                const trustLevel = getTrustDifficultyModifiers(gameState.reputationSystem.factions).trustLevel;
-                if (actualHeal > 0) {
-                    UI.showPopup(`${item.name} restored ${actualHeal} HP (reduced effectiveness due to ${trustLevel} reputation)`, 'healing');
-                } else {
-                    UI.showPopup(`${player.name} uses ${item.name}, but HP is already full.`, 'info');
-                }
-            } else {
-                if (actualHeal > 0) UI.showPopup(`${item.name} restored ${actualHeal} HP!`, 'healing');
-                else UI.showPopup(`${player.name} uses ${item.name}, but HP is already full.`, 'info');
-            }
+            if (actualHeal > 0) UI.showPopup(`${item.name} restored ${actualHeal} HP!`, 'healing');
+            else UI.showPopup(`${player.name} uses ${item.name}, but HP is already full.`, 'info');
             
             log(actionLog);
             // A heal item's cure / extra status still apply (the battle path does both).
@@ -2010,18 +1980,6 @@ export async function useSpecialMove(moveId) {
         if (move.mechanics.healing) {
             let healing = Math.round(move.mechanics.healing * (1 + (player.def / 100)));
             
-            // Apply trust-based healing penalty
-            if (gameState.reputationSystem) {
-                const trustModifiers = getTrustDifficultyModifiers(gameState.reputationSystem.factions);
-                const originalHealing = healing;
-                healing = Math.round(healing * trustModifiers.healingEfficiency);
-                
-                if (healing < originalHealing) {
-                    const penaltyPercent = Math.round((1 - trustModifiers.healingEfficiency) * 100);
-                    log(`Special move healing reduced by ${penaltyPercent}% due to poor reputation`);
-                }
-            }
-            
             player.hp = Math.min(player.maxHp, player.hp + healing);
             UI.showPopup(`${move.name} restores ${healing} HP!`, 'healing');
         }
@@ -2195,225 +2153,15 @@ export async function helpAlly(targetPlayerId) {
 
 
 /**
- * Apply reputation changes from choice outcomes
- * @param {Object} reputationChanges - Reputation changes by faction
- * @param {string} actionType - Type of action taken
- * @param {string} choiceText - Text of the choice made
- */
-async function applyReputationChanges(reputationChanges, actionType, choiceText) {
-    const log = window.displayVisualError || console.log;
-    
-    if (!gameState.reputationSystem) {
-        log('Warning: Reputation system not initialized');
-        return;
-    }
-    
-    const factions = gameState.reputationSystem.factions;
-    const significantChanges = [];
-    let totalAbsoluteChange = 0;
-    
-    // Apply changes to each faction
-    Object.entries(reputationChanges).forEach(([factionKey, changeRange]) => {
-        if (!factions.hasOwnProperty(factionKey)) {
-            log(`Warning: Unknown faction ${factionKey}`);
-            return;
-        }
-        
-        const [min, max] = changeRange;
-        const change = getRandomInt(min, max);
-        
-        if (change !== 0) {
-            const oldRep = factions[factionKey];
-            factions[factionKey] = clamp(oldRep + change, -100, 100);
-            const actualChange = factions[factionKey] - oldRep;
-            
-            totalAbsoluteChange += Math.abs(actualChange);
-            
-            // Track significant changes (absolute value >= 2)
-            if (Math.abs(actualChange) >= 2) {
-                significantChanges.push({
-                    faction: factionKey,
-                    change: actualChange,
-                    oldValue: oldRep,
-                    newValue: factions[factionKey]
-                });
-            }
-            
-            log(`Reputation change: ${factionKey} ${actualChange > 0 ? '+' : ''}${actualChange} (${oldRep} -> ${factions[factionKey]})`);
-        }
-    });
-    
-    // Update reputation history for significant changes
-    if (significantChanges.length > 0) {
-        gameState.reputationSystem.reputationHistory.push({
-            turn: gameState.turn,
-            actionType: actionType,
-            choiceText: choiceText.substring(0, 50) + (choiceText.length > 50 ? '...' : ''),
-            changes: significantChanges,
-            timestamp: Date.now()
-        });
-        
-        // Keep only last 20 entries
-        if (gameState.reputationSystem.reputationHistory.length > 20) {
-            gameState.reputationSystem.reputationHistory.shift();
-        }
-    }
-    
-    // Update price modifiers
-    gameState.reputationSystem.priceModifiers = calculatePriceModifiers(factions);
-    
-    // Update last reputation update turn
-    gameState.reputationSystem.lastReputationUpdate = gameState.turn;
-    
-    // Show popup for significant reputation changes
-    if (totalAbsoluteChange >= 4) {
-        const majorChanges = significantChanges.filter(c => Math.abs(c.change) >= 3);
-        
-        if (majorChanges.length > 0) {
-            const factionName = getContextualizedFactions()?.[majorChanges[0].faction]?.name || majorChanges[0].faction; // (was an undefined variable; this code never ran before)
-            const change = majorChanges[0].change;
-            const changeText = change > 0 ? 'improved' : 'worsened';
-            
-            UI.showPopup(`Your reputation with ${factionName} has ${changeText} significantly!`, 
-                        change > 0 ? 'success' : 'warning', 3000);
-        }
-    }
-    
-    // Check for faction conflicts and apply penalties
-    applyFactionConflicts();
-    
-    // Update available services based on new reputation
-    updateAvailableServices();
-    
-    log(`Applied reputation changes from ${actionType} choice`);
-}
-
-/**
- * Apply faction conflict penalties
- */
-function applyFactionConflicts() {
-    const factions = gameState.reputationSystem.factions;
-    const conflicts = gameState.reputationSystem.factionConflicts;
-    
-    // Authority vs Shadows conflict
-    if (factions.authority > 60 && factions.shadows > 20) {
-        const penalty = Math.floor((factions.authority - 60) * 0.1);
-        factions.shadows = Math.max(factions.shadows - penalty, -20);
-        conflicts.authorityVsShadows = penalty;
-    } else if (factions.shadows > 60 && factions.authority > -20) {
-        const penalty = Math.floor((factions.shadows - 60) * 0.1);
-        factions.authority = Math.max(factions.authority - penalty, -20);
-        conflicts.authorityVsShadows = penalty;
-    }
-    
-    // Warriors vs Naturalists conflict (moderate)
-    if (factions.warriors > 80 && factions.naturalists > 30) {
-        const penalty = Math.floor((factions.warriors - 80) * 0.05);
-        factions.naturalists = Math.max(factions.naturalists - penalty, 30);
-        conflicts.warriorsVsNaturalists = penalty;
-    }
-}
-
-/**
- * Update available services based on current reputation
- */
-function updateAvailableServices() {
-    const factions = gameState.reputationSystem.factions;
-    const services = [];
-    
-    // Check each faction for high reputation services
-    Object.entries(factions).forEach(([factionKey, reputation]) => {
-        if (reputation >= 60) {
-            switch (factionKey) {
-                case 'authority':
-                    services.push('banking', 'safe_storage', 'political_protection');
-                    break;
-                case 'warriors':
-                    services.push('combat_training', 'equipment_insurance', 'bodyguard');
-                    break;
-                case 'naturalists':
-                    services.push('healing_discount', 'weather_protection', 'animal_companion');
-                    break;
-                case 'shadows':
-                    services.push('information_network', 'black_market', 'stealth_training');
-                    break;
-                case 'scholars':
-                    services.push('item_identification', 'magical_research', 'spell_scrolls');
-                    break;
-                case 'common':
-                    services.push('free_lodging', 'community_support', 'local_information');
-                    break;
-            }
-        }
-    });
-    
-    gameState.reputationSystem.availableServices = services;
-}
-
-/**
  * Calculate the actual price of an item based on reputation modifiers
  * @param {Object} itemData - Item data with base cost
  * @returns {number} Modified price based on reputation
  */
 export function calculateItemPrice(itemData) {
-    if (!itemData || typeof itemData.cost !== 'number') {
-        return 0;
-    }
-    
-    if (!gameState.reputationSystem) {
-        return itemData.cost; // No reputation system, use base price
-    }
-    
-    // Determine which faction controls this item's market
-    const marketFaction = determineItemMarketFaction(itemData);
-    // Capped: standing should matter, not halve or double prices (it did).
-    const priceModifier = Math.min(1.2, Math.max(0.85, gameState.reputationSystem.priceModifiers[marketFaction] || 1.0));
-    
-    // Calculate modified price
-    const modifiedPrice = Math.max(1, Math.round(itemData.cost * priceModifier));
-    
-    return modifiedPrice;
+    // The price on the tag (faction markets were removed: 2026-10-08).
+    return itemData && typeof itemData.cost === 'number' ? itemData.cost : 0;
 }
 
-/**
- * Determine which faction controls the market for this item type
- * @param {Object} itemData - Item data
- * @returns {string} Faction key that controls this market
- */
-function determineItemMarketFaction(itemData) {
-    if (!itemData.type) return 'common'; // Default to common folk markets
-    
-    switch (itemData.type) {
-        case 'Weapon':
-        case 'Armor':
-            return 'warriors'; // Warriors control weapon/armor markets
-        case 'Consumable':
-            // Healing items controlled by naturalists, others by common folk
-            if (itemData.stats?.heal || itemData.stats?.healPercent || 
-                itemData.name?.toLowerCase().includes('heal') ||
-                itemData.name?.toLowerCase().includes('potion')) {
-                return 'naturalists';
-            }
-            return 'common';
-        case 'Revival':
-            return 'naturalists'; // Druids control revival items
-        case 'Quest':
-        case 'Misc':
-            // Magical items controlled by scholars
-            if (itemData.stats?.applyStatus || itemData.tier === 'LEGENDARY' || 
-                itemData.tier === 'GOD' || itemData.name?.toLowerCase().includes('magic') ||
-                itemData.name?.toLowerCase().includes('spell')) {
-                return 'scholars';
-            }
-            // High-tier items controlled by nobles
-            if (itemData.tier === 'SPECIAL' || itemData.tier === 'HIGH') {
-                return 'authority';
-            }
-            return 'common';
-        default:
-            return 'common';
-    }
-}
 
 // Average age of the party, for the kid-safe fight reminder.
 function averagePartyAge() {

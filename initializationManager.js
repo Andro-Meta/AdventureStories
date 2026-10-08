@@ -701,7 +701,7 @@ Respond with ONLY a JSON object: {"goal": "Your specific goal sentence here."}`;
         if (!this.loadingTips) return;
 
         // Show gameplay tips regardless of phase - players want to learn how to play!
-        const gameplayCategories = ['combat', 'spells', 'reputation', 'items', 'exploration', 'story', 'multiplayer', 'gameplay'];
+        const gameplayCategories = ['combat', 'spells', 'progression', 'items', 'exploration', 'story', 'multiplayer', 'gameplay'];
         const randomCategory = gameplayCategories[Math.floor(Math.random() * gameplayCategories.length)];
         this.loadingTips.showCategoryTip(randomCategory);
     }

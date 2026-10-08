@@ -18,8 +18,6 @@ import { getCurrentPlayer } from './state.js';
 import { themedItemData, itemValue } from './items.js';
 // Import reputation price calculation
 import { calculateItemPrice } from './actionHandler.js';
-// Import reputation system functions
-import { getContextualizedFactions, calculateTrustLevel } from './reputationContextualizer.js';
 
 
 // --- DOM Element References ---
@@ -653,70 +651,6 @@ function generatePersonalityTraitsUI(traits) {
     `;
 }
 
-/**
- * Generate faction reputation UI display for new reputation system
- * @returns {string} HTML for faction reputation display
- */
-function generateFactionReputationUI() {
-    if (!gameState.reputationSystem) {
-        return '';
-    }
-    
-    try {
-        // Functions imported at top of file
-        const factions = gameState.reputationSystem.factions;
-        const contextualizedFactions = getContextualizedFactions();
-        const trustData = calculateTrustLevel(factions);
-        
-        // Generate faction reputation bars
-        let factionHTML = '';
-        Object.entries(factions).forEach(([factionKey, reputation]) => {
-            const faction = contextualizedFactions[factionKey];
-            if (!faction) return;
-            
-            const repPercent = Math.max(0, Math.min(100, (reputation + 100) / 2)); // Convert -100 to +100 range to 0-100%
-            const repColor = reputation >= 60 ? '#4CAF50' : 
-                           reputation >= 20 ? '#8BC34A' :
-                           reputation >= -20 ? '#FFC107' :
-                           reputation >= -60 ? '#FF9800' : '#FF5722';
-            
-            const repText = reputation >= 60 ? 'Trusted' :
-                           reputation >= 20 ? 'Friendly' :
-                           reputation >= -20 ? 'Neutral' :
-                           reputation >= -60 ? 'Suspicious' : 'Hostile';
-            
-            // BUG-15 fix: faction.flavor flows from narrator-driven
-            // contextualizedFactions; sanitize before injecting into title.
-            factionHTML += `
-                <div class="faction-rep-item" title="${sanitizeText(faction.flavor || '')}">
-                    <span class="faction-name">${sanitizeText(faction.name)}:</span>
-                    <span class="rep-value" style="color: ${repColor};">${reputation}</span>
-                    <span class="rep-status">(${repText})</span>
-                </div>
-            `;
-        });
-        
-        // Trust level indicator
-        const trustColor = trustData.trustLevel === 'trusted' ? '#4CAF50' :
-                          trustData.trustLevel === 'neutral' ? '#FFC107' :
-                          trustData.trustLevel === 'distrusted' ? '#FF9800' : '#FF5722';
-        
-        return `
-            <div class="faction-reputation-display">
-                <h5>Faction Standing</h5>
-                <div class="trust-level" style="color: ${trustColor};">
-                    <strong>Trust Level: ${sanitizeText(trustData.trustLevel.toUpperCase())}</strong>
-                </div>
-                <div class="faction-list">
-                    ${factionHTML}
-                </div>
-            </div>
-        `;
-    } catch (error) {
-        console.log(`Faction reputation UI error: ${error.message}`);
-        return '<div class="faction-rep"><p><em>Reputation loading...</em></p></div>';
-    }
-}
 
 /**
  * Generate reputation UI display (legacy character development)
@@ -805,7 +739,6 @@ function createCharacterCard(character, type, index, configRef) {
              ${isPlayer ? `<p>Coins: <span class="${type}-coins">${character.coins ?? 0}</span>💰</p>` : ''}
              ${!isPlayer ? `<p>Abilities: <span class="${type}-abilities">${character.abilities?.map(sanitizeText).join(', ') || 'None'}</span></p>` : ''}
              <p>Effects: <span class="status-effects">${statusEffectString}</span></p>
-             ${isPlayer && index === 0 && Object.values(gameState.reputationSystem?.factions || {}).some(v => v) ? generateFactionReputationUI() : ''}
              ${isPlayer ? generateCharacterDevelopmentUI(character) : ''}
         </div>
         <div class="card-header collapsible">

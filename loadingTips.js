@@ -14,93 +14,65 @@ export class LoadingTipsManager {
         this.log = window.displayVisualError || console.log;
         
         // Comprehensive tips organized by category
+        // Every tip describes something the game really does (the old list
+        // promised factions, spell slots, components, rituals and weather).
         this.tips = {
             combat: [
-                "Combat Tip: Your attack and defense stats come from your base stats plus equipped items!",
-                "Combat Tip: Some enemies are weak to specific spell schools - experiment with different magic types!",
-                "Combat Tip: Running from combat isn't always cowardly - sometimes it's the smartest strategy!",
-                "Combat Tip: Your age affects your starting stats - older characters have more experience!",
-                "Combat Tip: Status effects can turn the tide of battle - use them wisely!",
-                "Combat Tip: Special moves consume MP but can deal devastating damage or provide unique effects!",
-                "Combat Tip: Watch enemy health and behavior - some get more dangerous when wounded!",
-                "Combat Tip: Positioning matters! Some spells and abilities have range limitations!",
-                "Combat Tip: Don't forget to use consumable items - they can save your life in tough fights!"
+                "Combat Tip: Fights go Attack, Special, Item, Defend, Run - pick one each turn!",
+                "Combat Tip: Defend halves the damage you take until your next turn and gives back a little HP.",
+                "Combat Tip: Bosses can't be escaped - and every other turn they hit the whole party.",
+                "Combat Tip: Power Strike is a heavy blow you can use every other round.",
+                "Combat Tip: Haste gives you a quick extra strike; Slow makes you lose every other turn.",
+                "Combat Tip: A confused hero might hit themselves - clear it before a big attack.",
+                "Combat Tip: Area spells hit every foe at once.",
+                "Combat Tip: Weapons and armor in your Bag only help once you equip them!"
             ],
-            
             spells: [
-                "Magic Tip: Each spell school (Elemental, Arcane, Divine, etc.) has unique strengths and weaknesses!",
-                "Magic Tip: Your spellcasting level determines what tier of spells you can learn and cast!",
-                "Magic Tip: Spell slots limit how many spells you can cast - manage them carefully!",
-                "Magic Tip: Some spells require material components - make sure you're prepared!",
-                "Magic Tip: Ritual spells take longer to cast but are more powerful than normal spells!",
-                "Magic Tip: Your favorite spell schools get bonuses - specialization pays off!"
+                "Ability Tip: Specials and spells cost MP, and MP slowly comes back every round.",
+                "Ability Tip: Healing abilities land on your hero, not the enemy.",
+                "Ability Tip: In worlds without magic, your powers come from tech, gear and know-how.",
+                "Ability Tip: Leveling up unlocks stronger spells."
             ],
-            
-            reputation: [
-                "Reputation Tip: Your choices affect how NPCs react to you - be mindful of consequences!",
-                "Reputation Tip: Bad reputation makes healing more expensive and enemies stronger!",
-                "Reputation Tip: Good reputation opens up special dialogue options and better prices!",
-                "Reputation Tip: Some factions may conflict with others - choose your allies wisely!",
-                "Reputation Tip: Your reputation affects random encounters - heroes get help, villains get trouble!",
-                "Reputation Tip: Lying and stealing will catch up with you - trust is hard to rebuild!",
-                "Reputation Tip: Being honest might be harder in the short term, but pays off in the long run!",
-                "Reputation Tip: Help people when you can - you never know when you'll need their help!",
-                "Reputation Tip: Your party members' actions also affect how people see your group!"
+            progression: [
+                "Stats Tip: The % on each choice is your chance - the icon shows which stat it uses.",
+                "Stats Tip: Every point in a stat adds +5% to choices that use it.",
+                "Stats Tip: Every choice gives XP - even a setback teaches you something.",
+                "Stats Tip: Each level lets you raise a stat. Tap the star on your hero card to spend points.",
+                "Stats Tip: Use a stat successfully 6 times and it grows by itself.",
+                "Stats Tip: Brave adds attack, Sneaky dodges, Clever powers abilities, Kind heals more.",
+                "Stats Tip: Risky and Bad choices can hurt when they fail - the ⚠ warns you.",
+                "Stats Tip: A lucky charm in your bag helps 🍀 luck choices and makes a 19 a critical success."
             ],
-            
             items: [
-                "Item Tip: Equipment with higher tiers provides better bonuses but costs more!",
-                "Item Tip: Some items have special effects beyond just stat bonuses!",
-                "Item Tip: Consumable items can save your life - don't hoard them for 'the right moment'!",
-                "Item Tip: Shop inventory changes as you progress - check back regularly for new gear!",
-                "Item Tip: Your adventure theme affects what types of items you'll find!",
-                "Item Tip: Some rare items can only be found through specific story choices!"
+                "Item Tip: Prices follow what an item does - a stronger sword costs more.",
+                "Item Tip: The shop restocks every 5 turns, and its gear gets better as you level up.",
+                "Item Tip: Sell what you don't need from your Bag for half its price.",
+                "Item Tip: Rest at the inn (in the shop) for full HP and MP.",
+                "Item Tip: Searching carefully can turn up hidden stashes, gear and the odd rare chest!",
+                "Item Tip: Revival items bring back a downed ally - use them through Help Ally."
             ],
-            
             exploration: [
-                "World Tip: Different locations have different danger levels - prepare accordingly!",
-                "World Tip: Your adventure theme shapes the entire world around you!",
-                "World Tip: Some locations are only accessible through specific story paths!",
-                "World Tip: Environmental effects can help or hinder you in combat!",
-                "World Tip: Pay attention to location descriptions - they often contain important clues!",
-                "World Tip: The time of day and weather can affect encounters and story options!"
+                "World Tip: Story milestones give the whole party XP and coins.",
+                "World Tip: If you're captured, find a weakness and escape - you'll get most of your gear back.",
+                "World Tip: Your adventure theme shapes the people, places and powers you'll meet."
             ],
-            
             story: [
-                "Story Tip: Every choice matters - the AI remembers your decisions throughout the adventure!",
-                "Story Tip: There's no single 'correct' path - embrace the consequences of your choices!",
-                "Story Tip: Your character's age and background influence available dialogue options!",
-                "Story Tip: The story adapts to your playstyle - aggressive players face different challenges!",
-                "Story Tip: Side quests often provide valuable rewards and character development!",
-                "Story Tip: Your adventure goal can evolve based on your choices and discoveries!",
-                "Story Tip: Pay attention to NPC names and details - they might become important later!",
-                "Story Tip: Bold choices often lead to more interesting story developments!",
-                "Story Tip: Sometimes the 'safe' choice isn't the most rewarding one!",
-                "Story Tip: Your reputation affects what story options are available to you!"
+                "Story Tip: The storyteller remembers the people, places and promises in your story.",
+                "Story Tip: There's no single correct path - setbacks change the story instead of ending it.",
+                "Story Tip: The quest is won by defeating the villain in battle.",
+                "Story Tip: Win the quest to unlock God Mode: type anything and the world bends to you!",
+                "Story Tip: Read the whole tale any time from Menu > Read the Story So Far."
             ],
-            
             multiplayer: [
-                "Party Tip: In multiplayer, coordinate your spell schools to cover all magical bases!",
-                "Party Tip: Different party members can have different reputations with the same faction!",
-                "Party Tip: Party members can help each other in combat - teamwork is powerful!",
-                "Party Tip: Each party member's choices contribute to the overall story direction!",
-                "Party Tip: Age diversity in your party provides different perspective options!",
-                "Party Tip: Party members can share items and resources - cooperation is key!",
-                "Party Tip: Discuss major decisions with your party - different perspectives lead to better outcomes!",
-                "Party Tip: Assign roles in your party - who's the leader, the diplomat, the fighter?",
-                "Party Tip: Support each other's character development and story arcs!"
+                "Party Tip: Heroes take turns - the choices panel says whose turn it is.",
+                "Party Tip: XP from a fight is shared, so every hero levels at the same pace.",
+                "Party Tip: Loot is shared out: one drop roll for each hero still standing.",
+                "Party Tip: Use Help Ally to revive a downed friend with a revival item."
             ],
-
             gameplay: [
-                "Gameplay Tip: Read all your options carefully - each choice leads to different outcomes!",
-                "Gameplay Tip: Don't be afraid to take risks - the most interesting stories come from bold choices!",
-                "Gameplay Tip: Manage your resources carefully - health, MP, and items are all limited!",
-                "Gameplay Tip: Explore different dialogue options - your character's personality matters!",
-                "Gameplay Tip: Keep track of important NPCs and locations - they might become relevant later!",
-                "Gameplay Tip: Your adventure theme shapes everything - embrace the world you've chosen!",
-                "Gameplay Tip: Sometimes retreating and regrouping is smarter than fighting to the end!",
-                "Gameplay Tip: Pay attention to the consequences of your actions - they build your story!",
-                "Gameplay Tip: Experiment with different approaches - there's no single 'right' way to play!"
+                "Gameplay Tip: Your game saves itself after every turn.",
+                "Gameplay Tip: Android back opens the menu instead of closing the game.",
+                "Gameplay Tip: Stuck on an AI key? Menu > AI Settings, even in the middle of a game."
             ]
         };
         

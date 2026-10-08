@@ -1240,8 +1240,8 @@ await block(async () => {
 // =====================================================================
 section('Batch 15: exploration turns run clean (live run 10-08)');
 await block(async () => {
-  // Faction reputation now actually applies; a big swing crashed the turn
-  // ("contextualizedFactions is not defined").
+  // Every choice type at a natural 20 runs clean (a big faction swing used to
+  // crash the turn; factions were later removed).
   const errs = [];
   for (const type of ['Good', 'Bad', 'Risky', 'Silly', 'Investigative']) {
     fresh(); gameLog.length = 0; pinRandom(0.99);

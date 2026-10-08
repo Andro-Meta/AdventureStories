@@ -110,6 +110,7 @@ const tStart = Date.now();
 await page.click('#nameInputStartBtn');
 check(await settle(180000), 'new game starts and shows choices');
 const opening = await gs(g => ({ words: (g.currentNarrative || '').split(/\s+/).length, goal: g.adventureGoal, n: g.currentChoices.length, types: g.currentChoices.map(c => c.type).sort().join(',') }));
+if (opening.words <= 60) console.log((await page.evaluate(() => (window.__advLog || []).filter(l => /error|fail|ERROR|THREW|not defined|not a function|AI /i.test(l)).slice(-15).join(String.fromCharCode(10)))));
 check(opening.words > 60 && opening.goal, `opening story (${opening.words} words), goal: "${opening.goal}"`);
 const tags = await gs(g => g.currentChoices.map(c => `${c.stat || '-'}: ${c.text}`));
 check(tags.filter(t => !t.startsWith('-')).length >= 4, `storyteller tags choices with the stat they use: ${tags.map(t => t.slice(0, 60)).join(' | ')}`);

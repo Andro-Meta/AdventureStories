@@ -3,7 +3,6 @@
 // Replaces static item databases with intelligent, context-aware generation
 
 import { gameState } from './state.js';
-import * as Config from './config.js';
 import { generateId } from './utils.js';
 import { itemValue } from './items.js';
 

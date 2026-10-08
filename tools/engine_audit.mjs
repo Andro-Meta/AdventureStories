@@ -34,10 +34,6 @@ function resetGS() {
   gameState.imprisoned = false;
   gameState.questProgress = { milestones: [], completionPercentage: 0, sideQuests: [], currentObjectives: [] };
   gameState.entityMemory = { npcs: {}, locations: {}, items: {} };
-  gameState.reputationSystem = {
-    factions: { authority:0,warriors:0,naturalists:0,shadows:0,scholars:0,common:0 },
-    reputationHistory: []
-  };
   gameState.currentLocation = { name: 'Test Town', type: 'town', dangerLevel: 0.1, description: '' };
 }
 
@@ -74,7 +70,6 @@ const cases = [
       {op:'replace',path:'/players/0/maxHp',value:500},
       {op:'replace',path:'/players/0/maxMp',value:200}
    ] },
-  { name:'reputation',ops:[{op:'replace',path:'/reputationSystem/factions/authority',value:75}] },
   { name:'sideQuest',ops:[{op:'add',path:'/questProgress/sideQuests/-',value:{name:'Find the lost cat',description:'A villager cat'}}] },
   { name:'milestone',ops:[{op:'add',path:'/questProgress/milestones/-',value:{name:'first_obstacle_overcome',description:'The gate is open.'}}] }
 ];
@@ -101,8 +96,6 @@ const badCases = [
   { name:'string hp',    op:{op:'replace',path:'/players/0/hp',value:'lots'} },
   // Negative hp
   { name:'negative hp',  op:{op:'replace',path:'/players/0/hp',value:-50} },
-  // Reputation out of range
-  { name:'rep > 100',    op:{op:'replace',path:'/reputationSystem/factions/common',value:200} }
 ];
 for (const c of badCases) {
   resetGS();
