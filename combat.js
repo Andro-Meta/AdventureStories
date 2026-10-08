@@ -457,8 +457,11 @@ export function initializeCombat(enemies) {
         .sort((a, b) => (b.speed || 0) - (a.speed || 0))
         .map(char => char.id);
 
-    // Set first turn
-    gameState.combat.currentTurnIndex = 0;
+    // First turn = the hero at the controls. Starting on a faster foe let the
+    // hero act anyway and the advance then skipped that foe's round-1 reply.
+    // ponytail: heroes always open; a foe ambush would need an enemy phase here.
+    const me = gameState.players?.[gameState.currentPlayerIndex];
+    gameState.combat.currentTurnIndex = Math.max(0, gameState.combat.initiative.indexOf(me?.id));
     
     // Process any start-of-combat effects
     allCombatants.forEach(char => {

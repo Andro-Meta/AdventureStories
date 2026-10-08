@@ -601,6 +601,22 @@ await block(async () => {
   check(p.hp === 0 && p.isDowned === true, `Shadow Bolt to 0 HP downs the hero (hp ${p.hp}, downed ${p.isDowned})`);
 });
 await block(async () => {
+  // A faster foe sits first in initiative while the hero acts: its round-1 reply was skipped.
+  const { p } = fresh({ enemy: { speed: 99 } });
+  startFight(); pinRandom(0.5);
+  const hp0 = p.hp;
+  await AH.handlePlayerChoice('Attack', 'Strike the goblin');
+  unpinRandom();
+  check(p.hp < hp0, `faster foe answers the hero's first attack (hero HP ${hp0} -> ${p.hp})`);
+});
+await block(async () => {
+  // God mode "I gain 50 attack" replaced ATK with 50 (a 60-ATK hero went down to 50).
+  const { p } = fresh({ player: { atk: 60, baseAtk: 60 } });
+  const ops = AH.extractGodModeDiffOps('I gain 50 attack');
+  const v = ops.find(o => o.path === '/players/0/atk')?.value;
+  check(v === 110, `"I gain 50 attack" at ATK 60 -> ${v} (expect 110)`);
+});
+await block(async () => {
   // A stunned boss still landed its every-other-round signature hit.
   const { p, e } = fresh({ enemy: { isBoss: true } });
   startFight(); gameState.combat.round = 2;
