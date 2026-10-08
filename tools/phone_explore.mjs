@@ -76,6 +76,17 @@ for (let t = 0; t < TURNS; t++) {
   m = await errMark();
   await page.evaluate((type) => { const b = [...document.querySelectorAll('#choicesContainer .choice-btn')].find(x => x.dataset.actionType === type); b?.scrollIntoView({ block: 'center' }); b?.click(); }, type);
   await page.waitForTimeout(250);
+  // Battle picker (Special/Item/target): check Cancel is on screen, then take
+  // the last enabled option (Power Strike / a real item) like a player would.
+  const picked = await page.evaluate(() => {
+    const sheet = document.getElementById('battlePicker'); if (!sheet) return null;
+    const c = sheet.querySelector('.bp-cancel').getBoundingClientRect();
+    const opts = [...sheet.querySelectorAll('.bp-option:not([disabled])')];
+    const o = opts[opts.length - 1]; const label = o?.querySelector('.bp-label')?.textContent;
+    o?.click();
+    return { label, cancelVisible: c.bottom <= innerHeight && c.top >= 0 };
+  });
+  if (picked) { console.log(`  picker -> ${picked.label}`); if (!picked.cancelVisible) note(`turn ${t + 1}: picker Cancel off screen`); }
   const ms = await settle();
   used.add(type);
   const after = await gs(g => ({ combat: g.inCombat, foe: (g.enemies || []).filter(e => !e.isDefeated).map(e => `${e.name} ${e.hp}/${e.maxHp}`).join(', '), hp: g.players[0].hp, recap: document.getElementById('turnRecap')?.textContent || '', heroes: g.players.length }));
@@ -101,6 +112,13 @@ await settle(60000);
 // ---- Shop, Moves ----
 for (const [btn, name] of [['#shopBtn', 'shop'], ['#specialBtn', 'moves']]) {
   m = await errMark();
+  // The shop is closed in a fight on purpose: check that instead of clicking.
+  if (await page.$eval(btn, b => b.disabled)) {
+    const combat = await gs(g => g.inCombat);
+    if (!combat) note(`${name} button disabled outside a fight`);
+    else console.log(`  ${name} closed during battle (expected)`);
+    continue;
+  }
   await page.click(btn); await page.waitForTimeout(800);
   shot(name); await displayCheck(name);
   const scr = await page.evaluate(() => document.querySelector('.screen.active')?.id);
