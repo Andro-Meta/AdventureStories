@@ -109,7 +109,7 @@ export class DynamicSpellRegistry {
         try {
             // Show loading indicator for AI processing
             const UI = await import('./ui.js');
-            UI.showLoading(true, 'Generating dynamic spells...');
+            UI.showLoading(true, 'Preparing new abilities...');
             
             // Use Gemma hyperthreading for better performance
             // Use schema-constrained JSON — narrative pipeline returns story prose, not spell JSON

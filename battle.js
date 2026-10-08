@@ -6,6 +6,7 @@
 //  - experience and levels: every defeated foe gives XP to the whole party;
 //    a level-up raises max HP/MP, attack, defense and heals a little.
 import { gameState } from './state.js';
+import { getCurrentThemeAdaptation } from './adaptiveAbilities.js';
 
 /**
  * Area spells hit everyone on the other side (or heal the whole party):
@@ -88,13 +89,20 @@ export function battleOptions(type, hero) {
         for (const s of hero.spellcasting?.knownSpells || []) {
             const cost = s.mpCost || 0;
             const area = isAreaSpell(s) ? (s.effects?.healing > 0 && !(s.effects?.damage > 0) ? 'whole party · ' : 'hits all foes · ') : '';
-            opts.push({ label: `${s.name} (spell)`, detail: `${cost} MP · ${area}${s.description || s.effect || ''}`.slice(0, 80), type: 'Spell', text: `Cast ${s.name}`, disabled: (hero.mp || 0) < cost });
+            const kind = abilityKind();
+            opts.push({ label: `${s.name} (${kind})`, detail: `${cost} MP · ${area}${s.description || s.effect || ''}`.slice(0, 80), type: 'Spell', text: `Cast ${s.name}`, disabled: (hero.mp || 0) < cost });
         }
         const winded = round - (hero.lastPowerStrikeRound ?? -99) < 2;
         opts.push({ label: 'Power Strike', detail: winded ? 'winded: a normal hit this round' : 'heavy blow, every other round', type: 'Special', text: 'Power Strike' });
         return opts;
     }
     return null;
+}
+
+/** What this world calls an ability, for menu labels: spell / ritual / tech / skill. */
+function abilityKind() {
+    const n = getCurrentThemeAdaptation().abilityName || '';
+    return /ritual/i.test(n) ? 'ritual' : /tech|cyber/i.test(n) ? 'tech' : /skill/i.test(n) ? 'skill' : 'spell';
 }
 
 function itemDetail(i) {

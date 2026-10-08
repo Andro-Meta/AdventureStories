@@ -427,9 +427,45 @@ export const THEME_ADAPTATIONS = {
  * Get the current theme adaptation based on adventure theme
  * @returns {object} Theme adaptation configuration
  */
-export function getCurrentThemeAdaptation() {
+// Menu theme ids -> ability system. The table above is keyed scifi/modern/...,
+// so every theme except fantasy and cyberpunk fell back to fantasy SPELLS
+// (mana, arcane schools) - a Wild West hero "casting" Snake-Oil Tonic.
+// Magic only where the world has it; tech, gear and know-how elsewhere.
+const THEME_TO_ADAPTATION = {
+    fantasy: 'fantasy', haunted: 'horror', cyberpunk: 'cyberpunk',
+    space: 'scifi', future_utopia: 'scifi', underwater: 'scifi',
+    steampunk: 'modern', wild_west: 'modern', post_apoc: 'modern',
+    pirate: 'adventure', jungle: 'adventure', dinosaur: 'adventure', arctic: 'adventure',
+};
+const MAGIC_HINT = /\b(magic\w*|wizard\w*|witch\w*|sorcer\w*|spells?|enchant\w*|dragons?|fae|fairy|fairies|elves|elven|mage|mythic\w*|fantasy)\b/i;
+
+// Custom themes: read the player's own description. First match wins, so a
+// "haunted wizard school" is occult and "robot wizards" stays magic.
+const CUSTOM_RULES = [
+    ['horror', /\b(haunt\w*|ghosts?|spirits?|curse[ds]?|occult|demons?|vampires?|undead|séance|seance)\b/i],
+    ['fantasy', MAGIC_HINT],
+    ['cyberpunk', /\b(cyber\w*|hack\w*|neon|implants?|megacorp\w*)\b/i],
+    ['scifi', /\b(space|spaceships?|starships?|planets?|aliens?|robots?|androids?|mars|moon base|galax\w*|future|futuristic|lasers?|time travel)\b/i],
+    ['modern', /\b(zombies?|apocalyp\w*|cowboys?|wild west|police|detectives?|spies|spy|soldiers?|1[89] s|20th century|army|war|cit(y|ies)|modern|today|school|steam\w*|gangsters?|heist)\b/i],
+];
+export function customThemeAdaptation(description) {
+    return (CUSTOM_RULES.find(([, re]) => re.test(description)) || ['adventure'])[0];
+}
+
+/** The ability system key for the current theme (custom themes: by their description). */
+export function themeAdaptationKey() {
     const theme = gameState.adventureTheme || 'fantasy';
-    return THEME_ADAPTATIONS[theme] || THEME_ADAPTATIONS.fantasy;
+    if (theme === 'custom') return customThemeAdaptation(gameState.customThemeDescription || '');
+    return THEME_TO_ADAPTATION[theme] || 'adventure';
+}
+
+/** True where spells belong (fantasy worlds, occult rituals in haunted ones). */
+export function isMagicWorld() {
+    return ['fantasy', 'horror'].includes(themeAdaptationKey());
+}
+
+export function getCurrentThemeAdaptation() {
+    return THEME_ADAPTATIONS[themeAdaptationKey()] || THEME_ADAPTATIONS.adventure;
 }
 
 /**

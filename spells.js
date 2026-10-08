@@ -223,6 +223,16 @@ export async function initializePlayerSpellcasting(player) {
  * Grant starting spells to a new spellcaster
  * @param {Player} player - The player to grant spells to
  */
+/** Offline starting abilities for the current world (none extra outside magic worlds). */
+export function themeFallbackAbilities() {
+    if (!AdaptiveAbilities.isMagicWorld()) return [];
+    return [
+        createBasicSpell('light', 'ARCANE', 'UTILITY', 0),
+        createBasicSpell('detect_magic', 'ARCANE', 'UTILITY', 0),
+        createBasicSpell('minor_healing', 'DIVINE', 'HEALING', 0)
+    ].filter(Boolean);
+}
+
 async function grantStartingSpells(player) {
     const log = window.displayVisualError || console.log;
     
@@ -250,28 +260,15 @@ async function grantStartingSpells(player) {
             startingSpells.push(...batchSpells);
         } catch (error) {
             log(`Batch spell generation failed: ${error.message}`);
-            // Fallback to basic spells
-            const fallbackSpells = [
-                createBasicSpell('light', 'ARCANE', 'UTILITY', 0),
-                createBasicSpell('detect_magic', 'ARCANE', 'UTILITY', 0),
-                createBasicSpell('minor_healing', 'DIVINE', 'HEALING', 0)
-            ].filter(Boolean);
-            startingSpells.push(...fallbackSpells);
         }
-        
-        // Ensure we have at least some abilities (fallback)
-        if (startingSpells.length === 0) {
-            log(`No dynamic abilities generated, using fallback spells`);
-            const fallbackSpells = [
-                createBasicSpell('light', 'ARCANE', 'UTILITY', 0),
-                createBasicSpell('detect_magic', 'ARCANE', 'UTILITY', 0),
-                createBasicSpell('minor_healing', 'DIVINE', 'HEALING', 0)
-            ].filter(Boolean);
-            startingSpells.push(...fallbackSpells);
-        }
-        
+
+        // Offline fallback: the basic arcane set only where magic exists;
+        // elsewhere the themed attack + heal pair below (Plasma Burst, Stim Patch...).
+        if (startingSpells.length === 0) startingSpells.push(...themeFallbackAbilities());
+
         player.spellcasting.knownSpells = startingSpells;
         player.spellcasting.preparedSpells = [...startingSpells]; // All spells prepared initially
+        ensureBattleSpells(player);
         
         log(`Granted ${startingSpells.length} theme-appropriate starting abilities to ${player.name}`);
     } catch (error) {
@@ -609,7 +606,7 @@ Generate ${spellRequests.length} ${themeDesc}-themed abilities for ${batchType}:
 ${spellSpecs}
 
 Requirements:
-- Theme: ${themeDesc} (adapt magic/abilities to fit theme)
+- Theme: ${themeDesc}. These are ${AdaptiveAbilities.getCurrentThemeAdaptation().abilityNamePlural}.${AdaptiveAbilities.isMagicWorld() ? '' : ' No magic exists here: powers come from technology, gear, training and know-how, never spells or mana.'}
 - Player: ${player.name}
 - Context: ${batchType}
 - Do NOT duplicate any abilities already in "Known Spells/Abilities" above
@@ -769,7 +766,7 @@ export function ensureBattleSpells(player) {
     const theme = String(gameState.adventureTheme || '').toLowerCase();
     const names = {
         space: ['Plasma Burst', 'Nano Patch'], cyberpunk: ['Overload Pulse', 'Stim Patch'], pirate: ['Storm Shot', 'Sea Salt Salve'],
-        dinosaur: ['Fire Stone', 'Healing Moss'], haunted: ['Banishing Flare', 'Warding Prayer'], wild_west: ['Lightning Lasso', 'Snake-Oil Tonic'],
+        dinosaur: ['Fire Stone', 'Healing Moss'], haunted: ['Banishing Flare', 'Warding Prayer'], wild_west: ['Quick-Draw Shot', 'Snake-Oil Tonic'],
         steampunk: ['Tesla Arc', 'Clockwork Mender'], underwater: ['Riptide Lance', 'Coral Balm'], arctic: ['Frost Spike', 'Hearth Glow'],
         jungle: ['Thorn Volley', 'Jungle Remedy'], post_apoc: ['Scrap Blast', 'Rad-Away Shot'], future_utopia: ['Photon Lance', 'Regen Field'],
     }[theme] || ['Arcane Bolt', 'Mending Light'];
