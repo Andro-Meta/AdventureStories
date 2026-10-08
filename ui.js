@@ -695,6 +695,7 @@ export function renderPlayerCards() {
         elements.playersDisplay.appendChild(card);
     });
     updateCollapsibleListeners();
+    renderBattleHud();
     playHpEffects(gameState.players);
 }
 
@@ -715,10 +716,37 @@ export function renderEnemyCards() {
             elements.enemiesDisplay.appendChild(card);
         });
         updateCollapsibleListeners();
+        renderBattleHud();
         playHpEffects(activeEnemies);
     } else {
         elements.enemyContainer.classList.add('hidden');
+        renderBattleHud();
     }
+}
+
+/**
+ * Battle bar pinned to the top of the game screen during fights: every hero's
+ * HP/MP and every foe's HP at a glance (players had to scroll between the foe
+ * card above the moves and their own card below them). Hit effects attach here.
+ */
+function renderBattleHud() {
+    const screen = document.getElementById('gameScreen');
+    if (!screen) return;
+    let hud = document.getElementById('battleHud');
+    const foes = (gameState.enemies || []).filter(e => e && !e.isDefeated && e.hp > 0);
+    if (!gameState.inCombat || !foes.length) { hud?.remove(); return; }
+    if (!hud) { hud = document.createElement('div'); hud.id = 'battleHud'; screen.prepend(hud); }
+    const bar = (v, max, cls) => `<span class="bh-bar ${cls}"><span style="width:${Math.max(0, Math.min(100, Math.round(100 * v / (max || 1))))}%"></span></span>`;
+    const actor = gameState.players?.[gameState.currentPlayerIndex]?.id;
+    hud.innerHTML = `<div class="bh-side">${(gameState.players || []).filter(Boolean).map(p => `
+        <div class="bh-row${p.id === actor ? ' bh-actor' : ''}${p.isDowned ? ' bh-down' : ''}" data-character-id="${sanitizeText(p.id)}">
+          <span class="bh-name">${sanitizeText(p.name)} <small>Lv ${p.level || 1}</small></span>
+          ${bar(p.hp, p.maxHp, 'bh-hp')}<span class="bh-num">${p.hp}/${p.maxHp}</span>
+          ${bar(p.mp || 0, p.maxMp || 1, 'bh-mp')}<span class="bh-num bh-mpn">${p.mp || 0}</span></div>`).join('')}</div>
+      <div class="bh-side bh-foes">${foes.map(e => `
+        <div class="bh-row bh-foe${e.isBoss ? ' bh-boss' : ''}" data-character-id="${sanitizeText(e.id)}">
+          <span class="bh-name">${e.isBoss ? '👑 ' : ''}${sanitizeText(e.name)}</span>
+          ${bar(e.hp, e.maxHp, 'bh-foehp')}<span class="bh-num">${e.hp}/${e.maxHp}</span></div>`).join('')}</div>`;
 }
 
 /**

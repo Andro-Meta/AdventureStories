@@ -10,6 +10,19 @@ import { gameState } from './state.js';
 // ---------------------------------------------------------------- XP / levels
 export const xpForLevel = (level) => 40 * level; // XP needed to go from `level` to the next
 
+/** Raise one hero's level by n with the normal per-level gains (god mode, wishes). */
+export function levelUp(p, n = 1) {
+    for (let i = 0; i < n && (p.level || 1) < 999; i++) {
+        p.level = (p.level || 1) + 1;
+        p.maxHp = (p.maxHp || 100) + 10;
+        p.maxMp = (p.maxMp || 20) + 4;
+        p.baseAtk = (p.baseAtk ?? p.atk ?? 5) + 1;
+        p.baseDef = (p.baseDef ?? p.def ?? 2) + (p.level % 2 === 0 ? 1 : 0);
+        p.hp = Math.min(p.maxHp, (p.hp || 0) + Math.round(p.maxHp * 0.25));
+        p.mp = Math.min(p.maxMp, (p.mp || 0) + 4);
+    }
+}
+
 /** Give the party XP for a defeated foe; returns level-up messages. */
 export function awardXp(enemy) {
     const base = Math.max(5, Math.round((enemy?.maxHp || 20) * 0.6));
@@ -21,13 +34,7 @@ export function awardXp(enemy) {
         p.xp = (p.xp || 0) + xp;
         while (p.xp >= xpForLevel(p.level)) {
             p.xp -= xpForLevel(p.level);
-            p.level += 1;
-            p.maxHp = (p.maxHp || 100) + 10;
-            p.maxMp = (p.maxMp || 20) + 4;
-            p.baseAtk = (p.baseAtk ?? p.atk ?? 5) + 1;
-            p.baseDef = (p.baseDef ?? p.def ?? 2) + (p.level % 2 === 0 ? 1 : 0);
-            p.hp = Math.min(p.maxHp, p.hp + Math.round(p.maxHp * 0.25));
-            p.mp = Math.min(p.maxMp, (p.mp || 0) + 4);
+            levelUp(p, 1);
             ups.push(`${p.name} reached level ${p.level}!`);
         }
     }

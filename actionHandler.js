@@ -170,6 +170,10 @@ export async function handlePlayerChoice(actionType, choiceText) {
             // hang happens. Remove these markers once the bug is identified.
             const cbStep = (n, extra) => log(`[CB-${n}] ${actionType} ${extra || ''}`);
             cbStep(1, 'enter combat branch');
+            // Keep the fight visible while the moves resolve (the dark loading
+            // screen hid both actions, so they seemed to happen at once); it
+            // comes back only while the story of the round is written.
+            UI.showLoading(false);
             gameState.combatRoundInProgress = true; // cleared in finally
 
             // Special-move cooldowns count down once per combat action
@@ -402,6 +406,7 @@ export async function handlePlayerChoice(actionType, choiceText) {
                     if (gameState.combat) gameState.combat.isActive = false;
                 } else if (gameState.inCombat && !Combat.isPartyWiped()) {
                     cbStep(8, 'calling advanceCombatTurn (enemy phase)');
+                    await new Promise(r => setTimeout(r, 700)); // let the hero's hit land before the foe answers
                     try {
                         await Combat.advanceCombatTurn();
                         cbStep(9, 'advanceCombatTurn returned ok');
@@ -1169,7 +1174,7 @@ function determineActionSuccess(successChance) {
  * @param {string} text - the raw player input
  * @returns {Array} JSON-Patch ops to apply
  */
-function extractGodModeDiffOps(text) {
+export function extractGodModeDiffOps(text) {
     const ops = [];
     const t = String(text || '');
     const lower = t.toLowerCase();
@@ -1215,6 +1220,22 @@ function extractGodModeDiffOps(text) {
             }
         }
         ops.push({ op: 'replace', path: '/players/0/coins', value: n });
+    }
+
+    // --- Health, mana, levels (live: "full health, level up" matched nothing) ---
+    const me = getCurrentPlayer();
+    if (me && /\b(full(y)?\s*(heal(th|ed)?|hp|health)|heal(ed)?(\s+(me|fully|completely))?|restore\s*(my\s*)?(hp|health)|max(imum)?\s*health)\b/i.test(t)) {
+        ops.push({ op: 'replace', path: '/players/0/hp', value: me.maxHp || 100 });
+    }
+    if (me && /\b(full\s*(mana|mp)|restore\s*(my\s*)?(mana|mp)|max(imum)?\s*(mana|mp))\b/i.test(t)) {
+        ops.push({ op: 'replace', path: '/players/0/mp', value: me.maxMp || 20 });
+    }
+    const lvlTo = t.match(/\b(?:to\s+)?level\s+(\d{1,3})\b/i);
+    const lvlUp = t.match(/\blevels?\s*up(?:\s*(?:x\s*)?(\d{1,3}))?(?:\s*times)?\b/i) || t.match(/\bgain\s+(\d{1,3})\s+levels?\b/i);
+    if (me && (lvlTo || lvlUp)) {
+        const cur = me.level || 1;
+        const target = lvlTo ? Number(lvlTo[1]) : cur + (Number(lvlUp[1]) || 1);
+        if (target > cur) ops.push({ op: 'replace', path: '/players/0/level', value: Math.min(999, target) });
     }
 
     // --- New skill / spell / move ---
@@ -1506,6 +1527,22 @@ export async function handleCustomAction() {
             log(`God Mode intent extraction failed: ${e?.message || e}`);
         }
     }
+    // Anything the parser didn't cover: one small call turns the wish into
+    // game changes before the story is written, so the wish really happens
+    // (live: the storyteller narrated "divine power" and sent 0 ops).
+    if (gameState.isGoalComplete) {
+        try {
+            const { wishToOps } = await import('./aiHandler.js');
+            const { applyDiff } = await import('./engine.js');
+            const pi = gameState.currentPlayerIndex || 0;
+            const extra = (await wishToOps(actionText, preApplied)).map(o => ({ ...o, path: String(o.path || '').replace(/^\/players\/0\//, `/players/${pi}/`) }));
+            if (extra.length) {
+                const done = applyDiff(extra, { strict: false });
+                preApplied.push(...done);
+                log(`God Mode wish: applied ${done.length}/${extra.length} ops`);
+            }
+        } catch (e) { log(`God Mode wish-to-ops failed: ${e?.message || e}`); }
+    }
     const preAppliedNote = preApplied.length > 0
         ? `\nPRE-APPLIED CHANGES (narrate these as already happening, do not re-emit these ops):\n  • ${preApplied.join('\n  • ')}`
         : '';
@@ -1520,7 +1557,7 @@ export async function handleCustomAction() {
     // targeted at the acting player. This used to repeat ~100 lines of them
     // with /players/0 paths, second person and 200-400 words.
     const actionLog = `[God mode] ${currentPlayer.name} declares: "${actionText}"${refLine}${preAppliedNote}
-Honor the declaration (age policy permitting): narrate the world's response and persist every tangible change with ops.`;
+The wish succeeds fully and at once, with no cost, catch or twist unless the player asked for one (age policy permitting). Narrate it happening and the world's awe; persist any further tangible change with ops.`;
 
     log(`Custom action prompt (creative mode${matchedNames.length ? `, refs: ${matchedNames.join(', ')}` : ', novel'}): ${actionText.slice(0, 80)}...`);
 

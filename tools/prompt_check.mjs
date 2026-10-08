@@ -172,5 +172,17 @@ Engine.applyDiff([{ op: 'add', path: '/players/0/inventory/-', value: { name: 'P
 { const w = gameState.players[0].inventory.find(i => i.name === 'Pocket Watch');
   check(w?.tier === 'Low' && w?.type === 'Quest', `narrator item tier/type normalized (${w?.tier}, ${w?.type})`); }
 
+// God mode (live: "full health, level up" changed nothing).
+{
+  const AH = await import('../actionHandler.js');
+  const h = gameState.players[0]; h.hp = 40; h.maxHp = 100; h.level = 1; gameState.currentPlayerIndex = 0;
+  const ops = AH.extractGodModeDiffOps('full health, level up');
+  check(ops.some(o => o.path === '/players/0/hp' && o.value === 100) && ops.some(o => o.path === '/players/0/level' && o.value === 2), `"full health, level up" -> ${ops.map(o => o.path + '=' + o.value).join(', ')}`);
+  Engine.applyDiff(ops, { strict: false });
+  check(h.level === 2 && h.maxHp === 110 && h.hp >= 100, `level op brings level-up gains (level ${h.level}, max HP ${h.maxHp}, HP ${h.hp})`);
+  const ops2 = AH.extractGodModeDiffOps('level 10');
+  check(ops2.some(o => o.path === '/players/0/level' && o.value === 10), '"level 10" parsed');
+}
+
 console.log(failed ? `✗ ${failed} PROMPT CHECK FAILURE(S)` : '✓ prompt checks pass');
 process.exit(failed ? 1 : 0);
