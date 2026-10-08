@@ -148,9 +148,13 @@ export class LocalAIClient {
 
     async executeRequest(requestData, provider, apiKey, retries = 0, hasNext = false) {
         const { TIMEOUT_MS, MAX_RETRIES, RETRY_DELAY_MS } = Config.AI_REQUEST_CONFIG;
+        const started = Date.now();
+        const aiLog = (msg) => (globalThis.displayVisualError || console.log)(`AI ${provider.name.split(' — ')[0]} ${provider.model}: ${msg} (${Date.now() - started} ms)`);
         try {
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+            // A provider with a backup behind it gets less time: a stuck call
+            // (live: Gemma hung 45 s, then two 500s) shouldn't hold up the turn.
+            const timeoutId = setTimeout(() => controller.abort(), hasNext ? Math.min(TIMEOUT_MS, 20000) : TIMEOUT_MS);
             const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` };
             if (provider.baseUrl.includes('openrouter')) {
                 headers['HTTP-Referer'] = (typeof window !== 'undefined' && window.location) ? window.location.origin : 'https://adventure-stories.local';
@@ -184,6 +188,7 @@ export class LocalAIClient {
             }
 
             const result = await response.json();
+            aiLog(`200 in=${result.usage?.prompt_tokens ?? '?'} out=${result.usage?.completion_tokens ?? '?'}`);
             const choice = result.choices?.[0];
             if (!choice) throw new Error('No response generated');
             // Only the answer counts; a model's reasoning text is never story.
@@ -197,9 +202,10 @@ export class LocalAIClient {
                 || (error.message || '').toLowerCase().includes('failed to fetch');
             if (isNetworkError) error.network = true;
             const shouldRetry = isNetworkError || error.retryable === true;
-            console.log(`AI: request failed (attempt ${retries + 1}, retryable=${shouldRetry}):`, error.message);
-            // With another provider waiting, fail over now instead of waiting out a 429.
-            if (shouldRetry && hasNext && error.httpStatus === 429) throw error;
+            aiLog(`failed attempt ${retries + 1}: ${String(error.message).slice(0, 160)}`);
+            // With another provider waiting, fail over now: retrying a timed-out,
+            // erroring or rate-limited provider just makes the players wait.
+            if (shouldRetry && hasNext) throw error;
             if (shouldRetry && retries < MAX_RETRIES) {
                 // A per-minute 429 needs the window to roll over: honour
                 // Retry-After, else wait 20 s (quick retries all failed).

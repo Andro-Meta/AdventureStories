@@ -47,6 +47,17 @@ check(calls.length === 1 && calls[0].host.includes('openrouter'), 'Google keys s
 const models = new Set(C.providerChain().map(p => p.model));
 check(models.size === 2 && models.has('gemma-4-31b-it') && models.has('nvidia/nemotron-3-super-120b-a12b:free'), `Auto uses exactly two models (${[...models].join(', ')})`);
 
+// Live phone case: Gemma returned 500 'Internal error'. No retries on Google,
+// straight to the next provider (was 3 attempts + waits on each).
+{
+  const { localAI: fresh } = await import('../localAI.js?fresh=500');
+  calls.length = 0;
+  googleReply = () => ({ status: 500, body: { error: { message: 'Internal error encountered.' } } });
+  const o = await fresh.makeRequest([{ role: 'user', content: 'hi' }]);
+  const googleCalls = calls.filter(c => c.host.includes('google')).length;
+  check(o.includes('openrouter') && googleCalls === 2, `Google 500s: each Google key tried once (${googleCalls}), then OpenRouter answers`);
+}
+
 // Paid models are refused before any request.
 let refused = false;
 try { assertFreeOnly({ model: 'nvidia/nemotron-3-super-120b-a12b', models: [] }, C.CLOUD_PROVIDERS.openrouter_free); } catch { refused = true; }
