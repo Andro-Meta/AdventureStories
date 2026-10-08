@@ -1,35 +1,43 @@
 // main.js (with visual error handling)
 // Entry point for the Adventure Stories application
 
-// --- Global Error Display Function ---
+// --- Game log ---
+// One capped log (window.__advLog, newest 1000 lines), also saved on the
+// device (localStorage 'adv.log', newest 400) so a slow or broken turn can be
+// read afterwards: tools/phone.mjs logs, or the in-app error log panel.
+// It used to add a DOM node per line for the whole session (pages grew by
+// thousands of nodes) and wrote everything with console.error.
+window.__advLog = (() => { try { return JSON.parse(localStorage.getItem('adv.log') || '[]'); } catch (_) { return []; } })();
+window.__advLog.push(`--- app start ${new Date().toISOString()} ---`);
+let advLogDirty = false;
+const saveAdvLog = () => {
+    if (!advLogDirty) return;
+    advLogDirty = false;
+    try { localStorage.setItem('adv.log', JSON.stringify(window.__advLog.slice(-400))); } catch (_) {}
+};
+setInterval(saveAdvLog, 5000);
+addEventListener('pagehide', saveAdvLog);
+document.addEventListener('visibilitychange', () => { if (document.hidden) saveAdvLog(); });
+
 window.displayVisualError = (message, error = null) => {
-    console.error(message, error || '');
-    const errorLogContent = document.getElementById('errorLogContent');
-    const errorLogContainer = document.getElementById('errorLogContainer');
-    if (!errorLogContent || !errorLogContainer) { console.error("!! Error Log Container or Content not found in HTML !!"); return; }
-    try {
-        const errorLine = document.createElement('div');
-        let errorDetails = error ? ` (${error.name || 'Error'}: ${error.message || String(error)})` : '';
-        // Basic stack trace if available
-        if (error && error.stack) {
-            const stackLines = error.stack.split('\n').slice(0, 4).join('\n');
-            // Heuristic to avoid logging DOM event objects directly which can be huge
-            if (!(error instanceof Event) && typeof error !== 'string') {
-                 errorDetails += `\nStack: ${stackLines}...`;
-            }
-        }
-        errorLine.textContent = `[${new Date().toLocaleTimeString()}] ${message}${errorDetails}`;
-        errorLogContent.appendChild(errorLine);
-        // Auto-scroll to bottom
-        errorLogContent.scrollTop = errorLogContent.scrollHeight;
-    } catch (e) {
-        // Prevent infinite loop if logging itself fails
-        console.error("Could not append error to visual log:", e);
-        if (!errorLogContent.textContent.includes("FAILED TO LOG ERROR")) {
-             errorLogContent.textContent += `\n!! FAILED TO LOG ERROR: ${e.message} !!`;
-        }
+    let details = '';
+    if (error) {
+        details = ` (${error.name || 'Error'}: ${error.message || String(error)})`;
+        if (error.stack && !(error instanceof Event)) details += ` | ${error.stack.split('\n').slice(1, 3).join(' | ')}`;
     }
-}
+    const line = `[${new Date().toLocaleTimeString()}] ${message}${details}`;
+    window.__advLog.push(line);
+    if (window.__advLog.length > 1000) window.__advLog.splice(0, window.__advLog.length - 1000);
+    advLogDirty = true;
+    (error ? console.error : console.log)(line);
+    // On-screen panel keeps only the newest 200 lines.
+    const box = document.getElementById('errorLogContent');
+    if (!box) return;
+    const div = document.createElement('div');
+    div.textContent = line;
+    box.appendChild(div);
+    while (box.childElementCount > 200) box.removeChild(box.firstChild);
+};
 
 // --- Start Execution Log ---
 displayVisualError("main.js: Script starting execution.");
