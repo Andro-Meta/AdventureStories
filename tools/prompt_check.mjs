@@ -145,5 +145,17 @@ gameState.players[0].specialMoves = [{ name: 'Gale Kick' }];
 { const ci = AI.buildChoiceInstructions(['Attack', 'Special', 'Item', 'Run'], true);
   check(ci.includes('Kelp Tonic') && ci.includes('Gale Kick'), "combat choices must name the hero's real items and moves"); }
 
+// Injury-detail setting: off by default (no blood for kids), on allows it.
+{
+  gameState.players.forEach(p => { p.age = 10; });
+  localStorage.removeItem('adv.injuryDetail');
+  const off = AI.generateSystemPrompt();
+  localStorage.setItem('adv.injuryDetail', '1');
+  const on = AI.generateSystemPrompt();
+  localStorage.removeItem('adv.injuryDetail');
+  check(/no blood/i.test(off) && !/Injury details are ON/.test(off), 'injury details off by default: kids get no blood');
+  check(/Injury details are ON/.test(on) && !/no blood/i.test(on), 'injury details on: blood allowed, never gory');
+}
+
 console.log(failed ? `✗ ${failed} PROMPT CHECK FAILURE(S)` : '✓ prompt checks pass');
 process.exit(failed ? 1 : 0);
