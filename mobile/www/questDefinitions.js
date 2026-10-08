@@ -59,7 +59,7 @@ export const MAIN_QUEST_ARC = [
    1. "ally_found"              — when an ally NPC joins or commits to help.
    2. "first_obstacle_overcome" — when the player wins a meaningful trial (combat, puzzle, social).
    3. "antagonist_revealed"     — when the antagonist's identity / reach is shown. THIS IS REQUIRED to advance to Act 3.
-- PACING: emit AT MOST ONE milestone per turn. Space these milestones across multiple turns — there's no rush.
+- PACING: emit AT MOST ONE milestone per turn. Space these milestones across multiple turns.
 - After EACH milestone, emit a /questProgress/completionPercentage replace op.
   Suggested cumulative ranges in Act 2: 35%, 50%, 65% (when antagonist_revealed fires).
 - Use snake_case milestone names exactly as listed; never paraphrase.`
@@ -188,6 +188,20 @@ export function describeQuestStep(gameState) {
     return { chapter: act.name.replace(' — ', ': '), next: nextName ? friendlyMilestone(nextName) : 'Keep going: the next chapter is close' };
 }
 
+/**
+ * Any act: 5+ rounds without a milestone means the story is wandering (a live
+ * play-through sat at 35% for 8 rounds in Act 2). Point at the next beat.
+ */
+function stallNudge(gameState, act) {
+    const ms = gameState.questProgress?.milestones || [];
+    const lastTurn = ms.length ? Math.max(...ms.map(m => m.turn || 0)) : 1;
+    const idle = (gameState.turn || 1) - lastTurn;
+    if (idle < 5) return '';
+    const done = new Set(ms.map(m => m.name));
+    const next = act.targetMilestones.find(n => !done.has(n));
+    return next ? `\nSTALLED: ${idle} rounds have passed without a quest beat. This turn, move the story clearly toward "${next}" and add that milestone when it happens.` : '';
+}
+
 export function buildQuestStageHint(gameState) {
     // Phase 2: jail mini-quest takes precedence over the main arc.
     if (gameState.imprisoned) {
@@ -241,5 +255,5 @@ ${gameState.adventureGoal ? act.narratorHint.replace(/^- By turn 4-6, you MUST s
 
 When you reach a milestone listed above, emit a /questProgress/milestones/- diff op so the
 quest progresses. Adding the final_blow milestone completes the main quest and unlocks the
-god-mode reward.${act3Deadline(gameState, act)}`;
+god-mode reward.${act3Deadline(gameState, act) || stallNudge(gameState, act)}`;
 }

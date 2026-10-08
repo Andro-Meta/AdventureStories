@@ -8,6 +8,7 @@ const { gameState, resetGameState } = await import('../state.js');
 const AI = await import('../aiHandler.js');
 const { validateChoicesPayload, validateNarrativeTurnPayload } = await import('../schemas.js');
 const Engine = await import('../engine.js');
+const Q = await import('../questDefinitions.js');
 const { formatTurnRecap } = await import('../actionHandler.js');
 
 resetGameState();
@@ -75,6 +76,11 @@ Engine.applyDiff([{ op: 'add', path: '/enemies/-', value: { name: 'Kraken Queen'
 const boss = gameState.enemies.find(e => e.name === 'Kraken Queen');
 check(boss?.isBoss && boss.maxHp >= 120 && boss.lootChance === 1, `boss gets a 2-player floor (hp ${boss?.maxHp}) and a sure drop`);
 check(gameState.combat.initiative.includes(boss.id), 'an enemy added mid-fight joins the turn order');
+
+// Pacing nudge after 5 idle rounds.
+const qs = { turn: 20, adventureGoal: 'x', questProgress: { milestones: [{ name: 'call_to_adventure', turn: 2 }, { name: 'world_introduced', turn: 4 }, { name: 'stakes_clear', turn: 12 }] } };
+check(/STALLED: 8 rounds/.test(Q.buildQuestStageHint(qs)), 'stalled story (8 idle rounds) gets a pacing nudge toward the next beat');
+check(!/STALLED/.test(Q.buildQuestStageHint({ ...qs, turn: 14 })), 'no nudge when a beat happened recently');
 
 console.log(failed ? `✗ ${failed} PROMPT CHECK FAILURE(S)` : '✓ prompt checks pass');
 process.exit(failed ? 1 : 0);
