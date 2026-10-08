@@ -15,7 +15,7 @@ npx cap copy android        # or copy mobile/www/* into android/app/src/main/ass
 cd android && ./gradlew assembleDebug
 ```
 
-The APK lands in `android/app/build/outputs/apk/debug/app-debug.apk` (about 67 MB).
+The APK lands in `android/app/build/outputs/apk/debug/app-debug.apk` (about 10 MB).
 Install it with `adb install -r app-debug.apk` or copy it to the phone.
 
 ## Notes

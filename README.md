@@ -57,7 +57,7 @@ If the daily quota runs out the game says so instead of failing silently.
 ## Android
 
 The Android app is the same game in a Capacitor wrapper, using the same online AI. See
-[`mobile/README.md`](mobile/README.md) to build the APK (about 67 MB).
+[`mobile/README.md`](mobile/README.md) to build the APK (about 10 MB).
 
 ---
 

@@ -2,7 +2,7 @@
 // will pick it up. The project root has node_modules, .git, models/, etc.
 // that we MUST NOT bundle into the APK.
 
-import { mkdir, copyFile, stat } from 'node:fs/promises';
+import { mkdir, copyFile, stat, readdir, unlink } from 'node:fs/promises';
 import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -38,5 +38,13 @@ for (const rel of new Set(INCLUDE_FILES)) {
   } catch { missing.push(rel); }
 }
 
-console.log(`Copied ${copied} files to mobile/www/`);
+// Remove files that are no longer part of the game, so deleted modules can't
+// linger in www/ and get packaged into the APK (liteRTBridge.js did).
+const keep = new Set(INCLUDE_FILES);
+let removed = 0;
+for (const f of await readdir(WWW)) {
+  if (!keep.has(f)) { await unlink(join(WWW, f)); removed++; }
+}
+
+console.log(`Copied ${copied} files to mobile/www/${removed ? `, removed ${removed} stale` : ''}`);
 if (missing.length) console.log(`${missing.length} file(s) not found:`, [...new Set(missing)].join(', '));
