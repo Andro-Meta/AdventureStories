@@ -2,7 +2,7 @@
 // Handles combat calculations, enemy generation, status effects, and combat state checks.
 
 // --- Module Imports ---
-import { gameState, determineContext } from './state.js'; // Needs gameState to access players/enemies
+import { gameState, determineContext, getCurrentPlayer } from './state.js'; // Needs gameState to access players/enemies
 import * as Config from './config.js'; // Needs config values
 // Import specific functions from utils needed here
 import { getRandomInt, getRandomElement, clamp, generateId } from './utils.js';
