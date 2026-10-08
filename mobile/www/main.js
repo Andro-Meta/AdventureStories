@@ -436,7 +436,10 @@ function setupEventListeners(UI, setup, actionHandler, saveLoad) { // Added acti
             if (opts) {
                 const title = { Attack: 'Attack which foe?', Item: 'Use which item?', Special: 'Which special?' }[actionType];
                 const pick = await Battle.pickBattleOption(title, opts);
-                if (!pick) return;
+                if (!pick) { // cancelled: give the choices back (they stayed disabled)
+                    document.querySelectorAll('#choicesContainer .choice-btn').forEach(btn => btn.disabled = false);
+                    return;
+                }
                 actionType = pick.type;
                 choiceText = pick.text;
             }

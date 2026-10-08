@@ -746,7 +746,7 @@ export const dynamicSpellRegistry = DynamicSpellRegistry.initializeDynamicSpellS
  * @returns {Promise<Spell>} Generated spell
  */
 export async function generateDynamicSpell(school, type, level, context = {}) {
-    const registry = gameState.dynamicSpellRegistry || dynamicSpellRegistry;
+    const registry = dynamicSpellRegistry; // live instance (a loaded save held a method-less copy)
     
     // Build enhanced context
     const enhancedContext = {
@@ -792,7 +792,7 @@ export async function generateContextualSpell(situation, player, maxLevel = 3) {
  * @param {Spell} spell - The spell that was cast successfully
  */
 export function learnFromSpellCasting(player, spell, wasSuccessful, wasRelevant) {
-    const registry = gameState.dynamicSpellRegistry || dynamicSpellRegistry;
+    const registry = dynamicSpellRegistry; // live instance (a loaded save held a method-less copy)
     
     if (spell.isDynamic) {
         registry.recordSpellUsage(spell.id, wasSuccessful, wasRelevant);

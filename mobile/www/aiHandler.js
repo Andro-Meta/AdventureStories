@@ -90,7 +90,7 @@ export function buildChoiceInstructions(types, inCombat) {
     const list = types.map(t => `- ${t}: ${CHOICE_TYPE_MEANINGS[t]}`).join('\n');
     return `CHOICES: exactly ${types.length}, one of each type:
 ${list}
-Each choice: under 160 characters, starts with a verb, names something specific from the narration, and never states its type (no "safely", "risky", "silly").${inCombat ? ` Attack must name the enemy it targets.${combatKitLine()}` : ' Make the five genuinely different from each other.'}`;
+Each choice: under 160 characters, starts with a verb, names something specific from the narration, and never states its type (no "safely", "risky", "silly").${inCombat ? ` Attack must name the enemy it targets.${combatKitLine()}` : ' Make the five genuinely different from each other. If your ops START a fight, write four fight choices instead, types Attack, Special, Item, Run.'}`;
 }
 
 // Item and Special choices must name what the acting hero really has: the
@@ -134,7 +134,7 @@ Reply with ONE JSON object with all three keys, and nothing else:
 
 NARRATION: ${words} words (at least ${wc.min}; replies under that are too thin), in 2 short paragraphs, third person, naming the hero who acted. Show what happens because of the action, then end on a moment that invites the next decision. No choices or bracket tokens inside the narration.
 
-${prompt.startsWith('[God mode]') ? '' : `STORY LOGIC (the South Park rule): link this scene to the last with THEREFORE (a direct consequence of the choice) or BUT (a complication that makes things harder), never "and then". At least every other scene needs a BUT: a twist, a cost, a rival, a door that won't open. Never repeat the last scene's beat; something new must happen.${openThreadsBlock()}`}
+${prompt.startsWith('[God mode]') ? '' : `STORY LOGIC: link this scene to the last as a consequence of the choice ("therefore") or a complication that makes things harder ("but"), never "and then". Do not write those linking words themselves in capitals or as labels. At least every other scene needs a BUT: a twist, a cost, a rival, a door that won't open. Never repeat the last scene's beat; something new must happen.${openThreadsBlock()}`}
 
 ${nextActor && (gameState.players || []).length > 1 ? `NEXT TO ACT: ${nextActor.name}. Write the choices for ${nextActor.name}${nextActor.specialMoves?.length ? ` (special moves: ${nextActor.specialMoves.map(m => m.name).join(', ')})` : ''} and end the narration by turning to them.
 
@@ -162,7 +162,16 @@ ${buildDiffInstructions(pIdx)}`;
             .replace(/<think>[\s\S]*?<\/think>/gi, '')
             .replace(/```(?:\w+)?\n?([\s\S]*?)```/g, '$1')
             .trim();
-        const appliedDiff = applyDiff(validated.diff.ops || [], { strict: false });
+        // Coins/HP the game already applied this turn ("Already applied by the
+        // game") were re-added by the narrator in 4 of 8 live turns (+43 coins
+        // drift). Outside god mode, its coin/HP ops on such turns are dropped.
+        let turnOps = validated.diff.ops || [];
+        if (!gameState.isGoalComplete && /Already applied by the game/i.test(prompt)) {
+            const before = turnOps.length;
+            turnOps = turnOps.filter(o => !/^\/players\/\d+\/(coins|hp)$/.test(String(o.path)));
+            if (turnOps.length < before) log(`dropped ${before - turnOps.length} duplicate coin/HP op(s) (game already applied them)`);
+        }
+        const appliedDiff = applyDiff(turnOps, { strict: false });
         log(`narrative diff: applied ${appliedDiff.length}/${(validated.diff.ops || []).length} ops`);
         // The opening names the starting place; if the narrator skipped the
         // /currentLocation op, use the first place it recorded.
@@ -193,10 +202,11 @@ ${buildDiffInstructions(pIdx)}`;
         // The diff may have started or ended a fight; choices must match the mode now.
         const nowInCombat = !!gameState.inCombat;
         let choices = null;
-        if (nowInCombat === inCombat) {
-            try { choices = validateChoicesPayload(payload, nowInCombat); }
-            catch (e) { log(`Turn choices unusable (${e.message}); asking for choices only.`); }
-        }
+        // Accept the reply's choices whenever they fit the mode now: a turn that
+        // starts a fight may already carry Attack/Special/Item/Run (asked for
+        // below); before, every fight start/end cost a choices-only call.
+        try { choices = validateChoicesPayload(payload, nowInCombat); }
+        catch (e) { log(`Turn choices unusable (${e.message}); asking for choices only.`); }
         if (!choices) choices = await requestChoicesOnly(cleanNarrative, nowInCombat);
 
         UI.renderChoices(choices); // shuffles and sets gameState.currentChoices
@@ -590,7 +600,7 @@ export async function handleCommand(commandString) {
                             handleGoalCompletionRewards();
                             log("handleGoalCompletionRewards finished.");
                             // Explicitly show custom action container
-                            if (UI.elements.customActionContainer) UI.elements.customActionContainer.classList.remove('hidden');
+                            // (the god-mode box in the choices card is the only custom input)
                         } else { log("Goal:Complete received, already complete."); }
                     } else if (goalState === 'update' && parts.length >= 3) {
                         const newGoal = parts.slice(2).join(':').trim();
@@ -881,7 +891,7 @@ Typical interactions: ${getThemeInteractions(gameState.adventureTheme)}
 Use names, people, places and props native to this theme (no village elders in cyberpunk, no libraries in dinosaur times). Avoid over-used names: Sunken Library, Heart of Shadow/Darkness, Shadow Blight, Whispering Woods/Cove, anything 'Salty', the Ancient Evil, the Chosen One.${usedNamesLine()}`);
 
     if (gameState.storyHook && (gameState.turn || 0) <= 3) {
-        parts.push(`STORY HOOK FOR THIS RUN (the opening must come from it): ${gameState.storyHook.archetype}: ${gameState.storyHook.flavor}`);
+        parts.push(`STORY HOOK FOR THIS RUN: build the opening on the "${gameState.storyHook.archetype}" archetype${gameState.storyHook.motif ? ` with the twist "${gameState.storyHook.motif}"` : ''}, using your own new people, places and details.`);
     }
     if (gameState.storyVariation?.narrativeElements) {
         const v = gameState.storyVariation.narrativeElements;
@@ -989,7 +999,10 @@ ${recentWindow}` }
 
         // Append the summary entry.
         gameState.arcMemory.summaries.push({
-            turn: gameState.turn,
+            // Last turn actually covered: turns are logged before the turn
+            // counter advances, so recording gameState.turn skipped every 5th
+            // turn from long-term memory (5, 10, 15...).
+            turn: Math.max(lastSummaryTurn, ...turnsSince.map(m => m.turn || 0)),
             summary: result.summary,
             generatedAt: Date.now()
         });
@@ -1247,7 +1260,7 @@ export async function makeAICallForSystemAction(prompt, preventTurnAdvance = fal
 
 Part 1: vivid scene-setting paragraph establishing the world, mood, and immediate location. USE VOCABULARY NATIVE TO THE THEME (a dinosaur story talks of tar pits and migrations, a space story of habitats and transponders). Pick your own words; do not open with the same images every game. Avoid generic-fantasy phrasing in non-fantasy themes.
 Part 2: introduce the player character(s) — their situation right now and what makes this moment a turning point. Anchor names and props to the theme.
-Part 3: USE THE STORY HOOK BELOW as the inciting incident. Do not invent a different inciting incident — turn the hook's flavor text into prose.${hookBlock}
+Part 3: the inciting incident follows the hook's archetype and twist below, told with your own invented details (its example is for flavor only; do not copy it).${hookBlock}
 
 This opening may run up to half again the READING LEVEL length. Third person, like every turn. Avoid the over-used names listed under THEME. In "ops", replace /currentLocation with the named place where the story opens and add it under /entityMemory/locations.`;
     }

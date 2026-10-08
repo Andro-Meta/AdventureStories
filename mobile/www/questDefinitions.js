@@ -67,7 +67,7 @@ export const MAIN_QUEST_ARC = [
     {
         id: 'act3',
         name: 'Act 3 — The Reckoning',
-        targetMilestones: ['final_confrontation', 'final_blow', 'aftermath'],
+        targetMilestones: ['final_confrontation', 'final_blow'],
         targetTurnRange: [31, 50],
         narratorHint:
 `- The main villain is a BOSS: when the final fight starts, add it with /enemies/- including "isBoss": true.
@@ -79,12 +79,10 @@ This is Act 3 of the main quest. The player is at the climax.
 - Use these EXACT milestone names verbatim, in order:
    1. "final_confrontation" — when the player faces the antagonist directly.
    2. "final_blow"          — when the threat is defeated/resolved. CRITICAL: if you emitted "final_confrontation" two or more turns ago without yet emitting "final_blow", you MUST emit "final_blow" THIS TURN. The story cannot loop in the climax — close it.
-   3. "aftermath"           — the closing beat after the win.
 - PACING: emit AT MOST ONE milestone per turn. The climactic act deserves multiple beats.
-- After the climax, the player WINS the quest. Emit (in this order):
+- After the climax, the player WINS the quest. Emit (the game completes the quest from it):
   • {"op":"add","path":"/questProgress/milestones/-","value":{"name":"final_blow","description":"The threat is ended."}}
-  • {"op":"replace","path":"/isGoalComplete","value":true}
-- The act of setting /isGoalComplete to true UNLOCKS GOD MODE — the player gains the power
+- Winning UNLOCKS GOD MODE — the player gains the power
   to type any free-form action and have the world respond. Foreshadow this with awe in the
   closing prose ("the world bends to your will now").
 - Use snake_case milestone names exactly as listed; never paraphrase.`
@@ -158,6 +156,10 @@ function act3Deadline(gameState, act) {
     const rounds = (gameState.turn || 1) - qp.act3StartTurn;
     const names = (qp.milestones || []).map(m => String(m.name || '').toLowerCase());
     const confronted = names.some(n => n.includes('final_confrontation') || n.includes('final confrontation'));
+    // The engine refuses final_blow while the boss stands; mid-fight the game
+    // ends the quest itself on the kill, so don't demand an impossible op.
+    const bossUp = (gameState.enemies || []).some(e => e.isBoss && !e.isDefeated && e.hp > 0);
+    if (confronted && rounds >= 2 && bossUp) return '';
     if (confronted && rounds >= 2) return `\nDEADLINE: the final confrontation is under way. Resolve it THIS turn and add the "final_blow" milestone.`;
     if (rounds >= 6) return `\nDEADLINE: the story has been in Act 3 for ${rounds} rounds. Bring the final confrontation THIS turn (add "final_confrontation"; if it is a fight, spawn the main threat with /enemies/- and "isBoss": true).`;
     return '';

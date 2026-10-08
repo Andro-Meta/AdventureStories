@@ -2919,8 +2919,8 @@ footer { margin-top: 2rem; text-align: center; }
     body {
         padding-top: env(safe-area-inset-top);
         padding-bottom: env(safe-area-inset-bottom);
-        padding-left: env(safe-area-inset-left);
-        padding-right: env(safe-area-inset-right);
+        padding-left: max(0.5rem, env(safe-area-inset-left));
+        padding-right: max(0.5rem, env(safe-area-inset-right));
     }
 }
 
@@ -3104,3 +3104,10 @@ body { padding-top: calc(env(safe-area-inset-top) + 0.5rem); padding-bottom: cal
 #battleHud .bh-num { font-variant-numeric: tabular-nums; color: var(--text-color); font-size: 0.8rem; }
 #battleHud .bh-mpn { color: #4fc3f7; }
 #battleHud .fx-float { top: -14px; right: 8px; font-size: 1.2rem; }
+
+/* Audit fixes: story scroll stops below the sticky battle bar; Enemies card
+   hidden while the bar shows the same foes; turn spinner not above toasts. */
+#storyCard { scroll-margin-top: calc(env(safe-area-inset-top) + var(--hud-h, 0px) + 8px); }
+body.in-battle #enemyContainer { display: none; }
+#battleHud .bh-fx { font-size: 0.85em; }
+#loadingIndicator.loading-overlay { z-index: 1000; }

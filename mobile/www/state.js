@@ -687,9 +687,15 @@ export function resetGameState() {
         arcMemory: { summaries: [], lastSummarizedTurn: 0, nextSummaryAtTurn: 5 }, // same as initial state; was missing, so the first summary call fired on turn 2
         entityMemory: { npcs: {}, locations: {}, items: {} },
         // Reputation + jail — referenced by reputationContextualizer + jailSystem.
+        // Full shape: the short reset version lacked factionConflicts, and the
+        // conflict code threw once authority > 60 (turn aborted).
         reputationSystem: {
             factions: { authority:0, warriors:0, naturalists:0, shadows:0, scholars:0, common:0 },
-            reputationHistory: [], lastReputationUpdate: 0
+            reputationHistory: [],
+            factionConflicts: { authorityVsShadows: 0, warriorsVsNaturalists: 0, scholarsVsCommon: 0 },
+            worldStateChanges: [], availableServices: [],
+            priceModifiers: { authority: 1, warriors: 1, naturalists: 1, shadows: 1, scholars: 1, common: 1 },
+            lastReputationUpdate: 0, contextualizedFactions: null
         },
         imprisoned: false,
         jail: null,

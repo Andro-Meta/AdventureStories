@@ -195,7 +195,12 @@ export function showPopup(message, type = 'info', duration = 3000) {
     // Queue lives in this module, not gameState: it was saved with the game,
     // and a reloaded queue of 18 stale toasts never started again.
     popupQueue.push({ message, type, duration });
-    if (popupQueue.length > 4) popupQueue.splice(1, popupQueue.length - 4); // keep it current
+    // Keep it current, but never drop level-ups, victories or loot (legendary/success).
+    while (popupQueue.length > 4) {
+        const i = popupQueue.findIndex((p, j) => j > 0 && !['legendary', 'success', 'item'].includes(p.type));
+        if (i === -1) break;
+        popupQueue.splice(i, 1);
+    }
     if (!popupShowing) showNextPopup();
 }
 const popupQueue = [];
@@ -672,7 +677,10 @@ export function updateGameHeader() {
 
     // Update custom action visibility based on game state
     if (elements.customActionContainer) {
-        elements.customActionContainer.classList.toggle('hidden', !gameState.isGoalComplete);
+        // Never shown: the golden god-mode box in the choices card is the one
+        // input (players saw two). This input only carries its text to
+        // handleCustomAction.
+        elements.customActionContainer.classList.add('hidden');
     }
 
     // Update quest progress
@@ -739,19 +747,42 @@ function renderBattleHud() {
     if (!screen) return;
     let hud = document.getElementById('battleHud');
     const foes = (gameState.enemies || []).filter(e => e && !e.isDefeated && e.hp > 0);
-    if (!gameState.inCombat || !foes.length) { hud?.remove(); return; }
+    if (!gameState.inCombat || !foes.length) { hud?.remove(); document.documentElement.style.setProperty('--hud-h', '0px'); document.body.classList.remove('in-battle'); return; }
+    document.body.classList.add('in-battle'); // the HUD shows foes; the separate Enemies card is hidden
     if (!hud) { hud = document.createElement('div'); hud.id = 'battleHud'; screen.prepend(hud); }
+    const heroes = (gameState.players || []).filter(Boolean);
+    const sig = [...heroes, ...foes].map(c => c.id).join('|') + '#' + gameState.currentPlayerIndex;
+    const fx = (c) => (c.statusEffects || []).filter(s => s?.duration > 0).map(s => Config.STATUS_EFFECTS?.[String(s.name).toUpperCase()]?.icon || '✦').join('');
+    if (hud.dataset.sig === sig) {
+        // Same rows: update numbers/bars in place. Rebuilding wiped the hit
+        // effects fx.js had just attached (players never saw their -N).
+        for (const c of [...heroes, ...foes]) {
+            const row = [...hud.querySelectorAll('[data-character-id]')].find(r => r.dataset.characterId === String(c.id));
+            if (!row) continue;
+            const bars = row.querySelectorAll('.bh-bar > span');
+            if (bars[0]) bars[0].style.width = `${Math.max(0, Math.min(100, Math.round(100 * c.hp / (c.maxHp || 1))))}%`;
+            if (bars[1]) bars[1].style.width = `${Math.max(0, Math.min(100, Math.round(100 * (c.mp || 0) / (c.maxMp || 1))))}%`;
+            const nums = row.querySelectorAll('.bh-num');
+            if (nums[0]) nums[0].textContent = `${c.hp}/${c.maxHp}`;
+            if (nums[1]) nums[1].textContent = `${c.mp || 0}/${c.maxMp || 0}`;
+            const st = row.querySelector('.bh-fx'); if (st) st.textContent = fx(c);
+        }
+        document.documentElement.style.setProperty('--hud-h', `${hud.offsetHeight}px`);
+        return;
+    }
+    hud.dataset.sig = sig;
     const bar = (v, max, cls) => `<span class="bh-bar ${cls}"><span style="width:${Math.max(0, Math.min(100, Math.round(100 * v / (max || 1))))}%"></span></span>`;
     const actor = gameState.players?.[gameState.currentPlayerIndex]?.id;
     hud.innerHTML = `<div class="bh-side">${(gameState.players || []).filter(Boolean).map(p => `
         <div class="bh-row${p.id === actor ? ' bh-actor' : ''}${p.isDowned ? ' bh-down' : ''}" data-character-id="${sanitizeText(p.id)}">
-          <span class="bh-name">${sanitizeText(p.name)} <small>Lv ${p.level || 1}</small></span>
+          <span class="bh-name">${sanitizeText(p.name)} <small>Lv ${p.level || 1}</small> <span class="bh-fx">${fx(p)}</span></span>
           ${bar(p.hp, p.maxHp, 'bh-hp')}<span class="bh-num">${p.hp}/${p.maxHp}</span>
-          ${bar(p.mp || 0, p.maxMp || 1, 'bh-mp')}<span class="bh-num bh-mpn">${p.mp || 0}</span></div>`).join('')}</div>
+          ${bar(p.mp || 0, p.maxMp || 1, 'bh-mp')}<span class="bh-num bh-mpn">${p.mp || 0}/${p.maxMp || 0}</span></div>`).join('')}</div>
       <div class="bh-side bh-foes">${foes.map(e => `
         <div class="bh-row bh-foe${e.isBoss ? ' bh-boss' : ''}" data-character-id="${sanitizeText(e.id)}">
-          <span class="bh-name">${e.isBoss ? '👑 ' : ''}${sanitizeText(e.name)}</span>
+          <span class="bh-name">${e.isBoss ? '👑 ' : ''}${sanitizeText(e.name)} <span class="bh-fx">${fx(e)}</span></span>
           ${bar(e.hp, e.maxHp, 'bh-foehp')}<span class="bh-num">${e.hp}/${e.maxHp}</span></div>`).join('')}</div>`;
+    document.documentElement.style.setProperty('--hud-h', `${hud.offsetHeight}px`);
 }
 
 /**
@@ -989,11 +1020,8 @@ function createCharacterCard(character, type, index, configRef) {
              ${isPlayer ? `<p>Coins: <span class="${type}-coins">${character.coins ?? 0}</span>💰</p>` : ''}
              ${!isPlayer ? `<p>Abilities: <span class="${type}-abilities">${character.abilities?.map(sanitizeText).join(', ') || 'None'}</span></p>` : ''}
              <p>Effects: <span class="status-effects">${statusEffectString}</span></p>
-             ${isPlayer ? generateFactionReputationUI() : ''}
+             ${isPlayer && index === 0 && Object.values(gameState.reputationSystem?.factions || {}).some(v => v) ? generateFactionReputationUI() : ''}
              ${isPlayer ? generateCharacterDevelopmentUI(character) : ''}
-             ${isPlayer && index === 0 ? generateAISystemStatusUI() : ''}
-             ${isPlayer && index === 1 ? generateStoryMemoryUI() : ''}
-             ${isPlayer && index === 0 && gameState.players?.length === 1 ? generateStoryMemoryUI() : ''}
         </div>
         <div class="card-header collapsible">
             <span class="${type}-name">${sanitizeText(character.name)}${isPlayer ? ` <small class="hero-level">Lv ${character.level || 1}</small>` : ''}</span>
@@ -1140,6 +1168,13 @@ export function renderChoices(choices, handler = null) {
 
     // Clear existing choices
     elements.choicesContainer.innerHTML = '';
+    // Say whose turn it is right above the choices (it was only in the Party card below).
+    const head = document.querySelector('#choicesCard h3');
+    if (head) {
+        const who = gameState.players?.[gameState.currentPlayerIndex]?.name;
+        head.textContent = gameState.inCombat ? `Battle${(gameState.players || []).length > 1 && who ? ` · ${who}'s move` : ''}: choose a move`
+            : (gameState.players || []).length > 1 && who ? `${who}'s turn: choose an action` : 'Choose your action:';
+    }
 
     // Add God Mode custom choice input if active
     if (gameState.godModeManager?.isActive) {
@@ -1732,6 +1767,7 @@ export function updateHelpAllyModal(downedAllies, revivalItemCount, revivalItemN
 export function hideMessage(element) {
     if (element) {
         element.style.display = 'none';
+        element.classList.add('hidden');
     }
 }
 
@@ -1744,6 +1780,7 @@ export function showError(element, message) {
     if (element) {
         element.textContent = message;
         element.style.display = 'block';
+        element.classList.remove('hidden'); // .hidden is display:none !important: messages never showed
         element.classList.add('error');
     }
 }
@@ -1757,6 +1794,7 @@ export function showStatus(element, message) {
     if (element) {
         element.textContent = message;
         element.style.display = 'block';
+        element.classList.remove('hidden');
         element.classList.remove('error');
         element.classList.add('status');
     }
@@ -2069,6 +2107,6 @@ export { resetFx };
 
 /** What the shop pays for an item: half its price (half the tier's default when unpriced). */
 export function sellValue(item) {
-    const base = item?.cost || Config.DefaultItemCosts?.[item?.tier] || 10;
-    return Math.max(1, Math.floor(base / 2));
+    const base = item?.boughtFor ?? item?.cost ?? Config.DefaultItemCosts?.[item?.tier] ?? 10;
+    return Math.max(item?.boughtFor != null ? 0 : 1, Math.floor(base / 2));
 }

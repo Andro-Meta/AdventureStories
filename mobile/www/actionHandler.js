@@ -810,7 +810,7 @@ Result: ${gameState.narrativeContext.lastOutcome?.success ? 'it works out' : 'it
         }
 
         // Re-render existing choices
-        UI.renderChoices();
+        UI.renderChoices(gameState.currentChoices || []); // (empty call left only a dead placeholder)
     } finally {
         // BUG-30 fix: force-clear isLoading here. The 90s safety-net timeout
         // can fire before makeAICallForSystemAction's own finally runs, which
@@ -1259,20 +1259,26 @@ export function extractGodModeDiffOps(text) {
     // --- Stat modifications ---
     // "my max HP is now 500", "I gain 50 attack", "set my defense to 80"
     const maxHpMatch = t.match(/\b(?:my\s+)?max(?:imum)?\s*hp\s*(?:is\s+(?:now|set\s+to)|=|to|now|is)\s*(\d{1,5})\b/i)
-        || t.match(/\bi (?:have|gain|now have)\s+(\d{1,5})\s+(?:max\s+)?hp\b/i);
-    if (maxHpMatch) {
-        const n = Math.min(99999, Math.max(1, Number(maxHpMatch[1])));
+        || t.match(/\bi (?:have|now have)\s+(\d{1,5})\s+(?:max\s+)?hp\b/i);
+    // "I gain N ..." adds to what the hero has; "is now / set to N" sets it.
+    const gainOf = (re, cur) => { const m = t.match(re); return m ? [m[0], String((Number(cur) || 0) + Number(m[1]))] : null; };
+    const me0 = getCurrentPlayer();
+    const maxHpGain = maxHpMatch ? null : gainOf(/\bi gain\s+(\d{1,5})\s+(?:max\s+)?hp\b/i, me0?.maxHp ?? 100);
+    if (maxHpMatch || maxHpGain) {
+        const n = Math.min(99999, Math.max(1, Number((maxHpMatch || maxHpGain)[1])));
         ops.push({ op: 'replace', path: '/players/0/maxHp', value: n });
         ops.push({ op: 'replace', path: '/players/0/hp', value: n });
     }
     const atkMatch = t.match(/\b(?:my\s+)?(?:atk|attack(?:\s*power)?|str(?:ength)?)\s*(?:is\s+(?:now|set\s+to)|=|to|now|is)\s*(\d{1,5})\b/i)
-        || t.match(/\bi (?:gain|now have)\s+(\d{1,5})\s+(?:atk|attack)\b/i);
+        || t.match(/\bi now have\s+(\d{1,5})\s+(?:atk|attack)\b/i)
+        || gainOf(/\bi gain\s+(\d{1,5})\s+(?:atk|attack)\b/i, me0?.atk ?? 5);
     if (atkMatch) {
         const n = Math.min(99999, Math.max(0, Number(atkMatch[1])));
         ops.push({ op: 'replace', path: '/players/0/atk', value: n });
     }
     const defMatch = t.match(/\b(?:my\s+)?(?:def|defense|armor)\s*(?:is\s+(?:now|set\s+to)|=|to|now|is)\s*(\d{1,5})\b/i)
-        || t.match(/\bi (?:gain|now have)\s+(\d{1,5})\s+(?:def|defense)\b/i);
+        || t.match(/\bi now have\s+(\d{1,5})\s+(?:def|defense)\b/i)
+        || gainOf(/\bi gain\s+(\d{1,5})\s+(?:def|defense)\b/i, me0?.def ?? 2);
     if (defMatch) {
         const n = Math.min(99999, Math.max(0, Number(defMatch[1])));
         ops.push({ op: 'replace', path: '/players/0/def', value: n });
@@ -1792,7 +1798,7 @@ export async function useInventoryItem(itemId) {
              await makeAICallForSystemAction(actionLog, false); // Let AI handle narrative & turn advance
          } catch (error) {
              log(`Error during AI call in useInventoryItem: ${error.message}`);
-              UI.renderChoices(); // Re-render fixed choices on failure
+              UI.renderChoices(gameState.currentChoices || []); // re-render the last choices on failure (empty call left only 'Waiting for storyteller')
          } finally {
              UI.showLoading(false);
               // Close inventory if open after AI call completes (success or fail)
@@ -2050,6 +2056,7 @@ export function buyShopItem(itemData) {
          // Create a new instance for the player's inventory
          const newItem = { ...itemData, id: generateId('item'), equippedSlot: null };
          delete newItem.cost; // Remove cost from player inventory version
+         newItem.boughtFor = modifiedPrice; // sells back for half of what was paid
          if (newItem.type === 'Consumable' && newItem.quantity === undefined) { newItem.quantity = 1; }
          if (!player.inventory) player.inventory = [];
          player.inventory.push(newItem);
@@ -2237,7 +2244,7 @@ export async function useSpecialMove(moveId) {
             player.mp = Math.min(player.maxMp || 100, (player.mp || 0) + mpSpent);
             log(`Refunded ${mpSpent} MP to ${player.name} after special-move AI error.`);
         }
-        UI.renderChoices();
+        UI.renderChoices(gameState.currentChoices || []); // (empty call left only a dead placeholder)
     } finally {
         UI.showLoading(false);
         if (gameState.currentScreen === 'specialMovesScreen') {

@@ -43,7 +43,9 @@ function restart(el, cls) {
 
 function heroHurt(card, amount, maxHp) {
     const heavy = amount >= maxHp * 0.15;
-    if (!reduceMotion()) restart(document.querySelector('.container'), heavy ? 'fx-shake-heavy' : 'fx-shake');
+    // Shake the game screen, not .container: a transform there moved the
+    // fixed overlays and modals inside it.
+    if (!reduceMotion()) restart(document.getElementById('gameScreen'), heavy ? 'fx-shake-heavy' : 'fx-shake');
     let edge = document.getElementById('fxDamageEdge');
     if (!edge) { edge = document.createElement('div'); edge.id = 'fxDamageEdge'; document.body.appendChild(edge); }
     restart(edge, 'fx-on');
