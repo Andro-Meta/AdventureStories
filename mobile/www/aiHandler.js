@@ -89,7 +89,18 @@ export function buildChoiceInstructions(types, inCombat, avoid = []) {
         : '';
     return `CHOICES: exactly ${types.length}, one of each type:
 ${list}
-Each choice: under 160 characters, starts with a verb, names something specific from the narration, and never states its type (no "safely", "risky", "silly").${inCombat ? '' : ' Give each a "stat": the skill the action really uses: brave (force, daring, facing danger), clever (searching, figuring out, knowing), sneaky (stealth, tricks, slipping past), kind (helping, talking, calming), luck (pure chance or silliness). Kicking a dog is brave, slipping past it sneaky.'}${inCombat ? ` Attack must name the enemy it targets.${combatKitLine()}` : ' Make the five genuinely different from each other. If your ops START a fight, write four fight choices instead, types Attack, Special, Item, Run.'}${noRepeat}`;
+Each choice: under 160 characters, starts with a verb, names something specific from the narration, and never states its type (no "safely", "risky", "silly").${inCombat ? '' : ' Give each a "stat", and make the five FIVE DIFFERENT APPROACHES: exactly one brave (force, daring, facing danger), one clever (searching, figuring out, knowing), one sneaky (stealth, tricks, slipping past), one kind (helping, talking, calming, making friends), and the Silly one luck. The action must truly be that approach: kicking a dog is brave, slipping past it sneaky, sweet-talking it kind, studying its collar clever. The Good choice is a kind or honest act, not another search.'}${inCombat ? ` Attack must name the enemy it targets.${combatKitLine()}` : ' Make the five genuinely different from each other. If your ops START a fight, write four fight choices instead, types Attack, Special, Item, Run.'}${noRepeat}`;
+}
+
+/**
+ * How lopsided a set of exploration choices is: 0 when the five use five
+ * different approaches (brave, clever, sneaky, kind, luck). Live (phone
+ * 10-08): two clever, two brave, one luck - no kind or sneaky option.
+ */
+export function approachGaps(choices) {
+    const stats = (choices || []).map(c => c?.stat || '');
+    const want = ['brave', 'clever', 'sneaky', 'kind', 'luck'];
+    return want.filter(s => !stats.includes(s)).length;
 }
 
 const STOP_WORDS = new Set('the a an and or to of on in at for with from into onto your their his her its it this that them they now then just again before after while back up down out over all any some more most very only use try'.split(' '));
@@ -228,10 +239,12 @@ ${buildDiffInstructions(pIdx)}`;
         catch (e) { log(`Turn choices unusable (${e.message}); asking for choices only.`); }
         const done = recentActionTexts(prompt);
         if (!choices) choices = await requestChoicesOnly(cleanNarrative, nowInCombat, null, done);
-        const repeats = (cs) => nowInCombat ? 0 : (cs || []).filter(c => isNearRepeat(c.text, done)).length;
-        if (repeats(choices) > 0) {
-            log(`Choices repeat a recent action (${repeats(choices)}); asking once for fresh ones.`);
-            try { const fresh = await requestChoicesOnly(cleanNarrative, false, null, done); if (repeats(fresh) < repeats(choices)) choices = fresh; }
+        // One fresh choices-only call when the set repeats a recent action or
+        // isn't five different approaches; keep whichever set is better.
+        const flaws = (cs) => nowInCombat ? 0 : (cs || []).filter(c => isNearRepeat(c.text, done)).length * 2 + approachGaps(cs);
+        if (flaws(choices) > 0) {
+            log(`Choices need another pass (repeats/approach gaps score ${flaws(choices)}); asking once for fresh ones.`);
+            try { const fresh = await requestChoicesOnly(cleanNarrative, false, null, done); if (flaws(fresh) < flaws(choices)) choices = fresh; }
             catch (e) { log(`Fresh choices failed (${e.message}); keeping the first set.`); }
         }
 

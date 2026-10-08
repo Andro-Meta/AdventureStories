@@ -2090,7 +2090,7 @@ body { padding-top: calc(env(safe-area-inset-top) + 0.5rem); padding-bottom: cal
 #battlePicker .bp-label { font-weight: 700; color: var(--text-color); }
 #battlePicker .bp-detail { font-size: 0.85rem; color: var(--text-muted-color); font-weight: 400; margin-top: 2px; }
 #battlePicker .bp-cancel { width: 100%; margin-top: 0.3rem; }
-.hero-level { font-size: 0.7em; color: var(--coins-color); font-weight: 600; margin-left: 0.3rem; }
+.hero-level { font-size: 0.7em; color: var(--coins-color); font-weight: 600; margin-left: 0.3rem; white-space: nowrap; }
 
 /* ---- Battle bar (ui.renderBattleHud) ---- */
 #battleHud { position: sticky; top: env(safe-area-inset-top); z-index: 50; margin: 0 0 0.6rem; padding: 0.5rem 0.6rem;
@@ -2141,3 +2141,4 @@ button.primary { background: var(--accent-color, #6c5ce7); color: #fff; border-c
 .inn-card h4 { margin: 0 0 4px; }
 
 .shop-note { grid-column: 1 / -1; margin: 0 0 6px; color: var(--text-muted-color, #aaa); font-size: 0.9rem; }
+
