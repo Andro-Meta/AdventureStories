@@ -507,13 +507,17 @@ const PATHS = [
             if (value.isBoss || climaxFoe) {
                 const party = Math.max(1, (gs.players || []).length);
                 enemy.isBoss = true;
-                enemy.hp = enemy.maxHp = Math.max(enemy.maxHp, 40 + 20 * party);
+                // Fixed size, not "at least": the narrator's 75-HP magistrate took a
+                // solo hero 13 hits while hitting back for 10-20 (unwinnable).
+                enemy.hp = enemy.maxHp = 40 + 20 * party;
                 enemy.atk = Math.max(enemy.atk, 9);
                 enemy.def = Math.max(enemy.def, 4);
                 enemy.lootTier = 'High';
                 enemy.lootChance = 1;
                 if (!Array.isArray(value.abilities) || !value.abilities.length) enemy.abilities = ['Crushing Blow'];
             }
+            // Ordinary foes stay quick: live, a 45-HP commander needed 7+ hits.
+            if (!enemy.isBoss) enemy.hp = enemy.maxHp = Math.max(5, Math.min(Number(enemy.maxHp) || 20, 15 + 10 * Math.max(1, (gs.players || []).length)));
             gs.enemies.push(enemy);
             // Joining a fight already in progress: give it a turn. Enemies added
             // mid-combat used to never act (they were missing from initiative).
@@ -662,6 +666,7 @@ const PATHS = [
                 completed: true
             };
             gs.questProgress.milestones.push(milestone);
+            gs.questProgress.completionPercentage = questPercent(gs);
             if (canonicalName === 'antagonist_revealed' && typeof value.villain === 'string' && value.villain.trim()) {
                 gs.questProgress.villain = value.villain.trim().slice(0, 60); // the final boss, by name
             }
@@ -732,64 +737,13 @@ const PATHS = [
         },
         apply: (_m, value, gs) => {
             gs.questProgress = gs.questProgress || {};
-            // Clamp monotonic non-decreasing — the narrator sometimes emits a
-            // smaller number on a later turn (smoke #2 saw 45 → 25). The
-            // quest bar should never run backwards … EXCEPT when value is
-            // exactly 0, which is treated as an explicit full reset (used
-            // when a new main quest is being declared, e.g. via god-mode
-            // retirement). Going to 0 is intentional; going to 25 from 45
-            // is sloppy narrator output.
-            //
-            // BUG FIX (2026-04-30): also cap by turn so the narrator can't
-            // dump all Act 1 milestones in turn 1 and show the player 30%
-            // when they just started. Pacing curve: turn 1 → 8%, turn 4 → 20%,
-            // turn 10 → 40%, turn 20+ → no cap. (User shouldn't be in god
-            // mode and at 30% on turn 1.)
-            const current = typeof gs.questProgress.completionPercentage === 'number'
-                ? gs.questProgress.completionPercentage : 0;
-            const turn = gs.turn || 1;
-            // Skip the turn cap entirely once god mode is unlocked — the
-            // player has earned authorial control.
-            if (!gs.isGoalComplete) {
-                let turnCap = 100;
-                if (turn <= 1) turnCap = 0;       // initial story = 0%, player hasn't acted yet
-                else if (turn <= 3) turnCap = 12;
-                else if (turn <= 6) turnCap = 22;
-                else if (turn <= 10) turnCap = 38;
-                else if (turn <= 15) turnCap = 58;
-                else if (turn <= 20) turnCap = 78;
-                if (value > turnCap) {
-                    const log = window.displayVisualError || console.log;
-                    log(`engine: completionPercentage clamped from ${value} to ${turnCap} (turn ${turn} cap; narrator pacing too aggressive).`);
-                    value = turnCap;
-                }
-            }
-            if (value === 0) {
-                // BUG-21 fix: previously a stray narrator emit of 0 mid-quest
-                // would silently wipe all milestones. Only honor the reset
-                // when god-mode retirement is in play (isGoalComplete=true)
-                // or when the previous value was already 0 (initial state).
-                // Otherwise treat 0 as a regression and clamp to current.
-                const isLegitimateReset = gs.isGoalComplete === true || current === 0;
-                if (!isLegitimateReset) {
-                    const log = window.displayVisualError || console.log;
-                    log(`engine: completionPercentage=0 ignored mid-quest (current ${current}%, narrator likely glitching). Use isGoalComplete=true for god-mode retirement.`);
-                    return `quest progress = ${current}% (regressive 0 ignored)`;
-                }
-                gs.questProgress.completionPercentage = 0;
-                // Also clear milestones — a new quest starts with a fresh log.
-                if (Array.isArray(gs.questProgress.milestones) && gs.questProgress.milestones.length > 0) {
-                    gs.questProgress.milestones = [];
-                    return `quest progress = 0% (full reset; milestones cleared)`;
-                }
-                return `quest progress = 0% (reset)`;
-            }
-            const next = Math.max(current, value);
-            gs.questProgress.completionPercentage = next;
-            try { gs.questProgressManager?.updateCurrentPhase?.(); } catch (_) {} // phase follows the percentage
-            return next === value
-                ? `quest progress = ${next}%`
-                : `quest progress = ${next}% (clamped from regressive ${value})`;
+            // The bar is computed from the story beats actually reached, not the
+            // narrator's guess (live: it showed 78% while the hero sat in jail).
+            // A 0 after the quest is won is a full reset (new god-mode quest:
+            // milestones cleared); a stray 0 mid-quest is ignored like any guess.
+            if (value === 0 && gs.isGoalComplete) gs.questProgress.milestones = [];
+            gs.questProgress.completionPercentage = questPercent(gs);
+            return `completionPercentage = ${gs.questProgress.completionPercentage} (from milestones)`;
         }
     },
     {
@@ -922,6 +876,13 @@ function itemTier(t) {
     if (typeof t === 'number') return names[Math.min(names.length, Math.max(1, Math.round(t))) - 1];
     const s = String(t || '').trim().toLowerCase();
     return names.find(n => n.toLowerCase() === s) || (s === 'god' ? 'God' : 'Low');
+}
+
+// Quest progress from milestones reached: each story beat is worth a fixed share.
+const MILESTONE_PCT = { call_to_adventure: 5, world_introduced: 12, stakes_clear: 20, ally_found: 35,
+    first_obstacle_overcome: 50, antagonist_revealed: 65, final_confrontation: 80, final_blow: 100 };
+export function questPercent(gs) {
+    return Math.max(0, ...(gs.questProgress?.milestones || []).map(m => MILESTONE_PCT[m.name] || 0));
 }
 
 // An owned item by id, or by name (case-insensitive) as the narrator writes it.

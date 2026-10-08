@@ -228,7 +228,22 @@ export async function handlePlayerChoice(actionType, choiceText) {
                         const lowerChoice = String(choiceText || '').toLowerCase();
                         const move = ready.find(m => m.name && lowerChoice.includes(m.name.toLowerCase())) || ready[0];
                         if (!move) {
-                            combatLog = `${currentPlayer.name} tries a special move but none are ready.`;
+                            // No learned move (most heroes early on): a Power Strike,
+                            // a heavy hit usable every other round. Before, Special
+                            // with no moves did nothing and wasted the turn.
+                            const round = gameState.combat?.round || 0;
+                            const ready = round - (currentPlayer.lastPowerStrikeRound ?? -99) >= 2;
+                            const r = Combat.executeWeaponAttack(currentPlayer, target, {});
+                            let total = r.actualDamage || 0;
+                            if (ready && !r.missed && !r.blocked) {
+                                const before = target.hp;
+                                target.hp = Math.max(0, target.hp - Math.max(4, Math.round(total * 0.8)));
+                                total += before - target.hp;
+                                currentPlayer.lastPowerStrikeRound = round;
+                            }
+                            combatLog = r.missed ? `${currentPlayer.name}'s power strike misses ${target.name}.`
+                                : ready ? `${currentPlayer.name} lands a Power Strike on ${target.name} for ${total} damage!`
+                                : `${currentPlayer.name} is still winded from the last power strike and hits ${target.name} for ${total}.`;
                         } else if ((move.mpCost || 0) > (currentPlayer.mp || 0)) {
                             combatLog = `${currentPlayer.name} reaches for ${move.name} but doesn't have enough MP.`;
                         } else {
@@ -268,7 +283,10 @@ export async function handlePlayerChoice(actionType, choiceText) {
                             || usable[0];
                         cbStep('3-Item', `item=${item?.name || 'NONE'}`);
                         if (!item) {
-                            combatLog = `${currentPlayer.name} fumbles for an item but finds nothing usable.`;
+                            // Nothing usable left: catch a breath instead of a wasted turn.
+                            const before = currentPlayer.hp;
+                            currentPlayer.hp = Math.min(currentPlayer.maxHp, currentPlayer.hp + Math.max(4, Math.round((currentPlayer.maxHp || 100) * 0.08)));
+                            combatLog = `${currentPlayer.name} finds no usable items and catches a breath (+${currentPlayer.hp - before} HP).`;
                         } else {
                             const heal = item.stats?.heal || 0;
                             const healPct = item.stats?.healPercent || 0;
