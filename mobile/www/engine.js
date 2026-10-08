@@ -20,6 +20,7 @@
 import { gameState, recordPlayerChoice, recordStoryBeat, recordWorldStateChange } from './state.js';
 import * as Combat from './combat.js';
 import * as Config from './config.js';
+import { levelUp } from './battle.js';
 
 /**
  * Phase 1.2: Look up a status effect from Config.STATUS_EFFECTS by name
@@ -232,6 +233,12 @@ const PATHS = [
             // so a god-mode ATK 50 doesn't fall back to 15.
             if (field === 'atk') player.baseAtk = (player.baseAtk ?? Config.BASE_ATK) + (value - (player.atk || 0));
             if (field === 'def') player.baseDef = (player.baseDef ?? Config.BASE_DEF) + (value - (player.def || 0));
+            // A higher level (god mode, story) brings the normal per-level gains.
+            if (field === 'level' && value > (player.level || 1)) {
+                levelUp(player, value - (player.level || 1));
+                try { Combat.recalculateCharacterStats(player); } catch (_) {}
+                return `${player.name}.level = ${player.level}`;
+            }
             player[field] = value;
             // Raise current to new max if max increased
             if (field === 'maxHp' && (player.hp || 0) > value) player.hp = value;

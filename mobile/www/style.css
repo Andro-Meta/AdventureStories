@@ -3084,3 +3084,23 @@ body { padding-top: calc(env(safe-area-inset-top) + 0.5rem); padding-bottom: cal
 #battlePicker .bp-detail { font-size: 0.85rem; color: var(--text-muted-color); font-weight: 400; margin-top: 2px; }
 #battlePicker .bp-cancel { width: 100%; margin-top: 0.3rem; }
 .hero-level { font-size: 0.7em; color: var(--coins-color); font-weight: 600; margin-left: 0.3rem; }
+
+/* ---- Battle bar (ui.renderBattleHud) ---- */
+#battleHud { position: sticky; top: env(safe-area-inset-top); z-index: 50; margin: 0 0 0.6rem; padding: 0.5rem 0.6rem;
+    background: #151515; border: 1px solid var(--border-color); border-radius: var(--border-radius); box-shadow: 0 4px 14px rgba(0,0,0,0.6); isolation: isolate; }
+#battleHud .bh-side + .bh-side { border-top: 1px solid var(--border-color); margin-top: 0.35rem; padding-top: 0.35rem; }
+#battleHud .bh-row { position: relative; display: grid; grid-template-columns: minmax(0, 1.3fr) 1fr auto 0.6fr auto; align-items: center; gap: 0.4rem; font-size: 0.85rem; padding: 0.15rem 0.2rem; border-radius: 6px; }
+#battleHud .bh-foe { grid-template-columns: minmax(0, 1.3fr) 1.6fr auto; }
+#battleHud .bh-actor { background: rgba(37,117,252,0.18); }
+#battleHud .bh-down { opacity: 0.45; }
+#battleHud .bh-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 700; color: var(--secondary-color); }
+#battleHud .bh-foe .bh-name { color: var(--risky-color); }
+#battleHud .bh-name small { color: var(--coins-color); font-weight: 600; }
+#battleHud .bh-bar { display: block; height: 8px; background: #333; border-radius: 4px; overflow: hidden; }
+#battleHud .bh-bar > span { display: block; height: 100%; transition: width 0.5s ease; }
+#battleHud .bh-hp > span { background: linear-gradient(90deg, #43a047, #7cd36f); }
+#battleHud .bh-mp > span { background: linear-gradient(90deg, #1e88e5, #4fc3f7); }
+#battleHud .bh-foehp > span { background: linear-gradient(90deg, #e53935, #ff7043); }
+#battleHud .bh-num { font-variant-numeric: tabular-nums; color: var(--text-color); font-size: 0.8rem; }
+#battleHud .bh-mpn { color: #4fc3f7; }
+#battleHud .fx-float { top: -14px; right: 8px; font-size: 1.2rem; }

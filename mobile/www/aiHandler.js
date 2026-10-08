@@ -134,7 +134,7 @@ Reply with ONE JSON object with all three keys, and nothing else:
 
 NARRATION: ${words} words (at least ${wc.min}; replies under that are too thin), in 2 short paragraphs, third person, naming the hero who acted. Show what happens because of the action, then end on a moment that invites the next decision. No choices or bracket tokens inside the narration.
 
-STORY LOGIC (the South Park rule): link this scene to the last with THEREFORE (a direct consequence of the choice) or BUT (a complication that makes things harder), never "and then". At least every other scene needs a BUT: a twist, a cost, a rival, a door that won't open. Never repeat the last scene's beat; something new must happen.${openThreadsBlock()}
+${prompt.startsWith('[God mode]') ? '' : `STORY LOGIC (the South Park rule): link this scene to the last with THEREFORE (a direct consequence of the choice) or BUT (a complication that makes things harder), never "and then". At least every other scene needs a BUT: a twist, a cost, a rival, a door that won't open. Never repeat the last scene's beat; something new must happen.${openThreadsBlock()}`}
 
 ${nextActor && (gameState.players || []).length > 1 ? `NEXT TO ACT: ${nextActor.name}. Write the choices for ${nextActor.name}${nextActor.specialMoves?.length ? ` (special moves: ${nextActor.specialMoves.map(m => m.name).join(', ')})` : ''} and end the narration by turning to them.
 
@@ -238,6 +238,30 @@ function openThreadsBlock() {
     const open = (gameState.storyThreads || []).map((t, i) => ({ ...t, i })).filter(t => !t.resolved);
     if (!open.length) return '';
     return `\nOPEN THREADS (setups you owe a payoff; push one forward or pay it off soon, by number):\n${open.map(t => `${t.i}. ${t.text}`).join('\n')}`;
+}
+
+/**
+ * God mode: turn a free-form wish into engine ops (stats, items, powers, gold,
+ * a new quest...). Returns [] on failure; the caller applies them.
+ */
+export async function wishToOps(wish, alreadyApplied = []) {
+    const p = gameState.players?.[gameState.currentPlayerIndex || 0];
+    if (!p) return [];
+    const hero = `${p.name}: level ${p.level || 1}, HP ${p.hp}/${p.maxHp}, MP ${p.mp}/${p.maxMp}, ATK ${p.atk}, DEF ${p.def}, coins ${p.coins}; items: ${(p.inventory || []).map(i => i.name).join(', ') || 'none'}; moves: ${(p.specialMoves || []).map(m => m.name).join(', ') || 'none'}`;
+    const payload = await API.getAIResponseJSON([
+        { role: 'system', content: 'You turn a game wish into JSON-patch ops for the game engine. The player has won and may do anything, even game-breaking. Reply with JSON only.' },
+        { role: 'user', content: `HERO: ${hero}
+WISH: "${wish}"${alreadyApplied.length ? `
+ALREADY DONE (do not repeat): ${alreadyApplied.join('; ')}` : ''}
+
+Ops for every concrete effect of the wish, using these paths:
+${describeAllowedPaths()}
+- Level ups: replace /players/0/level with the new level (the game adds the stat gains).
+- New weapons/armor: add /players/0/inventory/- {name, type: Weapon|Armor, tier: Legendary, stats: {atk|def: N}} then replace /players/0/equipment/weapon|armor with the item name.
+- New powers: add /players/0/specialMoves/- {name, description, cooldown, mpCost, mechanics: {directDamage: N}}.
+Values are totals, not deltas. Reply exactly as {"ops":[...]} ({"ops":[]} if the wish changes nothing concrete).` }
+    ], { type: 'object', properties: { ops: { type: 'array' } }, required: ['ops'] }, { jsonSchemaName: 'wish_ops', max_tokens: 700, temperature: 0.2 });
+    return Array.isArray(payload?.ops) ? payload.ops.filter(o => o && typeof o.path === 'string').slice(0, 12) : [];
 }
 
 export async function writeEpilogue() {
