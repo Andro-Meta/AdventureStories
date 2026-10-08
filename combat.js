@@ -949,9 +949,26 @@ export function executeWeaponAttack(attacker, target, options = {}) {
  * @param {object} [effectData={}] - Data associated with the effect (e.g., { hpPerTurn: -5, defMod: 10 }).
  * @param {string} [source='Unknown'] - Source of the effect (e.g., move name, item name).
  */
+/**
+ * Catalog entry for a status name, case-insensitive; also matches word forms
+ * like "Burning" / "Poisoned" (spells and the narrator write those).
+ */
+export function lookupStatusEffect(name) {
+    if (!name || typeof name !== 'string') return null;
+    const catalog = Config.STATUS_EFFECTS || {};
+    const low = name.trim().toLowerCase();
+    if (catalog[low.toUpperCase()]) return catalog[low.toUpperCase()];
+    const entries = Object.values(catalog).filter(e => e && typeof e.name === 'string');
+    return entries.find(e => e.name.toLowerCase() === low)
+        || entries.find(e => low.startsWith(e.name.toLowerCase()))
+        || null;
+}
+
 export function applyStatusEffect(target, effectName, duration, effectData = {}, source = 'Unknown') {
-    // (Unchanged)
     const log = window.displayVisualError || console.log;
+    // Fill in the catalog's mechanics (spells and special moves passed {} or
+    // flat fields, so a "Burning" spell never burned). Given data wins.
+    effectData = { ...(lookupStatusEffect(effectName)?.defaultData || {}), ...(effectData || {}) };
     if (!target || !effectName || typeof duration !== 'number' || duration <= 0) {
         log(`Combat Warning: Invalid parameters for applyStatusEffect: Target=${!!target}, Effect=${effectName}, Duration=${duration}`);
         return;

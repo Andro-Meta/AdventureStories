@@ -32,19 +32,7 @@ import * as Config from './config.js';
  * value's `name` field has the user-visible form. We try both.
  */
 function lookupStatusEffectCatalog(name) {
-    if (!name || typeof name !== 'string') return null;
-    const catalog = Config.STATUS_EFFECTS || {};
-    const upper = name.toUpperCase();
-    if (catalog[upper]) return catalog[upper];
-    // Fall back to a name-match search (handles "Burn" vs "BURN" mismatch
-    // when the LLM is creative with capitalization).
-    for (const entry of Object.values(catalog)) {
-        if (entry && typeof entry.name === 'string'
-            && entry.name.toLowerCase() === name.toLowerCase()) {
-            return entry;
-        }
-    }
-    return null;
+    return Combat.lookupStatusEffect(name);
 }
 
 /**
