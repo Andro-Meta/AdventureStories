@@ -77,7 +77,7 @@ YOURS TO EMIT when the story makes them happen:
 - A fight starts: add /enemies/- (hp, maxHp, atk, def, abilities) AND replace /inCombat true. During a fight the game handles enemy HP and defeat itself: never emit /enemies/<n>/hp or /isDefeated, and never re-add an enemy that is already there or was defeated.
 - Status effects with narrative weight (Poison, Burn, Stun, Fear, Regen, Shield...): add ${P}/statusEffects/- {name, duration}.
 - Setups (Chekhov's gun): sparingly (about one every few turns), when the story makes a point of a clue, object, promise or mystery, add /storyThreads/- {text}. When one pays off, replace /storyThreads/<n>/resolved true. Never plant something you won't use.
-- Quest beats: add /questProgress/milestones/- using the EXACT names from the MAIN QUEST STAGE block, plus replace /questProgress/completionPercentage. Favors or rumors: add /questProgress/sideQuests/- {name, description, reward}.
+- Quest beats: add /questProgress/milestones/- using the EXACT names from the MAIN QUEST STAGE block (the game computes the progress bar from them). Favors or rumors: add /questProgress/sideQuests/- {name, description, reward}.
 ${gameState.adventureGoal ? '' : '- Set /adventureGoal once early (turn 4-6).\n'}- Main quest truly finished: add the "final_blow" milestone (the game then completes the quest).
 If the narration says the hero picked something up, met someone named, arrived somewhere named, or a fight began, the matching op MUST be in "ops". An empty list is only for a turn where nothing in the world changed.
 Format examples only (never use these names or details in the story):

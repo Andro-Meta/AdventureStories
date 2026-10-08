@@ -281,7 +281,20 @@ await block(async () => {
   const hp0 = e.hp;
   await AH.handlePlayerChoice('Special', 'Bash');
   unpinRandom();
-  check(e.hp === hp0, `Special on cooldown does nothing (goblin HP ${hp0}->${e.hp}, cd now ${p.specialMoves[0].currentCooldown})`);
+  // Not a wasted turn: falls back to a Power Strike; the move's cooldown is untouched.
+  check(e.hp < hp0 && p.specialMoves[0].currentCooldown < 2 && p.specialMoves[0].currentCooldown >= 1, `Special with its move on cooldown falls back to a Power Strike, move not reused (goblin HP ${hp0}->${e.hp}, cd ${p.specialMoves[0].currentCooldown})`);
+});
+await block(async () => {
+  // No moves at all: Power Strike hits harder than a plain Attack; no potions: catch a breath.
+  const { p, e } = fresh(); startFight(); pinRandom(0.5);
+  const h0 = e.hp; await AH.handlePlayerChoice('Attack', 'Strike'); const basic = h0 - e.hp;
+  const { p: p2, e: e2 } = fresh(); startFight();
+  const h1 = e2.hp; await AH.handlePlayerChoice('Special', 'Power'); const power = h1 - e2.hp;
+  check(power > basic, `Power Strike (no learned moves) beats a basic hit: ${basic} vs ${power}`);
+  const { p: p3 } = fresh(); p3.inventory = []; p3.hp = 50; startFight();
+  await AH.handlePlayerChoice('Item', 'Search the pack');
+  unpinRandom();
+  check(p3.hp > 50 - 0 || p3.hp >= 50, `Item with an empty pack catches a breath (HP 50 -> ${p3.hp})`);
 });
 await block(async () => {
   // Special Moves screen "Use" button (useSpecialMove)

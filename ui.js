@@ -1028,18 +1028,25 @@ export function updateNarrative(text) {
             .join('\n')
             .trim();
         elements.storyText.textContent = (cleanText || "The story continues...").replace(/\*\*|__/g, '');
-        recordStoryScene(cleanText);
+        // A new scene: bring the top of the story into view (players were left
+        // looking at the choices or the party card after picking).
+        const changed = recordStoryScene(cleanText);
+        if (changed && gameState.currentScreen === 'gameScreen') {
+            const card = document.getElementById('storyCard');
+            requestAnimationFrame(() => card?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }));
+        }
     }
 }
 
 // Story book: every scene shown, so a finished game can be re-read as a story.
 function recordStoryScene(text) {
-    if (!text) return;
+    if (!text) return false;
     const log = gameState.storyLog || (gameState.storyLog = []);
     const last = log[log.length - 1];
-    if (last === text) return;
+    if (last === text) return false;
     if (last && text.startsWith(last)) log[log.length - 1] = text; // same scene grew (epilogue)
     else log.push(text);
+    return true;
 }
 
 export function storyBookText() {

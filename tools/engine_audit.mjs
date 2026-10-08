@@ -112,46 +112,22 @@ for (const c of badCases) {
 }
 
 // ---- 3. ENGINE: completionPercentage turn cap ----
-console.log('\n=== ENGINE: turn-cap on completionPercentage ===');
-resetGS();
-gameState.turn = 1;
-Engine.applyDiff([{op:'replace',path:'/questProgress/completionPercentage',value:80}]);
-if (gameState.questProgress.completionPercentage <= 12) {
-  ok(`turn-1 cap honored (got ${gameState.questProgress.completionPercentage}%, asked 80%)`);
-} else {
-  fail(`turn-1 cap missing — completionPercentage = ${gameState.questProgress.completionPercentage}`);
-}
-resetGS();
-gameState.turn = 25;
-Engine.applyDiff([{op:'replace',path:'/questProgress/completionPercentage',value:80}]);
-if (gameState.questProgress.completionPercentage === 80) {
-  ok(`late-game cap is open (got ${gameState.questProgress.completionPercentage}%)`);
-} else {
-  fail(`late-game completionPercentage = ${gameState.questProgress.completionPercentage}, expected 80`);
-}
-
-// ---- 4. ENGINE: monotonic non-decreasing (with 0 as full reset) ----
-console.log('\n=== ENGINE: completionPercentage monotonicity ===');
+console.log('=== ENGINE: completionPercentage follows milestones, not the narrator ===');
 resetGS(); gameState.turn = 25;
-Engine.applyDiff([{op:'replace',path:'/questProgress/completionPercentage',value:60}]);
-Engine.applyDiff([{op:'replace',path:'/questProgress/completionPercentage',value:30}]);
-if (gameState.questProgress.completionPercentage === 60) ok('cannot decrease (60 stays after 30 emit)');
-else fail(`expected 60, got ${gameState.questProgress.completionPercentage}`);
-// BUG-21: stray 0 emit mid-quest must be ignored (would otherwise wipe milestones).
+Engine.applyDiff([{op:'replace',path:'/questProgress/completionPercentage',value:80}]);
+if (gameState.questProgress.completionPercentage === 0) ok('narrator guess ignored with no milestones (80 asked, 0 shown)');
+else fail(`narrator guess applied: ${gameState.questProgress.completionPercentage}`);
+Engine.applyDiff([{op:'add',path:'/questProgress/milestones/-',value:{name:'call_to_adventure'}}]);
+Engine.applyDiff([{op:'add',path:'/questProgress/milestones/-',value:{name:'stakes_clear'}}]);
+if (gameState.questProgress.completionPercentage === 20) ok('stakes_clear reached -> 20%');
+else fail(`expected 20 after stakes_clear, got ${gameState.questProgress.completionPercentage}`);
 Engine.applyDiff([{op:'replace',path:'/questProgress/completionPercentage',value:0}]);
-if (gameState.questProgress.completionPercentage === 60) {
-  ok('regressive 0 ignored mid-quest (60 stays, milestones preserved)');
-} else {
-  fail(`regressive 0 not ignored — pct=${gameState.questProgress.completionPercentage}`);
-}
-// Legitimate reset: god-mode retirement (isGoalComplete=true) DOES allow 0.
+if (gameState.questProgress.completionPercentage === 20 && gameState.questProgress.milestones.length === 2) ok('stray 0 mid-quest ignored (milestones kept)');
+else fail(`stray 0 changed progress: ${gameState.questProgress.completionPercentage}`);
 gameState.isGoalComplete = true;
 Engine.applyDiff([{op:'replace',path:'/questProgress/completionPercentage',value:0}]);
-if (gameState.questProgress.completionPercentage === 0 && gameState.questProgress.milestones.length === 0) {
-  ok('explicit 0 is a full reset under god-mode retirement (milestones cleared)');
-} else {
-  fail(`god-mode reset to 0 failed — pct=${gameState.questProgress.completionPercentage}, milestones=${gameState.questProgress.milestones.length}`);
-}
+if (gameState.questProgress.completionPercentage === 0 && gameState.questProgress.milestones.length === 0) ok('explicit 0 after the win is a full reset (milestones cleared)');
+else fail(`god-mode reset failed: pct=${gameState.questProgress.completionPercentage}, milestones=${gameState.questProgress.milestones.length}`);
 gameState.isGoalComplete = false;
 
 // ---- 5. ENGINE: side quest dedupe ----

@@ -42,8 +42,6 @@ export const MAIN_QUEST_ARC = [
    2. "world_introduced"    — emit once 1-2 NPCs and a named location are on stage.
    3. "stakes_clear"        — emit when the player understands what they must do. THIS IS REQUIRED to advance to Act 2.
 - PACING: emit AT MOST ONE milestone per turn. Turn 1 should establish setting only — usually no milestone, or just call_to_adventure if the player's first action triggers the inciting beat. Don't fire all three Act 1 milestones in the opening scene; that ruins the slow burn.
-- After EACH milestone you emit, ALSO emit a /questProgress/completionPercentage replace op.
-  Suggested cumulative ranges in Act 1: 5%, 12%, 20% (when stakes_clear fires).
 - Use snake_case milestone names exactly as listed; never paraphrase ("The Stakes Become Clear" is WRONG, use "stakes_clear").`
     },
     {
@@ -64,8 +62,6 @@ export const MAIN_QUEST_ARC = [
       The villain must have a NAME native to the theme, and the milestone value must carry it:
       {"name":"antagonist_revealed","description":"...","villain":"<Villain Name>"}. That villain is the final boss.
 - PACING: emit AT MOST ONE milestone per turn. Space these milestones across multiple turns.
-- After EACH milestone, emit a /questProgress/completionPercentage replace op.
-  Suggested cumulative ranges in Act 2: 35%, 50%, 65% (when antagonist_revealed fires).
 - Use snake_case milestone names exactly as listed; never paraphrase.`
     },
     {
@@ -85,12 +81,8 @@ This is Act 3 of the main quest. The player is at the climax.
    2. "final_blow"          — when the threat is defeated/resolved. CRITICAL: if you emitted "final_confrontation" two or more turns ago without yet emitting "final_blow", you MUST emit "final_blow" THIS TURN. The story cannot loop in the climax — close it.
    3. "aftermath"           — the closing beat after the win.
 - PACING: emit AT MOST ONE milestone per turn. The climactic act deserves multiple beats.
-- After EACH milestone, emit a /questProgress/completionPercentage replace op.
-  Suggested cumulative ranges in Act 3: 80%, 95%, 100% (with final_blow + aftermath).
-  Once you set 100% you MUST emit /isGoalComplete: true on the same or next turn.
 - After the climax, the player WINS the quest. Emit (in this order):
   • {"op":"add","path":"/questProgress/milestones/-","value":{"name":"final_blow","description":"The threat is ended."}}
-  • {"op":"replace","path":"/questProgress/completionPercentage","value":100}
   • {"op":"replace","path":"/isGoalComplete","value":true}
 - The act of setting /isGoalComplete to true UNLOCKS GOD MODE — the player gains the power
   to type any free-form action and have the world respond. Foreshadow this with awe in the
