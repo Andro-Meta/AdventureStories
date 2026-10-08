@@ -450,12 +450,17 @@ const PATHS = [
     {
         regex: /^\/inCombat$/,
         ops: ['replace'],
-        validate: (_m, value) => {
+        validate: (_m, value, gs) => {
             if (typeof value !== 'boolean') return 'inCombat must be boolean';
+            // Live (phone): the narrator ended the fight with the boss untouched.
+            if (!value && (gs?.enemies || []).some(e => e.isBoss && !e.isDefeated && e.hp > 0)) return 'the boss fight ends when the boss falls';
             return null;
         },
         apply: (_m, value, gs) => {
             const wasInCombat = !!gs.inCombat;
+            // Story ends a fight with foes still up (live: drake left at 2 HP in
+            // the enemy list, out of combat): they are driven off, not kept.
+            if (!value && wasInCombat) gs.enemies = (gs.enemies || []).filter(e => e && (e.isDefeated || e.hp <= 0));
             gs.inCombat = value;
             if (value) gs.lastCombatTurn = gs.turn || 0; // for the "no fight lately" nudge
             // A7: When the narrator flips inCombat false→true, the combat
@@ -664,7 +669,7 @@ const PATHS = [
             if (isDup) return `duplicate milestone "${value.name}" (already recorded)`;
             // The quest can't end while the boss still stands (live: final_blow
             // arrived with the boss at 36/60). Killing it adds final_blow.
-            if (norm === 'final blow' && (gs?.enemies || []).some(e => e.isBoss && !e.isDefeated && e.hp > 0)) {
+            if (norm === 'final blow' && !bossBeaten(gs)) {
                 return 'final_blow must wait until the boss is defeated';
             }
             return null;
@@ -777,7 +782,7 @@ const PATHS = [
         ops: ['replace'],
         validate: (_m, value, gs) => {
             if (typeof value !== 'boolean') return 'isGoalComplete must be boolean';
-            if (value && (gs?.enemies || []).some(e => e.isBoss && !e.isDefeated && e.hp > 0)) return 'the quest ends when the boss is defeated';
+            if (value && !bossBeaten(gs)) return 'the quest ends when the boss is defeated';
             return null;
         },
         apply: (_m, value, gs) => {
@@ -812,7 +817,7 @@ const PATHS = [
                 gs.allowCustomActions = false;
                 gs.questRewardsGranted = false; // a new main quest can pay out again
                 // New quest: old beats would block call_to_adventure/final_blow as duplicates.
-                if (gs.questProgress) { gs.questProgress.milestones = []; gs.questProgress.completionPercentage = 0; }
+                if (gs.questProgress) { gs.questProgress.milestones = []; gs.questProgress.completionPercentage = 0; gs.questProgress.bossDefeated = false; }
                 if (gs.godModeManager) {
                     try {
                         if (typeof gs.godModeManager.deactivateGodMode === 'function') {
@@ -914,6 +919,16 @@ export function questPercent(gs) {
 }
 
 // An owned item by id, or by name (case-insensitive) as the narrator writes it.
+/**
+ * The quest can only be won by beating the boss: none may be standing, and
+ * one must have fallen this quest (a story 'win' never fought the villain).
+ */
+function bossBeaten(gs) {
+    const foes = gs?.enemies || [];
+    if (foes.some(e => e.isBoss && !e.isDefeated && e.hp > 0)) return false;
+    return !!gs?.questProgress?.bossDefeated || foes.some(e => e.isBoss && (e.isDefeated || e.hp <= 0));
+}
+
 /** Path segment -> item ref ("Healing%20Potion" / "Healing_Potion" -> "Healing Potion" too). */
 function decodeRef(seg) {
     let s = String(seg);
@@ -951,8 +966,13 @@ export function applyDiff(ops, opts = {}) {
     // Enemies must exist before /inCombat true builds the turn order; with
     // the ops the other way round combat got an empty initiative list and
     // enemy turns recursed until the stack overflowed.
-    const ordered = ops.map(normalizeOp)
-        .sort((a, b) => (a?.path === '/inCombat') - (b?.path === '/inCombat'));
+    // Quest-ending ops go last: live, one reply sent final_blow +
+    // isGoalComplete before '+enemy (BOSS)', so the boss check saw no boss
+    // and the quest was won with the villain at full HP.
+    const rank = (op) => op?.path === '/isGoalComplete' ? 3
+        : (op?.path === '/questProgress/milestones/-' && /final[\s_-]*blow/i.test(String(op?.value?.name || ''))) ? 2
+        : op?.path === '/inCombat' ? 1 : 0;
+    const ordered = ops.map(normalizeOp).sort((a, b) => rank(a) - rank(b));
 
     // Non-strict (every narrator turn): validate each op against the state
     // the earlier ops produced, so "pick up the sword" + "equip it" in one

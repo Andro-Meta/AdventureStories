@@ -107,7 +107,8 @@ export async function handlePartyWipe() {
         }
         // Not yet exhausted — the AI gets another shot at narrating a
         // brutal beating that returns the players to the cell at low HP.
-        UI.showPopup('Your escape attempt failed. Back in the cell.', 'error', 5000);
+        const left = (gameState.jailEscape?.maxAttempts || 3) - (gameState.jailEscape?.attempts || 0);
+        UI.showPopup(`⛓ Escape failed: dragged back to the cell at a quarter HP. ${left} ${left === 1 ? 'chance' : 'chances'} left; fall again after that and the tale ends.`, 'capture', 10000);
         gameState.inCombat = false;
         gameState.enemies = [];
         gameState.players.forEach(p => {
@@ -139,13 +140,17 @@ Describe the failure vividly: the guards' counter-attack, the consequences (a be
     }
 
     // Branch 2: wiped in the open world. Transition to jail.
-    UI.showPopup('The entire party has fallen!', 'error', 6000);
-
     // Recalculate stats post-revive (transitionToJail sets HP to 50%).
     transitionToJail();
     gameState.players.forEach(p => {
         if (p) Combat.recalculateCharacterStats(p);
     });
+    // Say plainly what happened (before: one 'defeated' toast and a new page,
+    // easy to miss) and what gets it back.
+    const seized = (gameState.confiscatedItems || []).map(i => i.name);
+    UI.showPopup(`⛓ The party has fallen and been captured! You wake in ${gameState.jail?.name || 'a cell'} at half HP. `
+        + `Taken: ${seized.length ? seized.join(', ') : 'no gear'}${gameState.confiscatedGold ? ` and ${gameState.confiscatedGold} gold` : ''}. `
+        + `Escape (size up the cell, find a weakness, get out) to win most of it back.`, 'capture', 12000);
 
     const jail = getJailForTheme(gameState.adventureTheme || 'fantasy');
     const wipePrompt = `[Action Report: Captured]

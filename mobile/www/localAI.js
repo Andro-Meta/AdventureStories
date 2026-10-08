@@ -154,7 +154,9 @@ export class LocalAIClient {
             const controller = new AbortController();
             // A provider with a backup behind it gets less time: a stuck call
             // (live: Gemma hung 45 s, then two 500s) shouldn't hold up the turn.
-            const timeoutId = setTimeout(() => controller.abort(), hasNext ? Math.min(TIMEOUT_MS, 20000) : TIMEOUT_MS);
+            // 10 s: phone run 10-08, Gemini p95 8.3 s but 4 of 20 calls stalled
+            // to the old 20 s cutoff (turn 1 took 76 s across both keys).
+            const timeoutId = setTimeout(() => controller.abort(), hasNext ? Math.min(TIMEOUT_MS, 10000) : TIMEOUT_MS);
             const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` };
             if (provider.baseUrl.includes('openrouter')) {
                 headers['HTTP-Referer'] = (typeof window !== 'undefined' && window.location) ? window.location.origin : 'https://adventure-stories.local';

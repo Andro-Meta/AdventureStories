@@ -1301,6 +1301,8 @@ export async function handleEnemyDefeat(enemyId) {
          return;
      }
      enemy.defeatProcessed = true;
+     // Remembered past the fight: only a fallen boss can end the quest (engine).
+     if (enemy.isBoss) { gameState.questProgress = gameState.questProgress || {}; gameState.questProgress.bossDefeated = true; }
 
      enemy.isDefeated = true;
      enemy.hp = 0;

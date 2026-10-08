@@ -197,7 +197,7 @@ export function showPopup(message, type = 'info', duration = 3000) {
     popupQueue.push({ message, type, duration });
     // Keep it current, but never drop level-ups, victories or loot (legendary/success).
     while (popupQueue.length > 4) {
-        const i = popupQueue.findIndex((p, j) => j > 0 && !['legendary', 'success', 'item'].includes(p.type));
+        const i = popupQueue.findIndex((p, j) => j > 0 && !['legendary', 'success', 'item', 'capture'].includes(p.type));
         if (i === -1) break;
         popupQueue.splice(i, 1);
     }
