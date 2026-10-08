@@ -506,7 +506,7 @@ export function generateThemedItem(theme, tier, type) {
     if (type === 'Revival') {
         const revivalName = themeData.RevivalItemName || Config.REVIVAL_ITEM_DEFAULT_NAME;
         const revivalTier = Config.Tiers.SPECIAL;
-        const revivalCost = Config.REVIVAL_ITEM_BASE_COST + getRandomInt(-20, 30);
+        const revivalCost = priceTag(itemValue({ stats: { revive: true } }));
          if (window.displayVisualError) displayVisualError(`Generating Revival Item: ${revivalName} (Theme: ${currentTheme}, Tier: ${revivalTier})`);
         return {
             id: generateId('item'),
@@ -567,10 +567,23 @@ export function generateThemedItem(theme, tier, type) {
     const suffixes = specificTypeData.suffixes || [''];
     const effects = specificTypeData.effects || [`A ${actualTier} ${type}.`];
 
-    const prefix = getRandomElement(prefixes);
+    let prefix = getRandomElement(prefixes);
     const nameIndex = Math.floor(Math.random() * names.length);
     const name = names[nameIndex];
-    const suffix = getRandomElement(suffixes);
+    let suffix = getRandomElement(suffixes);
+    // "Inferno Blade of Absolute Zero", "Frost Axe of Flames": a part that
+    // names a different element than the rest is dropped.
+    const el = (w) => {
+        const s = String(w || '');
+        if (/fire|flam|inferno|blaz|ember|burn|scorch|molten|magma/i.test(s)) return 'Fire';
+        if (/frost|ice|glacial|frozen|zero|cold|snow|arctic|winter|cryo/i.test(s)) return 'Ice';
+        if (/thunder|lightning|storm|shock|volt|spark|tesla|electr/i.test(s)) return 'Lightning';
+        if (/poison|venom|toxic|plague|blight/i.test(s)) return 'Poison';
+        return elementFromName(s);
+    };
+    if (el(prefix) && el(name) && el(prefix) !== el(name)) prefix = '';
+    const core = el(name) || el(prefix);
+    if (el(suffix) && core && el(suffix) !== core) suffix = '';
     const finalName = `${prefix} ${name} ${suffix}`.replace(/\s+/g, ' ').trim();
 
     const item = {
@@ -653,9 +666,7 @@ export function generateThemedItem(theme, tier, type) {
         case 'Misc': delete item.cost; break; // Misc items usually have no cost
     }
 
-    if (item.cost !== undefined) {
-        item.cost = Math.max(1, getRandomInt(Math.floor(item.cost * 0.8), Math.ceil(item.cost * 1.2)));
-    }
+    if (item.cost !== undefined) item.cost = priceTag(itemValue(item));
 
     if (window.displayVisualError) displayVisualError(`Generated Item: ${item.name} (Type: ${type}, Tier: ${actualTier})`);
     return item;
@@ -690,7 +701,9 @@ export function generateShopItems(theme, turn) {
     const attemptsBudget = maxItems * 3;
     let attempts = 0;
 
-    const tierProbability = calculateTierProbability(turn);
+    const heroes = (gameState.players || []).filter(Boolean);
+    const partyLevel = heroes.length ? heroes.reduce((s, p) => s + (p.level || 1), 0) / heroes.length : 1;
+    const tierProbability = heroes.length ? shopTierOdds(partyLevel) : calculateTierProbability(turn);
     if (window.displayVisualError) displayVisualError(`Shop Tier Prob (Turn ${turn}): ${JSON.stringify(tierProbability, null, 1)}`);
 
     // --- Add Guaranteed Basics ---
@@ -735,6 +748,51 @@ export function generateShopItems(theme, turn) {
  * @param {number} turn - The current game turn.
  * @returns {object} An object mapping tiers (string keys from Config.Tiers) to their probability (0-1).
  */
+/**
+ * What an item is worth, from what it does (Michael: "ATK 12 for 44, ATK 8
+ * for 59"). Weapons and armor grow faster than linear so a big upgrade costs
+ * real saving; a heal costs ~0.6 coin per HP. Shop price = value +-5%,
+ * rounded to 5; selling pays half.
+ *   ATK 5 -> 25, 10 -> 70, 16 -> 150, 25 -> 325 | DEF 3 -> 15, 6 -> 40, 12 -> 120, 20 -> 280
+ */
+export function itemValue(item) {
+    const s = item?.stats || {};
+    let v = 0;
+    if (s.atk) v += 0.4 * s.atk * s.atk + 3 * s.atk;
+    if (s.def) v += 0.5 * s.def * s.def + 4 * s.def;
+    if (s.heal) v += 0.6 * s.heal;
+    if (s.healPercent && !s.revive) v += 60 * s.healPercent;
+    if (s.revive) v += 100;
+    if (s.cure) v += 15;
+    if (s.applyStatus) v += 25;
+    if (s.throwStatus) v += 20;
+    if (s.luck) v += s.luck >= 2 ? 180 : 60;
+    if (s.element) v *= 1.1;
+    if (s.onHitStatus) v *= 1.2;
+    if (s.resistances) v *= 1.15;
+    if (!v) v = { Weapon: 20, Armor: 20, Consumable: 12, Misc: 8 }[item?.type] || 10;
+    return Math.max(5, Math.round(v));
+}
+const priceTag = (value) => Math.max(5, Math.round(value * (0.95 + Math.random() * 0.1) / 5) * 5);
+
+/**
+ * Shop tiers follow the party's level (it barely moved before: Low gear was
+ * still 23% of stock at level 6). Level 1 shops sell starter kit; by level 5
+ * most stock is High, with the odd Special or Legendary.
+ */
+function shopTierOdds(level) {
+    const table = [
+        null,
+        { Low: 0.60, Medium: 0.35, High: 0.05 },
+        { Low: 0.40, Medium: 0.45, High: 0.15 },
+        { Low: 0.20, Medium: 0.45, High: 0.32, Special: 0.03 },
+        { Low: 0.10, Medium: 0.35, High: 0.45, Special: 0.10 },
+        { Low: 0.05, Medium: 0.25, High: 0.50, Special: 0.17, Legendary: 0.03 },
+        { Medium: 0.15, High: 0.50, Special: 0.28, Legendary: 0.07 },
+    ];
+    return table[Math.max(1, Math.min(6, Math.round(level) || 1))];
+}
+
 function calculateTierProbability(turn) {
     // (Unchanged)
     const baseProb = {

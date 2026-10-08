@@ -2366,7 +2366,8 @@ export function calculateItemPrice(itemData) {
     
     // Determine which faction controls this item's market
     const marketFaction = determineItemMarketFaction(itemData);
-    const priceModifier = gameState.reputationSystem.priceModifiers[marketFaction] || 1.0;
+    // Capped: standing should matter, not halve or double prices (it did).
+    const priceModifier = Math.min(1.2, Math.max(0.85, gameState.reputationSystem.priceModifiers[marketFaction] || 1.0));
     
     // Calculate modified price
     const modifiedPrice = Math.max(1, Math.round(itemData.cost * priceModifier));

@@ -269,8 +269,6 @@ export const DefaultItemCosts = {
     [Tiers.LEGENDARY]: 1200,
     [Tiers.GOD]: 9999 // Placeholder cost
 };
-// Specific cost for revival items (variation added during generation)
-export const REVIVAL_ITEM_BASE_COST = 150;
 // Default name if a theme doesn't provide one
 export const REVIVAL_ITEM_DEFAULT_NAME = "Revival Charm";
 
