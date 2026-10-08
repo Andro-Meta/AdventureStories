@@ -253,7 +253,7 @@ function showNextPopup() {
     // Remove popup after duration
     setTimeout(() => {
         popup.style.opacity = '0';
-        popup.style.transform = 'translateX(-50%) translateY(-20px)';
+        popup.style.transform = 'translateX(-50%) translateY(20px)';
         setTimeout(() => {
             document.body.removeChild(popup);
             gameState.popupQueue.shift();
@@ -283,6 +283,10 @@ export function showScreen(screenId) {
     if (screen) {
         screen.classList.remove('hidden');
         screen.classList.add('active');
+        // Fill the header now, not when the background goal task finishes
+        // (the screen opened showing "Adventure Name / Objective").
+        if (screenId === 'gameScreen') { try { updateGameHeader(); } catch (_) {} }
+        window.scrollTo?.(0, 0);
     } else {
         log(`ERROR: Screen ${screenId} not found`);
     }
@@ -1515,7 +1519,7 @@ function createItemCard(item, context) {
                 ${item.type === 'Consumable' && !item.stats?.revive ? `<button class="useItemBtn" ${cannotAct ? 'disabled' : ''}>Use</button>` : ''}
                 ${item.type === 'Weapon' ? `<button class="equipItemBtn" data-slot="weapon" ${cannotAct || isEquipped ? 'disabled' : ''}>Equip Weapon</button>` : ''}
                 ${item.type === 'Armor' ? `<button class="equipItemBtn" data-slot="armor" ${cannotAct || isEquipped ? 'disabled' : ''}>Equip Armor</button>` : ''}
-                ${isEquipped ? `<button class="unequipItemBtn" ${cannotAct ? 'disabled' : ''}>Unequip</button>` : ''} {/* Uses card's data-slot */}
+                ${isEquipped ? `<button class="unequipItemBtn" ${cannotAct ? 'disabled' : ''}>Unequip</button>` : ''}
                 <button class="dropItemBtn" ${cannotAct ? 'disabled' : ''}>Drop</button>
             ` : ''}
             ${context === 'shop' ? `
@@ -1718,6 +1722,9 @@ export function showLoading(isLoading, message = 'Loading...') {
     if (loadingIndicator && loadingMessage) {
         if (isLoading) {
             loadingMessage.textContent = message;
+            // The start-up loader is already on screen: don't stack a second spinner over it.
+            const startup = document.getElementById('loadingOverlay');
+            if (startup && !startup.classList.contains('hidden')) return;
             loadingIndicator.classList.remove('hidden');
         } else {
             loadingIndicator.classList.add('hidden');
