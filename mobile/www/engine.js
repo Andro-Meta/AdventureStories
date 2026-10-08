@@ -17,7 +17,7 @@
 // grammar is OUR grammar — keyed to our gameState tree, single-player
 // indices baked in for now (multi-player is a Phase 3 concern).
 
-import { gameState, recordPlayerChoice, recordStoryBeat, recordWorldStateChange } from './state.js';
+import { gameState, recordStoryBeat, recordWorldStateChange } from './state.js';
 import * as Combat from './combat.js';
 import * as Config from './config.js';
 import { levelUp } from './battle.js';
@@ -221,7 +221,7 @@ const PATHS = [
             // so named effects like "Poison" actually do damage-per-turn
             // even when the narrator only supplies the name.
             const effect = buildStatusEffectFromValue(value);
-            player.statusEffects.push(effect);
+            Combat.applyStatusEffect(player, effect.name, Math.min(10, Math.max(1, Math.round(effect.duration) || 1)), effect.effectTickData, 'narration');
             return `${player.name} status: +${effect.name}`;
         }
     },
@@ -483,7 +483,9 @@ const PATHS = [
                     // No enemies yet — defer; narrator should also add /enemies/-.
                     // Just ensure gs.combat is at least a stub so checks against
                     // gs.combat?.isActive don't drift.
-                    gs.combat = gs.combat || { isActive: true, round: 1, initiative: [], currentTurnIndex: 0, activeEffects: [], formation: { frontLine: [], backLine: [] } };
+                    // (a fresh stub: the old one from state.js is isActive:false, and
+                    // foes added next were then never put in the turn order)
+                    gs.combat = { isActive: true, round: 1, initiative: [], currentTurnIndex: 0, activeEffects: [], formation: { frontLine: [], backLine: [] } };
                 }
             } else if (!value && gs.combat) {
                 gs.combat.isActive = false;
@@ -502,7 +504,7 @@ const PATHS = [
             if (typeof value.hp !== 'number' || value.hp <= 0) return 'enemy.hp must be a positive number';
             const same = (gs.enemies || []).filter(e => String(e.name).trim().toLowerCase() === value.name.trim().toLowerCase());
             if (same.some(e => !e.isDefeated)) return `"${value.name}" is already in the fight`;
-            if (same.some(e => e.isBoss)) return `"${value.name}" was already defeated`;
+            if (same.some(e => e.isBoss) && !gs.isGoalComplete) return `"${value.name}" was already defeated`; // god mode may summon a rematch
             return null;
         },
         apply: (_m, value, gs) => {
@@ -540,7 +542,10 @@ const PATHS = [
                 enemy.isBoss = true;
                 // Fixed size, not "at least": the narrator's 75-HP magistrate took a
                 // solo hero 13 hits while hitting back for 10-20 (unwinnable).
-                enemy.hp = enemy.maxHp = 40 + 20 * party;
+                // God mode keeps the size it asked for (a summoned Void Dragon was 60 HP).
+                enemy.hp = enemy.maxHp = gs.isGoalComplete
+                    ? Math.min(99999, Math.max(20, Math.round(Number(value.maxHp || value.hp)) || 300))
+                    : 40 + 20 * party;
                 enemy.atk = Math.max(enemy.atk, 9);
                 enemy.def = Math.max(enemy.def, 4);
                 enemy.lootTier = 'High';
@@ -552,7 +557,14 @@ const PATHS = [
             gs.enemies.push(enemy);
             // Joining a fight already in progress: give it a turn. Enemies added
             // mid-combat used to never act (they were missing from initiative).
-            if (gs.inCombat && gs.combat?.isActive && Array.isArray(gs.combat.initiative)) gs.combat.initiative.push(enemy.id);
+            // A fight with no proper turn order yet (inCombat came first, or a
+            // stale combat object) gets one built now, heroes included.
+            if (gs.inCombat) {
+                const order = gs.combat?.initiative || [];
+                if (!gs.combat?.isActive || !order.some(id => String(id).startsWith('player'))) {
+                    try { Combat.initializeCombat(gs.enemies.filter(e => e && !e.isDefeated)); } catch (_) {}
+                } else order.push(enemy.id);
+            }
             return `+enemy "${enemy.name}"${enemy.isBoss ? ' (BOSS)' : ''} (HP ${enemy.hp}/${enemy.maxHp})`;
         }
     },
@@ -578,7 +590,7 @@ const PATHS = [
             // named effects pull defaultDuration + defaultData so combat
             // tick logic actually applies the right damage / disable flags.
             const effect = buildStatusEffectFromValue(value);
-            enemy.statusEffects.push(effect);
+            Combat.applyStatusEffect(enemy, effect.name, Math.min(10, Math.max(1, Math.round(effect.duration) || 1)), effect.effectTickData, 'narration');
             return `${enemy.name} status: +${effect.name}`;
         }
     },
@@ -591,6 +603,9 @@ const PATHS = [
             const idx = Number(m[1]);
             if (!gs.enemies?.[idx]) return `enemies[${idx}] does not exist`;
             if (gs.inCombat) return 'enemy HP and defeat are handled by the combat system during fights';
+            // A boss falls only in battle (a reply could spawn the villain and mark it
+            // defeated in one go, winning the quest without a fight).
+            if (gs.enemies[idx].isBoss) return 'a boss is defeated in battle, not by narration';
             if (m[2] === 'hp') {
                 if (typeof value !== 'number' || !Number.isFinite(value)) return 'hp must be a finite number';
             } else if (m[2] === 'isDefeated') {
@@ -817,7 +832,14 @@ const PATHS = [
                 gs.allowCustomActions = false;
                 gs.questRewardsGranted = false; // a new main quest can pay out again
                 // New quest: old beats would block call_to_adventure/final_blow as duplicates.
-                if (gs.questProgress) { gs.questProgress.milestones = []; gs.questProgress.completionPercentage = 0; gs.questProgress.bossDefeated = false; }
+                if (gs.questProgress) {
+                    // Acts count from here; the old villain, Act 3 clock, threads and
+                    // fallen foes belong to the finished quest.
+                    Object.assign(gs.questProgress, { milestones: [], completionPercentage: 0, bossDefeated: false, questStartTurn: gs.turn || 0 });
+                    delete gs.questProgress.villain; delete gs.questProgress.act3StartTurn;
+                }
+                gs.storyThreads = [];
+                gs.enemies = (gs.enemies || []).filter(e => e && !e.isDefeated && e.hp > 0);
                 if (gs.godModeManager) {
                     try {
                         if (typeof gs.godModeManager.deactivateGodMode === 'function') {
@@ -924,9 +946,8 @@ export function questPercent(gs) {
  * one must have fallen this quest (a story 'win' never fought the villain).
  */
 function bossBeaten(gs) {
-    const foes = gs?.enemies || [];
-    if (foes.some(e => e.isBoss && !e.isDefeated && e.hp > 0)) return false;
-    return !!gs?.questProgress?.bossDefeated || foes.some(e => e.isBoss && (e.isDefeated || e.hp <= 0));
+    if ((gs?.enemies || []).some(e => e.isBoss && !e.isDefeated && e.hp > 0)) return false;
+    return !!gs?.questProgress?.bossDefeated; // set by Combat.handleEnemyDefeat
 }
 
 /** Path segment -> item ref ("Healing%20Potion" / "Healing_Potion" -> "Healing Potion" too). */

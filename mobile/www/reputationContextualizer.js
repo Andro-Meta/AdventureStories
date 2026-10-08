@@ -3,7 +3,6 @@
 // Dynamically adapts reputation factions to any theme without AI agents
 
 import { gameState } from './state.js';
-import * as Config from './config.js';
 
 /**
  * Lightweight Reputation Contextualizer
@@ -292,69 +291,6 @@ export class ReputationContextualizer {
         // Add more keyword patterns as needed
     }
 
-    /**
-     * Get reputation effects for a specific choice type and faction
-     * @param {string} choiceType - Type of choice (Good, Bad, Risky, etc.)
-     * @param {string} factionKey - Faction archetype key
-     * @param {Object} context - Additional context
-     * @returns {number} Reputation change amount
-     */
-    calculateReputationChange(choiceType, factionKey, context = {}) {
-        const faction = this.factionArchetypes[factionKey];
-        if (!faction) return 0;
-        
-        const baseChanges = {
-            Good: {
-                authority: [2, 5],
-                common: [1, 3],
-                scholars: [1, 2],
-                naturalists: [1, 2],
-                warriors: [-1, 0],
-                shadows: [-2, -1]
-            },
-            Bad: {
-                authority: [-8, -3],
-                common: [-5, -2],
-                scholars: [-3, -1],
-                naturalists: [-5, -2],
-                warriors: [1, 2],
-                shadows: [2, 4]
-            },
-            Risky: {
-                warriors: [2, 4],
-                shadows: [1, 3],
-                authority: [-1, 2],
-                common: [-1, 1],
-                scholars: [0, 1],
-                naturalists: [0, 1]
-            },
-            Investigative: {
-                scholars: [3, 5],
-                naturalists: [1, 2],
-                common: [1, 1],
-                authority: [0, 1],
-                warriors: [0, 0],
-                shadows: [0, 1]
-            },
-            Silly: {
-                common: [1, 2],
-                shadows: [1, 1],
-                authority: [-2, -1],
-                warriors: [0, 0],
-                scholars: [0, 0],
-                naturalists: [0, 0]
-            }
-        };
-        
-        const changeRange = baseChanges[choiceType]?.[factionKey] || [0, 0];
-        const baseChange = Math.floor(Math.random() * (changeRange[1] - changeRange[0] + 1)) + changeRange[0];
-        
-        // Apply theme modifiers
-        const factions = this.getContextualizedFactions();
-        const themeMultiplier = factions[factionKey]?.themeModifiers?.reputationGainMultiplier || 1.0;
-        
-        return Math.round(baseChange * themeMultiplier);
-    }
 
     /**
      * Get price modifier for item based on faction reputation
@@ -380,44 +316,6 @@ export class ReputationContextualizer {
         return modifiers.low;
     }
 
-    /**
-     * Generate faction-appropriate NPC data for encounters
-     * @param {string} factionKey - Faction archetype key
-     * @param {number} reputation - Current reputation with faction
-     * @returns {Object} NPC behavior modifiers
-     */
-    getFactionNPCBehavior(factionKey, reputation) {
-        const faction = this.factionArchetypes[factionKey];
-        if (!faction) return { hostility: 0, helpfulness: 0, trustLevel: 'neutral' };
-        
-        let hostility = 0;
-        let helpfulness = 0;
-        let trustLevel;
-
-        if (reputation >= 60) {
-            hostility = -2;
-            helpfulness = 2;
-            trustLevel = 'trusted';
-        } else if (reputation >= 20) {
-            hostility = -1;
-            helpfulness = 1;
-            trustLevel = 'friendly';
-        } else if (reputation >= -20) {
-            hostility = 0;
-            helpfulness = 0;
-            trustLevel = 'neutral';
-        } else if (reputation >= -60) {
-            hostility = 1;
-            helpfulness = -1;
-            trustLevel = 'suspicious';
-        } else {
-            hostility = 2;
-            helpfulness = -2;
-            trustLevel = 'hostile';
-        }
-        
-        return { hostility, helpfulness, trustLevel };
-    }
 
 /**
  * Calculate trust level - core metric for gameplay difficulty
@@ -463,44 +361,6 @@ calculateTrustLevel(reputationData) {
     };
 }
 
-/**
- * Get available services based on reputation
- * @param {Object} reputationData - All faction reputations
- * @returns {Array} Available services
- */
-getAvailableServices(reputationData) {
-        const services = [];
-        
-        Object.entries(reputationData).forEach(([factionKey, reputation]) => {
-            const faction = this.factionArchetypes[factionKey];
-            if (!faction) return;
-            
-            if (reputation >= 60) {
-                switch (factionKey) {
-                    case 'authority':
-                        services.push('banking', 'safe_storage', 'political_protection');
-                        break;
-                    case 'warriors':
-                        services.push('combat_training', 'equipment_insurance', 'bodyguard');
-                        break;
-                    case 'naturalists':
-                        services.push('healing_discount', 'weather_protection', 'animal_companion');
-                        break;
-                    case 'shadows':
-                        services.push('information_network', 'black_market', 'stealth_training');
-                        break;
-                    case 'scholars':
-                        services.push('item_identification', 'magical_research', 'spell_scrolls');
-                        break;
-                    case 'common':
-                        services.push('free_lodging', 'community_support', 'local_information');
-                        break;
-                }
-            }
-        });
-        
-        return services;
-    }
 
     /**
      * Get trust-based difficulty modifiers for various game systems
@@ -592,21 +452,6 @@ export function getContextualizedFactions(theme = null) {
     return reputationContextualizer.getContextualizedFactions(theme, gameState.customThemeDescription);
 }
 
-/**
- * Calculate reputation change for a choice
- * @param {string} choiceType - Type of choice made
- * @param {Object} context - Additional context
- * @returns {Object} Reputation changes for all factions
- */
-export function calculateChoiceReputationEffects(choiceType, context = {}) {
-    const changes = {};
-    
-    Object.keys(reputationContextualizer.factionArchetypes).forEach(factionKey => {
-        changes[factionKey] = reputationContextualizer.calculateReputationChange(choiceType, factionKey, context);
-    });
-    
-    return changes;
-}
 
 /**
  * Get all price modifiers based on current reputation

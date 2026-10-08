@@ -12,18 +12,10 @@ import { renderMemoryBlock } from './memoryRetriever.js';
 import { buildQuestStageHint } from './questDefinitions.js';
 import { generateNarrativeGuidelines, getReadingSpecification } from './ageAppropriateReading.js';
 import * as Combat from './combat.js';
-import * as Items from './items.js';
-import { generateId, clamp } from './utils.js';
 // Import turn manager functions statically
 import { advanceTurn } from './turnManager.js';
-import { getCurrentPlayer, canCurrentPlayerAct } from './state.js';
-// Import location system
-import { getCurrentLocationContext } from './locations.js';
-// Import resolution functions statically
-import { handleGoalCompletionRewards } from './resolution.js';
+import { getCurrentPlayer } from './state.js';
 import { determineContext } from './state.js';
-// Import context management (using local AI orchestration)
-import { contextManager } from './contextManager.js';
 // Import reputation system
 // Note: Intelligent compression recording is handled in actionHandler.js
 
@@ -78,7 +70,7 @@ YOURS TO EMIT when the story makes them happen:
 - Status effects with narrative weight (Poison, Burn, Stun, Fear, Regen, Shield...): add ${P}/statusEffects/- {name, duration}.
 - Setups (Chekhov's gun): sparingly (about one every few turns), when the story makes a point of a clue, object, promise or mystery, add /storyThreads/- {text}. When one pays off, replace /storyThreads/<n>/resolved true. Never plant something you won't use.
 - Quest beats: add /questProgress/milestones/- using the EXACT names from the MAIN QUEST STAGE block (the game computes the progress bar from them). Favors or rumors: add /questProgress/sideQuests/- {name, description, reward}.
-${gameState.adventureGoal ? '' : '- Set /adventureGoal once early (turn 4-6).\n'}- Main quest truly finished: add the "final_blow" milestone (the game then completes the quest).
+${gameState.adventureGoal && gameState.adventureGoal !== 'Not set yet.' ? '' : '- Set /adventureGoal once early (turn 4-6).\n'}- The main quest ends when the boss is defeated in battle (the game records it); never declare the win in narration alone.
 If the narration says the hero picked something up, met someone named, arrived somewhere named, or a fight began, the matching op MUST be in "ops". An empty list is only for a turn where nothing in the world changed.
 Format examples only (never use these names or details in the story):
 {"op":"add","path":"/entityMemory/locations/The Crystal Hall","value":{"name":"The Crystal Hall","description":"a vaulted chamber of humming crystals"}}
@@ -382,367 +374,6 @@ function validateAndFixChoices(choices, inCombat) {
     return choices;
 }
 
-/**
- * Handles a single bracketed command extracted from the AI response.
- * Modifies gameState based on the command.
- * @param {string} commandString - The content inside the brackets.
- */
-export async function handleCommand(commandString) {
-    const log = window.displayVisualError || console.log; // Use logger
-    // Needs access to gameState, Combat, Items, UI, generateId, clamp, findCharacterById, handleGoalCompletionRewards
-    log(`Handling command: ${commandString}`);
-    const parts = commandString.split(':').map(s => s.trim());
-    const command = parts[0]?.toLowerCase();
-    if (!command) {
-        log("Warning: Empty command received.");
-        return;
-    }
-
-    try {
-        switch (command) {
-            // --- Character Stat/Resource Commands ---
-            case 'hp': // HP:[+/-]Value:TargetID(:Source)
-                if (parts.length >= 3) {
-                    const valueStr = parts[1];
-                    const value = parseInt(valueStr, 10);
-                    const targetIdHp = parts[2];
-                    const source = parts[3] || 'AI Action';
-                    const target = Combat.findCharacterById(targetIdHp);
-
-                    if (!isNaN(value) && target) {
-                        log(`Applying HP change via command: ${value} to ${target.name} (${target.id}) from ${source}`);
-                        const oldHp = target.hp;
-                        // Don't apply HP changes from commands if already downed/defeated
-                        if ((target.id.startsWith('player') && !target.isDowned) || (target.id.startsWith('enemy') && !target.isDefeated)) {
-                            target.hp = clamp(target.hp + value, 0, target.maxHp);
-                            const actualChange = target.hp - oldHp;
-                            if(actualChange !== 0) {
-                                const msg = `${target.name} ${actualChange > 0 ? 'healed' : 'damaged'} for ${Math.abs(actualChange)} HP (${source}).`;
-                                UI.showPopup(msg, actualChange > 0 ? 'healing' : 'damage');
-                            }
-                            // Check for defeat/downed AFTER applying change
-                            if (target.id.startsWith('player') && target.hp <= 0 && !target.isDowned) {
-                                target.isDowned = true;
-                                target.downedTurns = 0;
-                                UI.showPopup(`${target.name} downed by ${source}!`, 'error');
-                                log(`${target.name} downed by command ${source}!`);
-                            } else if (target.id.startsWith('enemy') && target.hp <= 0 && !target.isDefeated) {
-                                log(`${target.name} defeated by command ${source}! Processing defeat...`);
-                                await Combat.handleEnemyDefeat(target.id); // Handles loot etc.
-                            }
-                        } else {
-                            log(`Skipping HP command for already downed/defeated target: ${target.name}`);
-                        }
-                    } else {
-                        log(`Warning: Invalid HP command: Value='${valueStr}', TargetID='${targetIdHp}'. Target found: ${!!target}`);
-                    }
-                } else {
-                    log(`Warning: Invalid HP command format: ${commandString}`);
-                }
-                break;
-
-            case 'coins': // Coins:[+/-]Value:PlayerID
-                if (parts.length >= 3) {
-                    const amountStr = parts[1];
-                    const amount = parseInt(amountStr, 10);
-                    const coinTargetId = parts[2];
-                    const playerCoins = Combat.findCharacterById(coinTargetId);
-                    if (!isNaN(amount) && playerCoins?.id.startsWith('player') && !playerCoins.isDowned) { // Don't give coins to downed players via command? Maybe okay.
-                        const oldCoins = playerCoins.coins;
-                        playerCoins.coins = Math.max(0, playerCoins.coins + amount);
-                        const actualCoinChange = playerCoins.coins - oldCoins;
-                        if (actualCoinChange !== 0) {
-                            UI.showPopup(`${playerCoins.name} ${actualCoinChange > 0 ? 'gained' : 'lost'} ${Math.abs(actualCoinChange)} Coins!`, 'coins');
-                            log(`Coins changed by ${actualCoinChange} for ${playerCoins.name}. New Coins: ${playerCoins.coins}`);
-                            UI.updateContextHeaders();
-                        }
-                    } else {
-                        log(`Warning: Invalid Coins command: Amount='${amountStr}', TargetID='${coinTargetId}'. Target found/isPlayer/notDowned: ${!!playerCoins?.id.startsWith('player') && !playerCoins?.isDowned}`);
-                    }
-                } else {
-                    log(`Warning: Invalid Coins command format: ${commandString}`);
-                }
-                break;
-
-             // --- Item Commands ---
-             case 'item': // Item:Give:PlayerID:ItemName:Tier:Type(:EffectOverride)
-                 if (parts.length >= 6 && parts[1].toLowerCase() === 'give') {
-                     const itemTargetId = parts[2];
-                     const itemName = parts[3];
-                     const itemTierStr = parts[4];
-                     const itemType = parts[5];
-                     const effectOverride = parts.slice(6).join(':').trim(); // Join remaining parts for effect
-                     const playerItem = Combat.findCharacterById(itemTargetId);
-                     // Find the tier value from Config.Tiers based on the string
-                     const itemTier = Object.values(Config.Tiers).find(t => t.toLowerCase() === itemTierStr.toLowerCase()) || Config.Tiers.LOW;
-
-                     if (itemName && itemType && playerItem?.id.startsWith('player') && !playerItem.isDowned) { // Don't give items to downed players via command
-                         log(`Attempting to give item '${itemName}' (Tier: ${itemTier}, Type: ${itemType}) to ${playerItem.name}`);
-                         // Try generating a themed item first to get base stats/structure, then override
-                         let newItem = Items.generateThemedItem(gameState.adventureTheme, itemTier, itemType);
-                         if (newItem) {
-                             newItem.name = itemName; // Override name
-                             if (effectOverride) newItem.effect = effectOverride;
-                             // Could potentially override stats here too if needed, e.g., from effectOverride parsing
-                             log(` -> Generated base item, overridden name/effect.`);
-                         } else {
-                             // Fallback if generation fails (e.g., invalid type/tier for theme)
-                             log(`Warning: Failed to generate base item for command: ${commandString}. Creating basic fallback.`);
-                             newItem = {
-                                 id: generateId('item'),
-                                 name: itemName,
-                                 tier: itemTier,
-                                 type: itemType,
-                                 effect: effectOverride || `A ${itemTier} ${itemType} item.`,
-                                 stats: {}, // Add basic stats based on type/tier? Deferred.
-                                 quantity: itemType === 'Consumable' ? 1 : undefined,
-                                 equippedSlot: null
-                             };
-                         }
-                         // Add to inventory
-                         if(!playerItem.inventory) playerItem.inventory = [];
-                         playerItem.inventory.push(newItem);
-                         UI.showPopup(`${playerItem.name} received: ${itemName}!`, 'item');
-                         log(`Item added to ${playerItem.name}'s inventory: ${itemName}`);
-                         if (gameState.currentScreen === 'inventoryScreen') UI.renderInventory();
-                     } else {
-                         log(`Warning: Invalid Item:Give command: TargetID='${itemTargetId}', Name='${itemName}'. Target found/isPlayer/notDowned: ${!!playerItem?.id.startsWith('player') && !playerItem?.isDowned}`);
-                     }
-                 } else {
-                      log(`Warning: Invalid Item:Give command format: ${commandString}`);
-                 }
-                 break;
-
-            // --- Enemy Commands ---
-            case 'enemy': // Enemy:Spawn:Name:HP:ATK:DEF(:Ability1;Ability2:LootTier:LootChance)
-                if (parts.length >= 6 && parts[1].toLowerCase() === 'spawn') {
-                    const enemyName = parts[2];
-                    const enemyMaxHp = parseInt(parts[3], 10);
-                    const enemyAtk = parseInt(parts[4], 10);
-                    const enemyDef = parseInt(parts[5], 10);
-                    const optionalPartsStr = parts.length > 6 ? parts.slice(6).join(':') : '';
-                    const optionalParts = optionalPartsStr.split(':');
-                    let abilities = [];
-                    let lootTier = Config.Tiers.LOW;
-                    let lootChance = 0.25;
-                    // Parse optional parts carefully
-                    if (optionalParts.length > 0 && optionalParts[0].trim() !== '') { abilities = optionalParts[0].split(';').map(a => a.trim()).filter(a => a); }
-                    if (optionalParts.length > 1) { const tierStr = optionalParts[1].trim(); lootTier = Object.values(Config.Tiers).find(t => t.toLowerCase() === tierStr.toLowerCase()) || Config.Tiers.LOW; }
-                    if (optionalParts.length > 2) { const chance = parseFloat(optionalParts[2].trim()); if (!isNaN(chance)) lootChance = clamp(chance, 0, 1); }
-
-                    if (enemyName && !isNaN(enemyMaxHp) && enemyMaxHp > 0 && !isNaN(enemyAtk) && !isNaN(enemyDef)) {
-                        log(`Spawning enemy via command: ${enemyName}, HP:${enemyMaxHp}, ATK:${enemyAtk}, DEF:${enemyDef}, Abilities:${abilities.join('/') || 'None'}, Loot:${lootTier}/${lootChance}`);
-                        const newEnemy = {
-                            id: generateId('enemy'), name: enemyName, hp: enemyMaxHp, maxHp: enemyMaxHp, atk: enemyAtk, def: enemyDef,
-                            abilities: abilities.length > 0 ? abilities : ['Basic Attack'], statusEffects: [], isDefeated: false,
-                            lootTier: lootTier, lootChance: lootChance
-                        };
-                        if(!gameState.enemies) gameState.enemies = [];
-                        gameState.enemies.push(newEnemy);
-                        // Start combat if not already started
-                        if (!gameState.inCombat) {
-                            gameState.inCombat = true;
-                            UI.showPopup('Combat Started!', 'info');
-                            log('Combat Started! (Triggered by Enemy:Spawn)');
-                        }
-                        UI.showPopup(`Enemy Appeared: ${enemyName}!`, 'damage');
-                    } else {
-                        log(`Warning: Invalid Enemy:Spawn command data: Name=${enemyName} HP=${parts[3]} ATK=${parts[4]} DEF=${parts[5]}`);
-                    }
-                } else {
-                    log(`Warning: Invalid Enemy:Spawn command format: ${commandString}`);
-                }
-                break;
-
-            // --- Combat State Commands ---
-            case 'combat': // Combat:Start or Combat:End
-                 if (parts.length >= 2) {
-                    const combatState = parts[1]?.toLowerCase();
-                    if (combatState === 'start') {
-                        if (!gameState.inCombat) {
-                            gameState.inCombat = true;
-                            UI.showPopup('Combat Started!', 'info');
-                            log("Combat explicitly started by command.");
-                        } else { log("Combat:Start received, already in combat."); }
-                    } else if (combatState === 'end') {
-                        if (gameState.inCombat) {
-                            gameState.inCombat = false;
-                            const remainingEnemies = gameState.enemies?.filter(e => e && !e.isDefeated);
-                            if (remainingEnemies && remainingEnemies.length > 0) {
-                                 log(`Combat ended by command. Removing ${remainingEnemies.length} non-defeated enemies.`);
-                                 // Maybe don't delete, just mark as defeated or fled? For now, deleting.
-                                 gameState.enemies = [];
-                            } else {
-                                log("Combat ended by command. No remaining enemies needed clearing.");
-                            }
-                            UI.showPopup('Combat Ended!', 'success');
-                        } else { log("Combat:End received, not in combat."); }
-                    } else {
-                         log(`Warning: Invalid Combat state: ${combatState}`);
-                    }
-                } else {
-                    log(`Warning: Invalid Combat command format: ${commandString}`);
-                }
-                break;
-
-            // --- Goal Commands ---
-            case 'goal': // Goal:Complete or Goal:Update:New goal text
-                if (parts.length >= 2) {
-                    const goalState = parts[1]?.toLowerCase();
-                    if (goalState === 'complete') {
-                        if (!gameState.isGoalComplete) {
-                            gameState.isGoalComplete = true;
-                            gameState.allowCustomActions = true; // Enable custom actions
-                            log("Goal marked as complete by command. Custom actions enabled.");
-                            UI.showPopup('Goal Completed! You can now type custom actions.', 'legendary', 5000);
-                            // Trigger rewards *after* marking complete
-                            log("Calling handleGoalCompletionRewards...");
-                            handleGoalCompletionRewards();
-                            log("handleGoalCompletionRewards finished.");
-                            // Explicitly show custom action container
-                            // (the god-mode box in the choices card is the only custom input)
-                        } else { log("Goal:Complete received, already complete."); }
-                    } else if (goalState === 'update' && parts.length >= 3) {
-                        const newGoal = parts.slice(2).join(':').trim();
-                        if (newGoal) {
-                            gameState.adventureGoal = newGoal;
-                            // Update quest progress objectives
-                            if (gameState.questProgressManager) {
-                                gameState.questProgressManager.updateObjectives([newGoal], true);
-                            }
-                            UI.showPopup('Goal Updated!', 'info');
-                            log("Goal updated by command to: " + newGoal);
-                        } else {
-                            log(`Warning: Goal:Update command missing text: ${commandString}`);
-                        }
-                    } else {
-                        log(`Warning: Invalid Goal state or format: ${commandString}`);
-                    }
-                } else {
-                    log(`Warning: Invalid Goal command format: ${commandString}`);
-                }
-                break;
-
-            // --- Quest Progress Commands ---
-            case 'milestone': // Milestone:Type:Name:Description
-                if (parts.length >= 2 && gameState.questProgressManager) {
-                    const milestoneType = parts[1];
-                    const customName = parts[2] || null;
-                    const customDescription = parts[3] || null;
-                    
-                    const success = gameState.questProgressManager.addMilestone(milestoneType, customName, customDescription);
-                    if (success) {
-                        log(`Milestone added: ${milestoneType} - ${customName || 'default name'}`);
-                    } else {
-                        log(`Warning: Invalid milestone type: ${milestoneType}`);
-                    }
-                } else {
-                    log(`Warning: Invalid Milestone command format: ${commandString}`);
-                }
-                break;
-
-            case 'objective': // Objective:Complete:Text or Objective:Add:Text
-                if (parts.length >= 3 && gameState.questProgressManager) {
-                    const action = parts[1]?.toLowerCase();
-                    const objectiveText = parts.slice(2).join(':').trim();
-                    
-                    if (action === 'complete') {
-                        gameState.questProgressManager.completeObjective(objectiveText);
-                        log(`Objective completed: ${objectiveText}`);
-                    } else if (action === 'add') {
-                        gameState.questProgressManager.updateObjectives([objectiveText], false);
-                        log(`Objective added: ${objectiveText}`);
-                    } else {
-                        log(`Warning: Invalid Objective action: ${action}`);
-                    }
-                } else {
-                    log(`Warning: Invalid Objective command format: ${commandString}`);
-                }
-                break;
-
-            case 'sidequest': // SideQuest:Add:Name:Description or SideQuest:Complete:ID
-                if (parts.length >= 3 && gameState.questProgressManager) {
-                    const action = parts[1]?.toLowerCase();
-                    
-                    if (action === 'add' && parts.length >= 4) {
-                        const name = parts[2];
-                        const description = parts.slice(3).join(':').trim();
-                        const questId = gameState.questProgressManager.addSideQuest(name, description);
-                        log(`Side quest added: ${name} (ID: ${questId})`);
-                    } else if (action === 'complete') {
-                        const questId = parts[2];
-                        const success = gameState.questProgressManager.completeSideQuest(questId);
-                        log(`Side quest completion ${success ? 'successful' : 'failed'}: ${questId}`);
-                    } else {
-                        log(`Warning: Invalid SideQuest action or format: ${commandString}`);
-                    }
-                } else {
-                    log(`Warning: Invalid SideQuest command format: ${commandString}`);
-                }
-                break;
-
-            case 'secret': // Secret:Text:Category
-                if (parts.length >= 2 && gameState.questProgressManager) {
-                    const secretText = parts[1];
-                    const category = parts[2] || 'general';
-                    const secretId = gameState.questProgressManager.addSecret(secretText, category);
-                    log(`Secret discovered: ${secretText} (ID: ${secretId})`);
-                } else {
-                    log(`Warning: Invalid Secret command format: ${commandString}`);
-                }
-                break;
-
-            // --- Status Effect Commands ---
-            case 'status': // Status:Apply:TargetID:EffectName:Duration(:DataKey1=Value1;...)
-                 if (parts.length >= 5 && parts[1].toLowerCase() === 'apply') {
-                    const statusTargetId = parts[2];
-                    const effectName = parts[3];
-                    const durationStr = parts[4];
-                    const effectDataStr = parts.length > 5 ? parts.slice(5).join(':') : null;
-                    const targetStatus = Combat.findCharacterById(statusTargetId);
-                    const duration = parseInt(durationStr, 10);
-
-                    if (effectName && targetStatus && !isNaN(duration) && duration > 0) {
-                        // Only apply if target is alive
-                         if ((targetStatus.id.startsWith('player') && !targetStatus.isDowned) || (targetStatus.id.startsWith('enemy') && !targetStatus.isDefeated)) {
-                            let effectData = {};
-                            if (effectDataStr) {
-                                // Simple key=value;key2=value2 parser
-                                effectDataStr.split(';').forEach(pair => {
-                                    const [key, value] = pair.split('=');
-                                    if (key && value !== undefined) {
-                                        const trimmedKey = key.trim();
-                                        const trimmedValue = value.trim();
-                                        // Basic type inference
-                                        if (!isNaN(Number(trimmedValue))) effectData[trimmedKey] = parseFloat(trimmedValue);
-                                        else if (trimmedValue.toLowerCase() === 'true') effectData[trimmedKey] = true;
-                                        else if (trimmedValue.toLowerCase() === 'false') effectData[trimmedKey] = false;
-                                        else effectData[trimmedKey] = trimmedValue; // Store as string otherwise
-                                    }
-                                });
-                            }
-                            log(`Applying status effect '${effectName}' to ${targetStatus.name} for ${duration} turns via command. Data: ${JSON.stringify(effectData)}`);
-                            Combat.applyStatusEffect(targetStatus, effectName, duration, effectData, 'AI Action');
-                            UI.showPopup(`${targetStatus.name} is affected by ${effectName}!`, 'risky');
-                         } else {
-                             log(`Skipping Status:Apply command for downed/defeated target: ${targetStatus.name}`);
-                         }
-                    } else {
-                         log(`Warning: Invalid Status:Apply command data: Target='${statusTargetId}', Effect='${effectName}', Duration='${durationStr}'. Target found: ${!!targetStatus}, Duration valid: ${!isNaN(duration) && duration > 0}`);
-                    }
-                 } else {
-                      log(`Warning: Invalid Status:Apply command format: ${commandString}`);
-                 }
-                 break;
-
-            default:
-                log(`Warning: Unknown command received: ${commandString}`);
-        }
-    } catch (error) {
-        log(`ERROR processing command "${commandString}":`, error);
-    }
-}
-
 
 /**
  * Generates the system prompt based on the current game state.
@@ -880,9 +511,7 @@ CONTENT POLICY (${tier}): ${policy}${injuryLine} If players ask for something of
     // (The old QUEST PACE line read questProgressManager.currentPhase, which
     // never left "beginning"; the MAIN QUEST STAGE block carries the real act.)
 
-    parts.push(`THEME: ${gameState.adventureTheme}${gameState.customThemeDescription ? ` (${gameState.customThemeDescription})` : ''}. ${getThemeSpecificGuidance(gameState.adventureTheme)}
-Atmosphere: ${getThemeAtmosphere(gameState.adventureTheme)}
-Typical interactions: ${getThemeInteractions(gameState.adventureTheme)}
+    parts.push(`THEME: ${gameState.adventureTheme}${gameState.customThemeDescription ? ` (${gameState.customThemeDescription})` : ''}. ${themeNotes(gameState.adventureTheme)}
 Use names, people, places and props native to this theme (no village elders in cyberpunk, no libraries in dinosaur times). Avoid over-used names: Sunken Library, Heart of Shadow/Darkness, Shadow Blight, Whispering Woods/Cove, anything 'Salty', the Ancient Evil, the Chosen One.${usedNamesLine()}`);
 
     if (gameState.storyHook && (gameState.turn || 0) <= 3) {
@@ -1038,9 +667,10 @@ ${recentWindow}` }
         log(`ArcMemory: stored summary at turn ${gameState.turn} (${result.summary.length} chars; +${result.newNpcs.length} NPCs, +${result.newLocations.length} locs, +${result.newItems.length} items).`);
         gameState.arcMemory.nextSummaryAtTurn = gameState.turn + Config.SUMMARY_EVERY_N_TURNS;
     } catch (err) {
-        // Retry on the next turn instead of waiting another full interval.
-        gameState.arcMemory.nextSummaryAtTurn = gameState.turn + 1;
-        log(`ArcMemory: refresh failed (${err.message}); retrying next turn.`);
+        // Retry in 2 turns (every turn used up free daily requests while a
+        // provider was down).
+        gameState.arcMemory.nextSummaryAtTurn = gameState.turn + 2;
+        log(`ArcMemory: refresh failed (${err.message}); retrying in 2 turns.`);
     }
 }
 
@@ -1058,165 +688,6 @@ export function getThemeName() {
     } else { log("Warning: Adventure type select element not found for getting theme name."); }
     // Fallback
     return gameState.adventureTheme || 'Adventure';
-}
-
-
-/**
- * Handles errors during API calls. Shows popup and offers recovery choices.
- * @param {Error} error - The error object.
- */
-export function handleApiError(error) {
-    const log = window.displayVisualError || console.log; // Use logger
-    // Needs gameState, UI, makeAICallForSystemAction (imported statically)
-    log("AI API Call Error in AI Handler:", error);
-    const errorMessage = error.message || "An unknown error occurred.";
-    UI.showPopup(`AI Error: ${errorMessage}`, 'error', 8000);
-
-    const recoveryChoices = [];
-    const recoveryHandlers = {};
-
-    // Option 1: Try to Continue (Tell AI what happened)
-    const continueText = "Try to Continue (Tell AI what happened)";
-    recoveryChoices.push(continueText);
-    recoveryHandlers[continueText] = async () => { // Make handler async
-        log("Attempting recovery: Try to Continue...");
-        UI.showLoading(true, 'Trying to continue...');
-        const continuePrompt = "[System Action: The previous AI interaction failed unexpectedly. Describe the current situation based on game state and provide 5 appropriate choices using the [Type=TYPE] format.]";
-        try {
-            // Call AI but prevent turn advance as we are recovering state, not performing a new action
-            await makeAICallForSystemAction(continuePrompt, true);
-        } catch (continueError) {
-            log(`Error during 'Try to Continue' AI call: ${continueError.message}`);
-            // Re-call handleApiError to show options again if continue fails
-            handleApiError(continueError); // Pass the new error
-        } finally {
-            UI.showLoading(false);
-        }
-    };
-
-    // Option 2: Simple Retry Last Action
-    const lastUserMessage = gameState.messageHistory?.findLast(m => m.role === 'user');
-    if (lastUserMessage) {
-        const retryText = "Retry Last Action";
-        recoveryChoices.push(retryText);
-        recoveryHandlers[retryText] = async () => {
-             log("Attempting recovery: Retry Last Action...");
-             if (gameState.isLoading) { log("Retry blocked: Still loading."); return; } // Prevent overlapping retries
-
-             UI.showLoading(true, 'Retrying last action...');
-             const userMsgIndex = gameState.messageHistory.findLastIndex(m => m.role === 'user' && m.content === lastUserMessage.content);
-
-             // Roll back history *before* the failed user action and the assumed failed assistant response
-             if (userMsgIndex !== -1) {
-                  // Remove the failed user action and any subsequent messages (likely the error placeholder/failed response)
-                  gameState.messageHistory.length = userMsgIndex;
-                  log(`Rolled back history to before last user message (index ${userMsgIndex}) for retry.`);
-             } else {
-                  // If user message not found (shouldn't happen often), just pop last if it was assistant
-                  if(gameState.messageHistory.length > 0 && gameState.messageHistory[gameState.messageHistory.length - 1].role === 'assistant') { gameState.messageHistory.pop(); }
-                  log("Warning: Could not precisely find last user message in history for retry rollback. Attempting basic rollback.");
-             }
-
-             try {
-                // Re-call makeAICallForSystemAction with the original user prompt content
-                // Assume the original action did NOT prevent turn advance unless we store that info somewhere (complex)
-                const originalActionPreventedTurn = false;
-                await makeAICallForSystemAction(lastUserMessage.content, originalActionPreventedTurn);
-                log("Retry action sent to AI successfully.");
-            } catch (retryError) {
-                log(`Error during retry AI call: ${retryError.message}`);
-                // Ensure the user message is back in history if the retry itself fails, so next retry works
-                if (!gameState.messageHistory.findLast(m => m.role === 'user' && m.content === lastUserMessage.content)) {
-                     gameState.messageHistory.push(lastUserMessage);
-                }
-                // The error from makeAICallForSystemAction will bubble up and call handleApiError again
-            } finally {
-                UI.showLoading(false); // Hide loading indicator after retry attempt
-            }
-        };
-    }
-
-    // Option 3: Check API Key
-    const checkApiKeyText = "Check/Update API Key(s)";
-    recoveryChoices.push(checkApiKeyText);
-    recoveryHandlers[checkApiKeyText] = () => {
-        log("Navigating to API Key screen from error recovery.");
-        UI.showScreen('apiKeyScreen');
-    };
-
-    log("Rendering recovery choices:", recoveryChoices);
-    // Use UI.renderChoices with the handlers map
-    UI.renderChoices(recoveryChoices, recoveryHandlers);
-
-    // Ensure loading is off *before* showing recovery choices
-    UI.showLoading(false);
-    UI.updateQuickActions(); // Enable quick actions if they were disabled by loading
-}
-
-
-/**
- * Prunes the message history to stay within token limits.
- * Ensures the system prompt is always present and up-to-date.
- * @param {object[]} history - The current message history array.
- * @returns {object[]} The pruned message history.
- */
-export function pruneMessageHistory(history) {
-    const log = window.displayVisualError || console.log; // Use logger
-    if (!Array.isArray(history)) {
-        log("Warning: Pruning called with invalid history.");
-        return [{ role: 'system', content: generateSystemPrompt() }]; // Return default with system prompt
-    }
-
-    // Use context manager for local AI
-    const isLocalAI = gameState.apiProvider === 'local' || !gameState.apiProvider;
-    
-    if (isLocalAI) {
-        return contextManager.compressHistoryIntelligently();
-    }
-
-    // The legacy non-local code path is unreachable today (apiProvider is
-    // always 'local'), but the rest of pruneMessageHistory is kept as a safe
-    // fallback if some future call sets isLocalAI=false. Use the top-level
-    // Config.MAX_HISTORY_LENGTH for the trim window — Config.MODEL_CONFIGS
-    // never existed in the current codebase (Tier 2 audit found the typo).
-    const maxHistoryLength = Config.MAX_HISTORY_LENGTH;
-    const maxMessages = maxHistoryLength * 2;
-    const systemPromptContent = generateSystemPrompt(); // Always generate fresh system prompt
-    let systemPrompt = { role: 'system', content: systemPromptContent };
-    let conversation = [];
-
-    // Separate existing system prompt (if any) from conversation
-    if (history.length > 0 && history[0]?.role === 'system') {
-        conversation = history.slice(1);
-    } else {
-        if (history.length > 0) {
-            log("Warning: System prompt not found at the beginning of history during pruning. Will prepend.");
-        }
-        conversation = history; // Treat entire history as conversation if no system prompt found
-    }
-
-    // Calculate how many messages to keep (including the system prompt)
-    const totalMessagesAllowed = maxMessages + 1; // +1 for system prompt
-
-    if (history.length <= totalMessagesAllowed) {
-        // History is within limits, just ensure system prompt is up-to-date
-        let currentHistory = [...history];
-        if(currentHistory.length > 0 && currentHistory[0]?.role === 'system') {
-             currentHistory[0].content = systemPrompt.content; // Update existing
-        } else {
-             currentHistory.unshift(systemPrompt); // Prepend if missing
-        }
-        return currentHistory;
-    }
-
-    // History exceeds limits, prune conversation part
-    log(`Pruning message history from ${history.length} messages to ~${totalMessagesAllowed}.`);
-    // Keep the latest 'maxMessages' conversation messages
-    const conversationToKeep = conversation.slice(-maxMessages);
-    // Combine the updated system prompt with the pruned conversation
-    const pruned = [systemPrompt, ...conversationToKeep];
-    log(`History pruned to ${pruned.length} messages.`);
-    return pruned;
 }
 
 
@@ -1376,86 +847,25 @@ This opening may run up to half again the READING LEVEL length. Third person, li
  * @returns {Player | Enemy | null} The found character or null.
  */
 
-/**
- * Gets theme-specific guidance for storytelling
- * @param {string} theme - The current adventure theme
- * @returns {string} Theme-specific guidance text
- */
-function getThemeSpecificGuidance(theme) {
-    switch(theme?.toLowerCase()) {
-        case 'fantasy':
-            return "Focus on magic, mythical creatures, and epic quests. Include elements of traditional fantasy like magical artifacts, ancient prophecies, and mystical powers.";
-        case 'space':
-            return "Emphasize advanced technology, alien encounters, and space exploration. Include elements like spacecraft, distant planets, and futuristic gadgets.";
-        case 'pirate':
-            return "Focus on seafaring adventures, treasure hunting, and naval combat. Include elements like ships, islands, sea monsters, and buried treasure.";
-        case 'steampunk':
-            return "Blend Victorian aesthetics with steam-powered technology. Include brass and copper machinery, clockwork devices, and steam-powered inventions.";
-        case 'cyberpunk':
-            return "Focus on high tech and low life themes. Include advanced computers, cybernetic enhancements, megacorporations, and digital worlds.";
-        case 'western':
-            return "Emphasize frontier life and wild west themes. Include elements like dusty towns, outlaws, sheriffs, and frontier justice.";
-        case 'underwater':
-            return "Focus on deep-sea exploration and aquatic adventures. Include sea creatures, underwater cities, and oceanic mysteries.";
-        case 'post-apocalyptic':
-            return "Emphasize survival in a ruined world. Include scavenging, dangerous wastelands, and remnants of the old world.";
-        default:
-            return "Focus on creating an engaging and consistent narrative that fits the chosen theme.";
-    }
+// One line per theme: what it's about, its senses, how people act and fight.
+// Keyed by the menu's theme ids (a switch on 'western'/'post-apocalyptic' left
+// 7 of 13 themes with generic filler). Custom themes use their description.
+const THEME_NOTES = {
+    fantasy: 'Magic, mythical creatures and quests; jewel tones and magical glows, chimes and rustling leaves; noble courts and guilds; swords, spells and beasts.',
+    space: 'Starships, alien worlds and gadgets; starlight and engine hum, recycled air; alien diplomacy and crew dynamics; energy weapons and boarding fights.',
+    pirate: 'Ships, islands, sea monsters and buried treasure; waves, creaking timber, salt and rum; crew loyalty and port deals; cutlasses and boarding actions.',
+    steampunk: 'Victorian brass-and-steam inventions; clockwork ticks and hissing vents, oil and coal; inventor guilds and aristocrats; steam weapons and gadgets.',
+    cyberpunk: 'High tech, low life: implants, megacorps, the net; neon in dark alleys, ozone and street food; corporate intrigue and gangs; hacking and cyber-enhanced fights.',
+    wild_west: 'Frontier towns, outlaws, sheriffs and frontier justice; dust, leather, sunset desert; town politics and outlaw gangs; gunfights and horseback chases.',
+    underwater: 'Deep-sea cities and oceanic mysteries; bioluminescence, currents and bubbles; colonies and sea creatures; harpoons and pressure dangers.',
+    post_apoc: 'Survival in a ruined world: scavenging, wastelands, relics of the old world; rust, wind through ruins; survivor camps and traders; makeshift weapons.',
+    jungle: 'Lost temples, rivers and wildlife; humid green shade, birdcalls and drums; tribes, explorers and poachers; traps, beasts and vines.',
+    future_utopia: 'A bright, clean future with a hidden flaw; glass towers, soft hum of drones; councils, AIs and dissidents; stun tech and clever escapes, rarely blood.',
+    dinosaur: 'A prehistoric world of dinosaurs, volcanoes and tribes; ferns, tar pits, thunderous roars; herds, hunters and nests; spears, stampedes and survival.',
+    arctic: 'Ice fields, blizzards and frozen secrets; white glare, cracking ice, biting cold; outposts, sled teams and expedition rivals; cold, beasts and avalanches.',
+    haunted: 'Ghosts, curses and creaking manors; candlelight, cold spots, whispers; mediums, mourners and restless spirits; banishing rites and spooky chases (keep it age-appropriate).'
+};
+function themeNotes(theme) {
+    return THEME_NOTES[String(theme || '').toLowerCase()] || '';
 }
 
-/**
- * Gets theme-specific atmosphere descriptions
- * @param {string} theme - The current adventure theme
- * @returns {string} Theme atmosphere description
- */
-function getThemeAtmosphere(theme) {
-    switch(theme?.toLowerCase()) {
-        case 'fantasy':
-            return "ATMOSPHERE:\n- Mood: Mystical and wondrous\n- Colors: Rich jewel tones, magical glows\n- Sounds: Mystical chimes, rustling leaves\n- Aromas: Fresh herbs, ancient tomes";
-        case 'space':
-            return "ATMOSPHERE:\n- Mood: Vast and mysterious\n- Colors: Deep blacks, starlight, nebula colors\n- Sounds: Engine hums, airlock seals\n- Aromas: Recycled air, metal";
-        case 'pirate':
-            return "ATMOSPHERE:\n- Mood: Adventurous and dangerous\n- Colors: Ocean blues, weathered woods\n- Sounds: Waves, creaking ships\n- Aromas: Sea salt, rum";
-        case 'steampunk':
-            return "ATMOSPHERE:\n- Mood: Industrial and innovative\n- Colors: Brass, copper, steam\n- Sounds: Clockwork, steam releases\n- Aromas: Oil, metal, coal";
-        case 'cyberpunk':
-            return "ATMOSPHERE:\n- Mood: Gritty and high-tech\n- Colors: Neon lights, dark alleys\n- Sounds: Electronic beats, city noise\n- Aromas: Ozone, street food";
-        case 'western':
-            return "ATMOSPHERE:\n- Mood: Rugged and lawless\n- Colors: Desert browns, sunset oranges\n- Sounds: Wind, horse hooves\n- Aromas: Dust, leather";
-        case 'underwater':
-            return "ATMOSPHERE:\n- Mood: Mysterious and serene\n- Colors: Ocean blues, bioluminescence\n- Sounds: Water currents, bubbles\n- Aromas: Salt water, marine life";
-        case 'post-apocalyptic':
-            return "ATMOSPHERE:\n- Mood: Desolate and desperate\n- Colors: Rust, decay, dust\n- Sounds: Wind through ruins, distant dangers\n- Aromas: Dust, decay";
-        default:
-            return "ATMOSPHERE:\n- Mood: Match theme atmosphere\n- Colors: Theme appropriate\n- Sounds: Contextual ambiance\n- Aromas: Setting-specific scents";
-    }
-}
-
-/**
- * Gets theme-specific interaction guidance
- * @param {string} theme - The current adventure theme
- * @returns {string} Theme interaction guidance
- */
-function getThemeInteractions(theme) {
-    switch(theme?.toLowerCase()) {
-        case 'fantasy':
-            return "INTERACTIONS:\n- Skills: Magic, swordsmanship, lore\n- Social: Noble courts, magical guilds\n- Environment: Enchanted forests, ancient ruins\n- Combat: Magic spells, mythical creatures";
-        case 'space':
-            return "INTERACTIONS:\n- Skills: Piloting, tech use, xenobiology\n- Social: Alien diplomacy, crew dynamics\n- Environment: Zero gravity, hostile planets\n- Combat: Energy weapons, space battles";
-        case 'pirate':
-            return "INTERACTIONS:\n- Skills: Navigation, sword fighting, negotiation\n- Social: Crew loyalty, port dealings\n- Environment: Ships, tropical islands\n- Combat: Naval battles, boarding actions";
-        case 'steampunk':
-            return "INTERACTIONS:\n- Skills: Engineering, invention, mechanics\n- Social: Inventor guilds, aristocracy\n- Environment: Industrial cities, workshops\n- Combat: Steam-powered weapons, gadgets";
-        case 'cyberpunk':
-            return "INTERACTIONS:\n- Skills: Hacking, tech implants, street smarts\n- Social: Corporate intrigue, street gangs\n- Environment: Megacities, virtual reality\n- Combat: Cyber-enhanced combat, hacking";
-        case 'western':
-            return "INTERACTIONS:\n- Skills: Shooting, riding, survival\n- Social: Town politics, outlaw gangs\n- Environment: Desert, frontier towns\n- Combat: Gunfights, horseback combat";
-        case 'underwater':
-            return "INTERACTIONS:\n- Skills: Swimming, pressure adaptation, marine knowledge\n- Social: Underwater colonies, sea creatures\n- Environment: Ocean depths, coral cities\n- Combat: Underwater weapons, sea creatures";
-        case 'post-apocalyptic':
-            return "INTERACTIONS:\n- Skills: Survival, scavenging, adaptation\n- Social: Survivor groups, wasteland traders\n- Environment: Ruins, radioactive zones\n- Combat: Makeshift weapons, survival gear";
-        default:
-            return "INTERACTIONS:\n- Skills: Theme-appropriate abilities\n- Social: Context-specific relations\n- Environment: Theme-specific challenges\n- Combat: Setting-appropriate conflict";
-    }
-}

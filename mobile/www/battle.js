@@ -7,6 +7,18 @@
 //    a level-up raises max HP/MP, attack, defense and heals a little.
 import { gameState } from './state.js';
 
+/**
+ * Area spells hit everyone on the other side (or heal the whole party):
+ * targeting area/multiple/party, or a name/description that says so
+ * ("Fire Storm", "a nova that scorches every foe").
+ */
+export function isAreaSpell(spell) {
+    if (spell?.targeting === 'self' || spell?.targeting === 'ally') return false;
+    if (['area', 'multiple', 'party', 'battlefield'].includes(spell?.targeting)) return true;
+    const text = `${spell?.name || ''} ${spell?.description || ''} ${spell?.effect || ''}`;
+    return /\b(all (foes|enemies|allies)|every (foe|enemy|ally)|everyone|whole party|area|storm|nova|blizzard|quake|earthquake|rain of|meteor|shockwave|wave of|burst|explosion|chain lightning)\b/i.test(text);
+}
+
 // ---------------------------------------------------------------- XP / levels
 export const xpForLevel = (level) => 40 * level; // XP needed to go from `level` to the next
 
@@ -26,13 +38,20 @@ export function levelUp(p, n = 1) {
     }
 }
 
-/** Give the party XP for a defeated foe; returns level-up messages. */
+/** Give the party XP for a defeated foe; returns each hero's share and the level-up messages. */
 export function awardXp(enemy) {
-    const base = Math.max(5, Math.round((enemy?.maxHp || 20) * 0.6));
-    const xp = enemy?.isBoss ? base * 3 : base;
+    // Foes are scaled up for bigger parties (engine: 15+10/hero HP, bosses
+    // 40+20/hero), so the XP pot scales too: it is what the foe would give a
+    // solo hero, times the party size, split between those still standing.
+    // Each hero levels at the solo pace whatever the party size.
+    const party = Math.max(1, (gameState.players || []).filter(Boolean).length);
+    const hpScale = enemy?.isBoss ? (40 + 20 * party) / 60 : (15 + 10 * party) / 25;
+    const soloHp = (enemy?.maxHp || 20) / hpScale;
+    const soloXp = Math.max(5, Math.round(soloHp * 0.6)) * (enemy?.isBoss ? 3 : 1);
+    const standing = (gameState.players || []).filter(p => p && !p.isDowned);
+    const xp = Math.max(1, Math.ceil(soloXp * party / Math.max(1, standing.length)));
     const ups = [];
-    for (const p of gameState.players || []) {
-        if (!p || p.isDowned) continue;
+    for (const p of standing) {
         p.level = p.level || 1;
         p.xp = (p.xp || 0) + xp;
         while (p.xp >= xpForLevel(p.level)) {
@@ -58,6 +77,7 @@ export function battleOptions(type, hero) {
         if (!items.length) return [{ label: 'Catch your breath', detail: 'No usable items: recover a little HP', type: 'Item', text: 'Catch a breath' }];
         return items.map(i => ({ label: `${i.name}${i.quantity > 1 ? ` ×${i.quantity}` : ''}`, detail: itemDetail(i), type: 'Item', text: `Use ${i.name}` }));
     }
+    if (type === 'Defend') return null; // no picker: a fixed command
     if (type === 'Special') {
         const round = gameState.combat?.round || 0;
         const opts = (hero.specialMoves || []).map(m => {
@@ -67,7 +87,8 @@ export function battleOptions(type, hero) {
         });
         for (const s of hero.spellcasting?.knownSpells || []) {
             const cost = s.mpCost || 0;
-            opts.push({ label: `${s.name} (spell)`, detail: `${cost} MP · ${s.description || s.effect || ''}`.slice(0, 70), type: 'Spell', text: `Cast ${s.name}`, disabled: (hero.mp || 0) < cost });
+            const area = isAreaSpell(s) ? (s.effects?.healing > 0 && !(s.effects?.damage > 0) ? 'whole party · ' : 'hits all foes · ') : '';
+            opts.push({ label: `${s.name} (spell)`, detail: `${cost} MP · ${area}${s.description || s.effect || ''}`.slice(0, 80), type: 'Spell', text: `Cast ${s.name}`, disabled: (hero.mp || 0) < cost });
         }
         const winded = round - (hero.lastPowerStrikeRound ?? -99) < 2;
         opts.push({ label: 'Power Strike', detail: winded ? 'winded: a normal hit this round' : 'heavy blow, every other round', type: 'Special', text: 'Power Strike' });

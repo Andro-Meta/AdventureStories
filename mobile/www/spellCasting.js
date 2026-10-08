@@ -2,7 +2,7 @@
 // Spell Casting Mechanics and Execution System
 // Phase 3: Magic System Implementation
 
-import { gameState, getCurrentPlayer } from './state.js';
+import { gameState } from './state.js';
 import * as Spells from './spells.js';
 import * as UI from './ui.js';
 import * as Combat from './combat.js';
@@ -10,8 +10,14 @@ import * as Combat from './combat.js';
 // crashed the entire app at module-load time ("Could not load essential
 // game modules"). The actual implementation lives in combat.js as
 // applyStatusEffect(); we alias it here so existing call sites work.
-const StatusEffects = { applyStatusEffect: (target, effect) => Combat.applyStatusEffect(target, effect?.name || effect, effect?.duration ?? 3, effect?.effectTickData || {}, 'spell') };
+const StatusEffects = { applyStatusEffect: (target, effect) => {
+    const name = effect?.name || effect;
+    // 'instant' spells convert to 0 turns: use the effect's own catalog length.
+    const turns = Number(effect?.duration) > 0 ? Number(effect.duration) : (Combat.lookupStatusEffect(name)?.defaultDuration || 2);
+    return Combat.applyStatusEffect(target, name, turns, effect?.effectTickData || {}, 'spell');
+} };
 import * as AdaptiveAbilities from './adaptiveAbilities.js';
+import { isAreaSpell } from './battle.js';
 
 /**
  * Cast a spell with full mechanics and effects
@@ -127,6 +133,13 @@ function calculateActualMpCost(caster, spell) {
  * @returns {object[]} Array of valid targets
  */
 function determineSpellTargets(spell, caster, specificTarget = null) {
+    if (isAreaSpell(spell)) {
+        // Damage or afflictions go to every foe; heals and buffs to the party.
+        const debuff = Object.values(spell.effects?.modifiers || {}).some(v => Number(v) < 0);
+        const harmful = spell.effects?.damage > 0 || debuff || (!(spell.effects?.healing > 0) && !spell.effects?.modifiers && (spell.effects?.statusEffects || []).length > 0);
+        const foes = (gameState.enemies || []).filter(e => e && !e.isDefeated && e.hp > 0);
+        return harmful && spell.targeting !== 'party' && foes.length ? foes : gameState.players.filter(p => p && !p.isDowned);
+    }
     const targets = [];
     
     if (specificTarget) {
@@ -384,11 +397,10 @@ async function applySpellEffectToTarget(spell, caster, target) {
     // Apply status effects
     if (spell.effects.statusEffects?.length > 0) {
         for (const effectName of spell.effects.statusEffects) {
-            const adaptedEffectName = AdaptiveAbilities.adaptStatusEffect(effectName);
             const statusEffect = createStatusEffectFromSpell(effectName, spell, caster);
             if (statusEffect) {
-                // Use adapted name for display
-                statusEffect.name = adaptedEffectName.charAt(0).toUpperCase() + adaptedEffectName.slice(1);
+                // Keep the catalog name: a theme rename ("overheating") matched
+                // no catalog entry, so the effect did nothing.
                 StatusEffects.applyStatusEffect(target, statusEffect);
                 result.effects.push({ type: 'status', value: adaptedEffectName });
                 log(`${spell.name} applies ${adaptedEffectName} to ${target.name}`);
@@ -398,14 +410,18 @@ async function applySpellEffectToTarget(spell, caster, target) {
     
     // Apply stat modifiers
     if (spell.effects.modifiers) {
+        // As a 3-turn effect (atkMod/defMod): a raw stat edit was wiped at the
+        // next recalculation on heroes and never wore off on foes.
+        const data = {};
         Object.entries(spell.effects.modifiers).forEach(([stat, value]) => {
-            const modifier = Math.round(value * spellPower);
-            if (target[stat] !== undefined) {
-                target[stat] += modifier;
-                result.effects.push({ type: 'modifier', stat: stat, value: modifier });
-                log(`${spell.name} modifies ${target.name}'s ${stat} by ${modifier}`);
-            }
+            const modifier = Math.round(Number(value) * spellPower) || 0;
+            if (stat === 'atk' || stat === 'def') data[`${stat}Mod`] = modifier;
+            result.effects.push({ type: 'modifier', stat: stat, value: modifier });
         });
+        if (Object.keys(data).length) {
+            Combat.applyStatusEffect(target, `${spell.name}`, 3, data, 'spell');
+            log(`${spell.name} modifies ${target.name}: ${JSON.stringify(data)} for 3 turns`);
+        }
     }
     
     // Handle environmental effects
@@ -459,33 +475,17 @@ function calculateSpellPower(spell, caster) {
  * @returns {StatusEffect|null} Created status effect
  */
 function createStatusEffectFromSpell(effectName, spell, caster) {
-    const duration = getDurationInTurns(spell.duration);
-    const spellPower = calculateSpellPower(spell, caster);
-    
-    // Map spell effect names to status effect types
-    const effectMap = {
-        'burning': { type: 'burning', damage: Math.round(spell.level * 2 * spellPower) },
-        'frozen': { type: 'frozen', duration: Math.max(1, Math.round(duration * 0.5)) },
-        'shocked': { type: 'shocked', damage: Math.round(spell.level * 1.5 * spellPower) },
-        'poisoned': { type: 'poisoned', damage: Math.round(spell.level * 1.5 * spellPower) },
-        'blessed': { type: 'blessed', healingBonus: Math.round(spell.level * 3 * spellPower) },
-        'cursed': { type: 'cursed', damageReduction: Math.round(spell.level * 2 * spellPower) },
-        'stunned': { type: 'stunned', duration: Math.max(1, Math.round(duration * 0.3)) },
-        'charmed': { type: 'charmed', duration: Math.max(1, Math.round(duration * 0.4)) },
-        'frightened': { type: 'frightened', accuracyPenalty: Math.round(spell.level * 5) },
-        'protected': { type: 'protected', damageReduction: Math.round(spell.level * 3 * spellPower) }
-    };
-    
-    const effectData = effectMap[effectName.toLowerCase()];
-    if (!effectData) return null;
-    
+    // Resolve through the status catalog ("Burn", "burning", "Poisoned" all
+    // work; the old table only knew a few -ing words, so "Burn" did nothing).
+    // The catalog supplies the mechanics; unknown names are skipped.
+    const entry = Combat.lookupStatusEffect(String(effectName || ''));
+    if (!entry) return null;
+    const turns = getDurationInTurns(spell.duration);
     return {
-        id: `spell_effect_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        name: effectName.charAt(0).toUpperCase() + effectName.slice(1),
-        type: effectData.type,
-        duration: effectData.duration || duration,
-        source: `${spell.name} (${caster.name})`,
-        ...effectData
+        name: entry.name,
+        duration: turns > 0 ? Math.min(turns, 10) : (entry.defaultDuration || 2),
+        effectTickData: {},
+        source: `${spell.name} (${caster.name})`
     };
 }
 

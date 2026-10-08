@@ -91,15 +91,3 @@ export function loadAdventureTheme() {
     }
 }
 
-/**
- * Clear all cached inputs
- */
-export function clearInputCache() {
-    try {
-        Object.values(CACHE_KEYS).forEach(key => {
-            localStorage.removeItem(key);
-        });
-    } catch (error) {
-        console.warn('Failed to clear input cache:', error);
-    }
-}

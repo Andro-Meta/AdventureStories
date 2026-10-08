@@ -109,7 +109,10 @@ export class LocalAIClient {
                 const quota = error.dailyQuota || s === 402;
                 const rate = s === 429 || s === 403 || s === 503;
                 const outage = error.exhausted || error.network || s >= 500;
-                if (!hasNext || !(quota || rate || outage)) throw error;
+                // A rejected or stale key (400/401) or a dropped free model (404):
+                // another saved key or provider may still work.
+                const rejected = s === 400 || s === 401 || s === 404;
+                if (!hasNext || !(quota || rate || outage || rejected)) throw error;
                 benchedUntil.set(benchKey(p), quota ? nextDailyReset(p, now) : now + (rate ? BENCH_MS.rate : BENCH_MS.outage));
                 console.log(`AI: ${p.name} unavailable (${String(error.message).slice(0, 120)}); trying ${order[i + 1].p.name}`);
                 announceAIStatus(`${p.name} is busy; switching storyteller...`);
@@ -165,11 +168,13 @@ export class LocalAIClient {
             const response = await fetch(`${provider.baseUrl.replace(/\/$/, '')}/chat/completions`, {
                 method: 'POST', headers, body: JSON.stringify(requestData), signal: controller.signal
             });
-            clearTimeout(timeoutId);
+            // The timer runs until the body is read: free models can send headers
+            // early and then sit queued, which hung the turn with no failover.
 
             if (!response.ok) {
                 let body = '';
                 try { body = (await response.text()).slice(0, 500); } catch (_) {}
+                clearTimeout(timeoutId);
                 // A model that refuses JSON mode: retry once without it.
                 if (response.status === 400 && requestData.response_format && /response_format|json|mime/i.test(body)) {
                     const { response_format, ...plain } = requestData;
@@ -190,6 +195,7 @@ export class LocalAIClient {
             }
 
             const result = await response.json();
+            clearTimeout(timeoutId);
             aiLog(`200 in=${result.usage?.prompt_tokens ?? '?'} out=${result.usage?.completion_tokens ?? '?'}`);
             const choice = result.choices?.[0];
             if (!choice) throw new Error('No response generated');
@@ -248,9 +254,6 @@ function formatMessages(messages) {
 
 export const localAI = new LocalAIClient();
 
-export async function getLocalAIResponse(messages, options = {}) {
-    return localAI.makeRequest(messages, options);
-}
 
 /** JSON request; returns the parsed object (throws if no JSON can be found). */
 export async function getLocalAIJSONResponse(messages, schema, options = {}) {

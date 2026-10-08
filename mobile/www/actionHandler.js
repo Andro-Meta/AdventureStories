@@ -7,7 +7,7 @@ import * as Config from './config.js';
 import * as UI from './ui.js';
 import * as Combat from './combat.js';
 import * as Items from './items.js';
-import * as API from './api_new.js'; // May not be needed if all calls go through aiHandler
+ // May not be needed if all calls go through aiHandler
 import { generateId, getRandomElement, getRandomInt, clamp } from './utils.js';
 // Import aiHandler functions statically
 import { makeAICallForSystemAction } from './aiHandler.js';
@@ -16,9 +16,9 @@ import { advanceTurn } from './turnManager.js';
 // Import game loop
 import { processPlayerAction as gameLoopProcessAction } from './gameLoop.js';
 // Import reputation system
-import { calculateChoiceReputationEffects, calculatePriceModifiers, getContextualizedFactions, getTrustDifficultyModifiers } from './reputationContextualizer.js';
+import { calculatePriceModifiers, getTrustDifficultyModifiers } from './reputationContextualizer.js';
 // Import intelligent compression helpers
-import { recordPlayerChoice, recordStoryBeat, recordRelationshipChange, recordWorldStateChange } from './state.js';
+import { recordPlayerChoice, recordStoryBeat } from './state.js';
 
 
 /**
@@ -49,16 +49,10 @@ async function handleGodModeChoice(customChoice) {
     // quests, stats, etc.) defined in handleCustomAction.
     try {
         log(`God Mode: Processing custom choice via consolidated handleCustomAction path - ${customChoice.slice(0, 50)}...`);
-        // Stage the choice in the customActionInput so handleCustomAction
-        // reads the same field it was designed for. Set the gating flag so
-        // the entry guard passes regardless of which UI path opened it.
-        if (UI.elements?.customActionInput) {
-            UI.elements.customActionInput.value = customChoice;
-        }
         // Make sure allowCustomActions is true (god mode unlock should have
         // set it, but reaffirm in case of partial state).
         gameState.allowCustomActions = true;
-        await handleCustomAction();
+        await handleCustomAction(customChoice);
         // Record after completion so it doesn't double-record on errors.
         try { recordPlayerChoice(getCurrentPlayer()?.id, 'God Mode', customChoice, 1.0); } catch (_) {}
     } catch (error) {
@@ -175,6 +169,7 @@ export async function handlePlayerChoice(actionType, choiceText) {
             // comes back only while the story of the round is written.
             UI.showLoading(false);
             gameState.combatRoundInProgress = true; // cleared in finally
+            if (gameState.combat) gameState.combat.heroTicked = false; // set if this hero's combat turn ticks (see advanceTurn afterCombat)
 
             // Special-move cooldowns count down once per combat action
             // (turnManager only ticks them on exploration turns).
@@ -217,8 +212,37 @@ export async function handlePlayerChoice(actionType, choiceText) {
                 // Silence: no spells or special moves (Power Strike is a plain blow, still fine).
                 const silenced = !Combat.canCharacterUseAbilities(currentPlayer);
                 if (silenced && (actionType === 'Spell' || (actionType === 'Special' && !/^power strike/i.test(String(choiceText || ''))))) actionType = 'Silenced';
+                // Slow / Frost: every other turn is lost. Confusion: a blow may land on yourself or an ally.
+                if (actionType !== 'Disabled' && Combat.isSluggish(currentPlayer)) actionType = 'Sluggish';
+                const offensive = ['Attack', 'Special', 'Spell'].includes(actionType);
+                const foeHpBefore = (gameState.enemies || []).reduce((s, e) => s + (e?.hp || 0), 0);
+                if (offensive && Combat.confusedRoll(currentPlayer)) actionType = 'Confused';
 
                 switch (actionType) {
+                    case 'Sluggish':
+                        combatLog = `${currentPlayer.name} is too sluggish to act this turn.`;
+                        break;
+                    case 'Confused': {
+                        const allies = gameState.players.filter(p => p && !p.isDowned);
+                        const victim = allies[Math.floor(Math.random() * allies.length)] || currentPlayer;
+                        const dmg = Math.max(1, Math.round((currentPlayer.atk || 5) * 0.6 - (victim.def || 0) * 0.3));
+                        victim.hp = Math.max(0, victim.hp - dmg);
+                        if (victim.hp <= 0) victim.isDowned = true;
+                        combatLog = victim === currentPlayer
+                            ? `${currentPlayer.name} is confused and hits themselves (−${dmg}).`
+                            : `${currentPlayer.name} is confused and strikes ${victim.name} (−${dmg}).`;
+                        break;
+                    }
+                    case 'Defend': {
+                        // Guard until this hero's next turn (the status ticks at the end of
+                        // this turn and the next): half damage from every hit, plus a breather.
+                        Combat.applyStatusEffect(currentPlayer, 'Guarding', 2, {}, 'Defend');
+                        const before = currentPlayer.hp;
+                        currentPlayer.hp = Math.min(currentPlayer.maxHp, currentPlayer.hp + Math.max(2, Math.round((currentPlayer.maxHp || 100) * 0.05)));
+                        currentPlayer.mp = Math.min(currentPlayer.maxMp || 0, (currentPlayer.mp || 0) + 2);
+                        combatLog = `${currentPlayer.name} braces behind their guard (half damage until their next turn, +${currentPlayer.hp - before} HP).`;
+                        break;
+                    }
                     case 'Disabled':
                         combatLog = `${currentPlayer.name} is held by ${disabled.name} and loses the turn.`;
                         break;
@@ -287,7 +311,7 @@ export async function handlePlayerChoice(actionType, choiceText) {
 
                     case 'Item': {
                         cbStep('3-Item', 'enter Item case');
-                        const usable = (currentPlayer.inventory || []).filter(i => i && i.type === 'Consumable' && (i.quantity == null || i.quantity > 0));
+                        const usable = (currentPlayer.inventory || []).filter(i => i && i.type === 'Consumable' && !i.stats?.revive && (i.quantity == null || i.quantity > 0));
                         const lowerChoice = String(choiceText || '').toLowerCase();
                         // The item the choice names, else one that heals, else any consumable.
                         // "Catch a breath" (battle menu, empty pack) uses nothing.
@@ -383,6 +407,18 @@ export async function handlePlayerChoice(actionType, choiceText) {
                         combatLog = `${currentPlayer.name} acts: ${choiceText}.`;
                 }
 
+                // Haste: a quick half-power follow-up strike after an attack, special or spell.
+                const landed = (gameState.enemies || []).reduce((s, e) => s + (e?.hp || 0), 0) < foeHpBefore;
+                if (offensive && landed && actionType !== 'Confused' && Combat.speedModOf(currentPlayer) > 0) {
+                    const foe = (target && !target.isDefeated && target.hp > 0) ? target : (gameState.enemies || []).find(e => e && !e.isDefeated && e.hp > 0);
+                    if (foe) {
+                        const dmg = Math.max(1, Math.round(((currentPlayer.atk || 5) - (foe.def || 0) * 0.5) * 0.5));
+                        foe.hp = Math.max(0, foe.hp - dmg);
+                        if (foe.hp <= 0) foe.isDefeated = true;
+                        combatLog += ` Hasted, ${currentPlayer.name} strikes again: ${foe.name} −${dmg}.`;
+                    }
+                }
+
                 // Loot + coins for anything the player's action just killed.
                 for (const e of (gameState.enemies || [])) {
                     if (e && (e.isDefeated || e.hp <= 0) && !e.defeatProcessed) {
@@ -470,7 +506,10 @@ Fight round ${gameState.combat?.round || 1}. Narrate this round so the fight CHA
                         gameState.inCombat = false;
                         if (gameState.combat) gameState.combat.isActive = false;
                         const fighter = gameState.currentPlayerIndex;
-                        await advanceTurn();
+                        // Skip the round tick only if this hero's combat turn already ticked
+                        // (the storyteller ended the fight after the enemy phase); a killing
+                        // blow ends it before any combat tick, so that round still ticks once.
+                        await advanceTurn({ afterCombat: !!gameState.combat?.heroTicked });
                         // The reply's choices were written for the fighter; with 2+
                         // players the turn has just passed to someone else.
                         if (gameState.players.length > 1 && gameState.currentPlayerIndex !== fighter) {
@@ -930,62 +969,6 @@ function calculateChoiceSignificance(actionType, outcomeSet) {
     return Math.min(significance, 1.0);
 }
 
-/**
- * Calculates modified outcomes based on context
- * @param {Object} baseOutcome - The base outcome configuration
- * @param {Object} context - The current context
- * @returns {Object} Modified outcome configuration
- */
-function calculateModifiedOutcomes(baseOutcome, context) {
-    const modified = JSON.parse(JSON.stringify(baseOutcome)); // Deep copy
-
-    // Apply success chance modifiers
-    if (context.modifiers?.successChanceMultiplier) {
-        modified.successChance *= context.modifiers.successChanceMultiplier;
-    }
-
-    // Apply physical modifiers
-    if (context.modifiers?.physical) {
-        if (context.modifiers.physical.hpChangeMultiplier) {
-            if (modified.outcomes.physical?.hpChange) {
-                modified.outcomes.physical.hpChange = modified.outcomes.physical.hpChange.map(
-                    val => Math.round(val * context.modifiers.physical.hpChangeMultiplier)
-                );
-            }
-        }
-    }
-
-    // Apply resource modifiers
-    if (context.modifiers?.resource) {
-        if (context.modifiers.resource.coinChangeMultiplier) {
-            if (modified.outcomes.resource?.coinChange) {
-                modified.outcomes.resource.coinChange = modified.outcomes.resource.coinChange.map(
-                    val => Math.round(val * context.modifiers.resource.coinChangeMultiplier)
-                );
-            }
-        }
-    }
-
-    // Apply narrative modifiers
-    if (context.modifiers?.narrative) {
-        if (context.modifiers.narrative.reputationMultiplier) {
-            if (modified.outcomes.narrative?.reputationChange) {
-                modified.outcomes.narrative.reputationChange = modified.outcomes.narrative.reputationChange.map(
-                    val => Math.round(val * context.modifiers.narrative.reputationMultiplier)
-                );
-            }
-        }
-        if (context.modifiers.narrative.relationshipMultiplier) {
-            if (modified.outcomes.narrative?.relationshipChange) {
-                modified.outcomes.narrative.relationshipChange = modified.outcomes.narrative.relationshipChange.map(
-                    val => Math.round(val * context.modifiers.narrative.relationshipMultiplier)
-                );
-            }
-        }
-    }
-
-    return modified;
-}
 
 /**
  * Validates and maps action types to ensure compatibility
@@ -996,7 +979,7 @@ function validateAndMapActionType(actionType) {
     const log = window.displayVisualError || console.log;
     
     // Define valid action types
-    const validTypes = ['Good', 'Bad', 'Risky', 'Silly', 'Investigative', 'Attack', 'Special', 'Item', 'Run', 'Spell'];
+    const validTypes = ['Good', 'Bad', 'Risky', 'Silly', 'Investigative', 'Attack', 'Special', 'Item', 'Run', 'Spell', 'Defend'];
     
     // If already valid, return as-is
     if (validTypes.includes(actionType)) {
@@ -1209,22 +1192,8 @@ export function extractGodModeDiffOps(text) {
         n = Math.min(99999, Math.max(0, n));
         if (goldVerb === 'add') {
             // Engine's coins handler is replace-only, so compute the sum here
-            // and emit a replace with the capped total. Read current coins
-            // from the live game state (top-import not available here; the
-            // file's existing imports include gameState).
-            try {
-                const { gameState } = require('./state.js');
-                const current = getCurrentPlayer()?.coins || 0;
-                n = Math.min(99999, current + n);
-            } catch (_) {
-                // gameState not synchronously importable in browser ESM —
-                // fall back to relying on the surrounding actionHandler scope
-                // which has gameState via static import.
-                if (typeof gameState !== 'undefined') {
-                    const current = getCurrentPlayer()?.coins || 0;
-                    n = Math.min(99999, current + n);
-                }
-            }
+            // and emit a replace with the capped total.
+            n = Math.min(99999, (getCurrentPlayer()?.coins || 0) + n);
         }
         ops.push({ op: 'replace', path: '/players/0/coins', value: n });
     }
@@ -1336,7 +1305,7 @@ export function extractGodModeDiffOps(text) {
         if (wieldVerb) {
             const slot = type === 'Weapon' ? 'weapon' : (type === 'Armor' ? 'armor' : null);
             if (slot && typeof gameState !== 'undefined') {
-                const player = gameState.players?.[0];
+                const player = getCurrentPlayer(); // the acting hero (was always hero 1)
                 const currentId = player?.equipment?.[slot] || null;
                 let allowEquip = !currentId;   // empty slot → always equip
                 if (currentId && player?.inventory) {
@@ -1346,7 +1315,7 @@ export function extractGodModeDiffOps(text) {
                     if (newStat >= curStat) allowEquip = true;
                 }
                 if (allowEquip) {
-                    ops.push({ op: 'replace', path: `/players/0/equipment/${slot}`, value: itemId });
+                    ops.push({ op: 'replace', path: `/players/${gameState.currentPlayerIndex || 0}/equipment/${slot}`, value: itemId });
                 }
             } else if (slot) {
                 // Fallback path when gameState isn't accessible: equip anyway
@@ -1461,13 +1430,9 @@ export function extractGodModeDiffOps(text) {
  * Handles the player submitting a custom action after the goal is complete.
  * Triggers AI for narrative progression.
  */
-export async function handleCustomAction() {
+export async function handleCustomAction(text = '') {
     const log = window.displayVisualError || console.log; // Use logger
     log("Handling custom action submission...");
-    if (!UI.elements.customActionInput || !UI.elements.customActionBtn) {
-         log("ERROR: Custom action UI elements not found.");
-         return;
-    }
 
     const recapBefore = snapshotParty(), recapActor = getCurrentPlayer()?.name; // god-mode turns get the recap too
 
@@ -1492,14 +1457,13 @@ export async function handleCustomAction() {
         return;
     }
 
-    const actionText = UI.elements.customActionInput.value.trim();
+    const actionText = String(text || '').trim();
     if (!actionText) {
         UI.showPopup('Please enter your custom action.', 'error');
         log("Custom action blocked: Input is empty.");
         return;
     }
 
-    UI.elements.customActionInput.value = ''; // Clear input immediately
     UI.renderChoices([], null); // Clear choice buttons visually
 
     // Phase 3: anchor the free-form input in existing world entities. We
@@ -2367,7 +2331,9 @@ export async function helpAlly(targetPlayerId) {
 
       // Turn advancement happens AFTER showing popups etc.
       log("Help Ally action complete. Advancing turn.");
-      await advanceTurn(); // Uses a turn
+      // In a fight the turn passes through the combat order, so the foes answer.
+      if (gameState.inCombat && gameState.combat?.isActive) await Combat.advanceCombatTurn();
+      else await advanceTurn(); // Uses a turn
       log("helpAlly finished.");
  }
 

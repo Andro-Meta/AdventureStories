@@ -229,16 +229,12 @@ export const BASE_DEF = 2; // Player base defense without armor
 
 // --- Resource System Constants (MP/SP/EP/etc based on theme) ---
 export const RESOURCE_REGEN_COMBAT = 2;      // Resource regenerated per turn in combat
-export const RESOURCE_REGEN_EXPLORATION = 5; // Resource regenerated per turn out of combat
-export const RESOURCE_PER_LEVEL = 5;         // Additional resource per character level
+export const RESOURCE_REGEN_EXPLORATION = 5;         // Additional resource per character level
 export const DOWNED_TURNS_MAX = 3; // Turns until auto-revive after being downed
 export const MAX_PLAYERS = 5;
 export const MIN_AGE = 6;
 export const MAX_AGE = 99;
 export const MAX_NAME_LENGTH = 30;
-// Max conversation history kept for summaries, in user/assistant pairs.
-// contextManager.compressHistoryIntelligently() summarises older turns.
-export const MAX_HISTORY_LENGTH = 20;
 
 // --- Hierarchical memory (Tier 3) ---
 // Generate a fresh arc summary every N turns. Lower = more granular memory,
@@ -278,13 +274,7 @@ export const REVIVAL_ITEM_BASE_COST = 150;
 // Default name if a theme doesn't provide one
 export const REVIVAL_ITEM_DEFAULT_NAME = "Revival Charm";
 
-// --- Combat Settings ---
-export const BASE_ENEMY_SCALING_FACTOR = 1.0; // Initial scaling factor for enemies
-export const TURN_SCALING_INCREASE = 0.04; // % increase in enemy stats per turn (cumulative)
-// How much average player "level" affects scaling. Currently uses Turn number as a proxy.
-export const PLAYER_LEVEL_SCALING_FACTOR = 0.08;
-export const FLEE_CHANCE = 0.4; // Base chance (40%) to successfully flee combat
-export const PARTY_WIPE_COIN_LOSS_PERCENT = 0.75; // Lose 75% of coins on party wipe
+export const FLEE_CHANCE = 0.4; // Lose 75% of coins on party wipe
 export const REVIVE_HP_PERCENT_AUTO = 0.10; // Auto-revive HP% (10% of Max HP)
 export const REVIVE_HP_PERCENT_ITEM = 0.25; // Default Item revive HP% (25% of Max HP) - Can be overridden by item stats
 
@@ -449,6 +439,17 @@ export const STATUS_EFFECTS = {
         resistanceType: 'Time',
         canStack: false
     },
+    GUARDING: {
+        name: 'Guarding',
+        type: 'buff',
+        description: 'Defending: half damage until your next turn',
+        icon: '🛡️',
+        color: '#88aaff',
+        defaultDuration: 2,
+        defaultData: { damageMultiplier: 0.5 },
+        resistanceType: 'None',
+        canStack: false
+    },
     SHIELD: {
         name: 'Shield',
         type: 'buff',
@@ -497,29 +498,6 @@ export const STATUS_EFFECTS = {
     }
 };
 
-// Elemental Damage Types
-export const ELEMENTS = {
-    PHYSICAL: { name: 'Physical', color: '#888888', icon: '⚔️' },
-    FIRE: { name: 'Fire', color: '#ff4444', icon: '🔥' },
-    ICE: { name: 'Ice', color: '#4444ff', icon: '❄️' },
-    LIGHTNING: { name: 'Lightning', color: '#ffff44', icon: '⚡' },
-    POISON: { name: 'Poison', color: '#44ff44', icon: '☠️' },
-    HOLY: { name: 'Holy', color: '#ffffaa', icon: '✨' },
-    DARK: { name: 'Dark', color: '#444444', icon: '🌑' }
-};
-
-// Status Effect Resistance Types
-export const RESISTANCE_TYPES = {
-    PHYSICAL: 'Physical',
-    FIRE: 'Fire',
-    ICE: 'Ice', 
-    LIGHTNING: 'Lightning',
-    POISON: 'Poison',
-    MENTAL: 'Mental',
-    MAGIC: 'Magic',
-    TIME: 'Time',
-    STUN: 'Stun'
-};
 
 // --- Choice Outcome Configuration ---
 // Defines the mechanical consequences applied when a player selects a choice.
@@ -833,9 +811,6 @@ export const ChoiceOutcomeConfig = {
 
 // --- Local Storage ---
 export const SAVE_GAME_PREFIX = 'AG-';           // Prefix for save game keys (spec: AG-<date-time-code>)
-export const SAVE_GAME_LEGACY_PREFIX = 'advStorySave_'; // Old prefix — used only for one-time migration
-
-// --- UI Settings ---
-export const POPUP_DURATION = 3000; // Default popup message duration (ms)
+export const SAVE_GAME_LEGACY_PREFIX = 'advStorySave_'; // Default popup message duration (ms)
 // Delay before showing "Thinking..." when waiting for AI (unused currently)
 // export const TYPING_INDICATOR_DELAY = 800;

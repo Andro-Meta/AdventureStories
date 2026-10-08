@@ -2,7 +2,7 @@
 // Manages game turns, processing effects, checking conditions, and selecting the next player.
 
 // --- Static Imports ---
-import { gameState, getCurrentPlayer, syncTurnStates, canCurrentPlayerAct, repairPlayerIndex } from './state.js';
+import { gameState, getCurrentPlayer, syncTurnStates, repairPlayerIndex } from './state.js';
 import * as Config from './config.js';
 import * as UI from './ui.js';
 import * as Combat from './combat.js';
@@ -25,7 +25,7 @@ export function advanceWorldClock() {
     if (t % 3 === 0) gameState.weather = WEATHER[Math.floor(Math.random() * WEATHER.length)];
 }
 
-export async function advanceTurn() {
+export async function advanceTurn(opts = {}) {
     const log = window.displayVisualError || console.log; // Use logger
     log(`--- Advancing Turn (End of Turn ${gameState.turn}) ---`);
 
@@ -49,7 +49,7 @@ export async function advanceTurn() {
     gameState.players.forEach((p, i) => { if (p && !p.isDowned) lastActive = i; });
     const endsRound = gameState.currentPlayerIndex >= lastActive;
 
-    if (endsRound) {
+    if (endsRound && !opts.afterCombat) { // afterCombat: the fight already ticked this hero this round
     // --- Process End-of-Turn Effects for ALL Players & Enemies ---
     log("Processing end-of-turn status effects...");
     // Process status effects for all characters (async)

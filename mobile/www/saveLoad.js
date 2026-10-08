@@ -358,6 +358,7 @@ export async function loadGame(slotName) {
     const log = window.displayVisualError || console.log;
     log(`SaveLoad: Attempting to load game from slot: "${slotName}"`);
     if (UI.elements.loadError) UI.hideMessage(UI.elements.loadError);
+    try { UI.clearCombatLog(); UI.showTurnRecap(''); } catch (_) {} // nothing from the previous game
     const savedJson = localStorage.getItem(Config.SAVE_GAME_PREFIX + slotName);
 
     if (!savedJson) {
@@ -603,8 +604,9 @@ export async function loadGame(slotName) {
         } else {
             log("SaveLoad: No currentChoices in save (legacy format or empty); regenerating from narrative.");
             try {
-                const { makeAICallForSystemAction } = await import('./aiHandler.js');
-                await makeAICallForSystemAction('Resume the adventure: regenerate the next set of player choices based on the current narrative and game state. Do not advance the turn.', true);
+                // Choices only: a full system turn rewrote the story and applied ops on load.
+                const { requestChoicesOnly } = await import('./aiHandler.js');
+                UI.renderChoices(await requestChoicesOnly(gameState.currentNarrative || '', !!gameState.inCombat));
             } catch (regenErr) {
                 log(`SaveLoad: choice regeneration failed (${regenErr.message}); rendering empty list.`);
                 UI.renderChoices([]);
@@ -825,7 +827,7 @@ export function confirmExitToMainMenu(shouldSave) {
     // (Unchanged)
     const log = window.displayVisualError || console.log;
      log(`SaveLoad: Requesting exit confirmation. Should save: ${shouldSave}`);
-     let message = shouldSave ? "Do you want to save your current progress before exiting?" : "Are you sure you want to exit? Unsaved progress will be lost.";
+     let message = shouldSave ? "Save your progress and return to the main menu?" : "Are you sure you want to exit? Unsaved progress will be lost.";
      let title = shouldSave ? "Save and Exit?" : "Exit Without Saving?";
 
      UI.updateConfirmationModal(title, message);
@@ -847,9 +849,13 @@ export function confirmExitToMainMenu(shouldSave) {
                        confirmExitToMainMenu(false);
                   }
               } else {
-                   log(" -> No current save slot. Opening save modal instead of exiting.");
-                   openSaveGameModal();
-                   UI.showPopup("Please save your game first, then use the Menu to exit.", "info", 4000);
+                   // Never saved by hand: keep it in this game's autosave slot
+                   // (before, Yes opened the Save dialog and did not exit).
+                   log(" -> No manual slot; saving to the autosave slot and exiting.");
+                   autosave();
+                   UI.showPopup('Saved. Continue it any time from the main menu.', 'success', 3000);
+                   resetGameState();
+                   UI.showScreen('mainMenuScreen');
               }
          } else {
              log("SaveLoad: Exiting without saving. Resetting state.");

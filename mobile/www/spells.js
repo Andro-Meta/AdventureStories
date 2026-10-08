@@ -3,8 +3,6 @@
 // Phase 3: Magic System Implementation
 
 import { gameState, buildGameContextBlock } from './state.js';
-import * as Config from './config.js';
-import * as UI from './ui.js';
 import * as AdaptiveAbilities from './adaptiveAbilities.js';
 import { generateId } from './utils.js';
 
@@ -354,22 +352,6 @@ function createBasicSpell(spellKey, school, type, level) {
     };
 }
 
-/**
- * Get a theme-appropriate starting spell
- * @param {string} theme - The adventure theme
- * @returns {Spell|null} Theme spell or null
- */
-function getThemeStartingSpell(theme) {
-    const themeSpells = {
-        fantasy: createBasicSpell('magic_missile', 'ARCANE', 'OFFENSIVE', 1),
-        scifi: createBasicSpell('energy_bolt', 'ARCANE', 'OFFENSIVE', 1),
-        horror: createBasicSpell('ward_evil', 'DIVINE', 'DEFENSIVE', 1),
-        mystery: createBasicSpell('insight', 'MIND', 'UTILITY', 1),
-        adventure: createBasicSpell('enhance_ability', 'ARCANE', 'UTILITY', 1)
-    };
-    
-    return themeSpells[theme] || null;
-}
 
 /**
  * Check if a player can cast a specific spell

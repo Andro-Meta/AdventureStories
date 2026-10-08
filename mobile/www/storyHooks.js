@@ -236,18 +236,6 @@ const MOTIFS = [
     'an unlikely helper', 'a secret family tie', 'a contest with a rule that can be bent', 'a message arrives too late',
 ];
 
-export const FORBIDDEN_TROPES = [
-    'Sunken Library',
-    'Heart of Shadow',
-    'Heart of Darkness',
-    'Shadow Blight',
-    'the Heart of',
-    'Whispering Woods',
-    'Whisperwood',
-    'the Old Book',
-    'the Ancient Evil',
-    'the Chosen One'
-];
 
 /**
  * Pick a random hook archetype + theme-specific flavor for a new game.
@@ -290,12 +278,3 @@ ${customLine}
 DO NOT default to library/scholar/scroll plotlines unless the theme warrants it. Every name, place and detail must be new for this run.`;
 }
 
-/**
- * Returns a system-prompt fragment listing forbidden trope words. Caller
- * concatenates into generateSystemPrompt's output.
- */
-export function describeForbiddenTropes() {
-    return `\nFORBIDDEN TROPE PHRASES (do not use these exact words; they are over-used patterns from training data and break replay variety):
-${FORBIDDEN_TROPES.map(t => `  - "${t}"`).join('\n')}
-Invent fresh names and vocabulary native to the chosen theme. A dinosaur-era story should have hunting-grounds, migration-stones, ash-fields — not libraries and shadow-blights.`;
-}

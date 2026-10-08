@@ -371,7 +371,7 @@ Respond with ONLY a JSON object: {"goal": "Your specific goal sentence here."}`;
                 } catch (e) {
                     // Fallback: use a theme-appropriate default so the player never sees "Not set yet."
                     const fallbacks = {
-                        fantasy: 'Defeat the ancient evil threatening the kingdom.',
+                        fantasy: 'Break the curse spreading across the kingdom before the next full moon.',
                         space: 'Uncover the mystery behind the alien signal.',
                         pirate: 'Find the legendary treasure before your rivals do.',
                         underwater: 'Restore the lost city of the deep.',

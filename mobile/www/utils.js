@@ -73,26 +73,6 @@ export function getRandomElement(array) {
     return array[Math.floor(Math.random() * array.length)];
 }
 
-/**
- * Shuffles an array in place using the Fisher-Yates (Durstenfeld) algorithm.
- * Handles non-array input gracefully.
- * @template T
- * @param {T[]} array - The array to shuffle.
- * @returns {T[]} The shuffled array (mutated directly), or the original input if not an array.
- */
-export function shuffleArray(array) {
-    // (Unchanged)
-    const log = window.displayVisualError || console.warn;
-    if (!Array.isArray(array)) {
-        log("Utils shuffleArray Warning: Called with non-array input.");
-        return array;
-    }
-    for (let i = array.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [array[i], array[j]] = [array[j], array[i]];
-    }
-    return array;
-}
 
 /**
  * Basic HTML sanitizer to prevent simple XSS by escaping < > & ".
@@ -113,26 +93,3 @@ export function sanitizeText(text) {
               .replace(/'/g, "&#39;");
 }
 
-/**
- * Debounces a function, ensuring it's only called after a certain delay
- * since the last time it was invoked. Useful for input events.
- * @param {Function} func - The function to debounce.
- * @param {number} wait - The delay in milliseconds.
- * @param {boolean} [immediate=false] - Trigger the function on the leading edge instead of the trailing edge.
- * @returns {Function} The debounced function.
- */
-export function debounce(func, wait, immediate = false) {
-    // (Unchanged)
-    let timeout;
-    return function executedFunction(...args) {
-        const context = this;
-        const later = function() {
-            timeout = null;
-            if (!immediate) func.apply(context, args);
-        };
-        const callNow = immediate && !timeout;
-        clearTimeout(timeout);
-        timeout = setTimeout(later, wait);
-        if (callNow) func.apply(context, args);
-    };
-}

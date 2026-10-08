@@ -5,14 +5,13 @@
 import { playHpEffects, resetFx } from './fx.js';
 import { gameState } from './state.js';
 import * as Config from './config.js';
-import { loadPlayerAges, loadPlayerNames, loadAdventureTheme } from './inputCache.js';
+import { loadPlayerAges, loadPlayerNames } from './inputCache.js';
 import * as Spells from './spells.js';
-import * as SpellUI from './spellUI.js';
 // Import specific utils needed
-import { sanitizeText, shuffleArray } from './utils.js';
+import { sanitizeText } from './utils.js';
 import { describeQuestStep, friendlyMilestone } from './questDefinitions.js';
 // Import functions from other new modules
-import { getCurrentPlayer, canCurrentPlayerAct } from './state.js';
+import { getCurrentPlayer } from './state.js';
 // Import themedItemData directly if it's exported from items.js
 import { themedItemData } from './items.js';
 // Import reputation price calculation
@@ -110,13 +109,9 @@ export const elements = {
     // toggleStoryBtn: document.getElementById('toggleStoryBtn'), // REMOVED
     choicesCard: document.getElementById('choicesCard'),
     choicesContainer: document.getElementById('choicesContainer'),
-    customActionContainer: document.getElementById('customActionContainer'),
-    customActionInput: document.getElementById('customActionInput'),
-    customActionBtn: document.getElementById('customActionBtn'),
 
     // In-Game Menu Screen
     resumeBtn: document.getElementById('resumeBtn'),
-    menuDirectBtns: document.querySelectorAll('.menuDirectBtn'),
     saveGameBtn: document.getElementById('saveGameBtn'),
     exitToMainMenuBtn: document.getElementById('exitToMainMenuBtn'),
     exitWithoutSavingBtn: document.getElementById('exitWithoutSavingBtn'),
@@ -138,10 +133,8 @@ export const elements = {
 
     // Sub-screen Back Buttons
     backToGameBtns: document.querySelectorAll('.backToGameBtn'),
-    backToMenuBtns: document.querySelectorAll('.backToMenuBtn'),
 
     // Popups & Indicators
-    popupMessage: document.getElementById('popupMessage'),
     loadingIndicator: document.getElementById('loadingIndicator'),
     loadingMessage: document.getElementById('loadingMessage'),
 
@@ -174,8 +167,7 @@ export const elements = {
         shopBtn: document.getElementById('shopBtn'),
         specialBtn: document.getElementById('specialBtn'),
         helpAllyBtn: document.getElementById('helpAllyBtn'),
-        menuBtn: document.getElementById('menuBtn'),
-        customActionBtn: document.getElementById('customActionBtn')
+        menuBtn: document.getElementById('menuBtn')
     }
 };
 
@@ -448,212 +440,6 @@ export function updateGameUI() {
     // Story text is updated separately by updateStoryText
 }
 
-/**
- * Generate Story Memory UI with plot thread tracker
- * @returns {string} HTML for story memory display
- */
-function generateStoryMemoryUI() {
-    if (!gameState.storyContinuityAgent) {
-        return '<div class="story-memory"><p><em>Story memory initializing...</em></p></div>';
-    }
-    
-    try {
-        // Get story data from the continuity agent
-        const storyData = gameState.storyContinuityAgent.getStoryMemory();
-        
-        if (!storyData || Object.keys(storyData).length === 0) {
-            return '<div class="story-memory"><p><em>No story threads yet...</em></p></div>';
-        }
-        
-        // Generate plot threads display
-        const plotThreadsHTML = generatePlotThreadsUI(storyData.plotThreads || {});
-        
-        // Generate key events display
-        const keyEventsHTML = generateKeyEventsUI(storyData.keyEvents || []);
-        
-        // Generate character relationships display
-        const relationshipsHTML = generateRelationshipsUI(storyData.relationships || {});
-        
-        return `
-            <div class="story-memory">
-                <div class="story-memory-header">
-                    <h4>📚 Story Memory</h4>
-                    <span class="story-memory-count">${Object.keys(storyData.plotThreads || {}).length} Threads</span>
-                </div>
-                <div class="story-memory-content">
-                    ${plotThreadsHTML}
-                    ${keyEventsHTML}
-                    ${relationshipsHTML}
-                </div>
-            </div>
-        `;
-    } catch (error) {
-        console.log(`Story memory UI error: ${error.message}`);
-        return '<div class="story-memory"><p><em>Story data loading...</em></p></div>';
-    }
-}
-
-/**
- * Generate plot threads UI
- * @param {object} plotThreads - Plot threads data
- * @returns {string} HTML for plot threads
- */
-function generatePlotThreadsUI(plotThreads) {
-    if (!plotThreads || Object.keys(plotThreads).length === 0) {
-        return '<div class="plot-threads"><p><em>No active plot threads...</em></p></div>';
-    }
-    
-    const threadsHTML = Object.entries(plotThreads)
-        .slice(0, 3) // Show top 3 most recent/important threads
-        .map(([threadId, thread]) => {
-            const statusClass = thread.status === 'active' ? 'thread-active' : 
-                               thread.status === 'resolved' ? 'thread-resolved' : 'thread-dormant';
-            const statusIcon = thread.status === 'active' ? '🔥' : 
-                              thread.status === 'resolved' ? '✅' : '💤';
-            
-            return `
-                <div class="plot-thread ${statusClass}">
-                    <div class="thread-header">
-                        <span class="thread-icon">${statusIcon}</span>
-                        <span class="thread-title">${sanitizeText(thread.title || 'Unknown Thread')}</span>
-                    </div>
-                    <div class="thread-description">
-                        ${sanitizeText((thread.description || '').slice(0, 100))}${thread.description?.length > 100 ? '...' : ''}
-                    </div>
-                </div>
-            `;
-        }).join('');
-    
-    return `
-        <div class="plot-threads">
-            <h5>🧵 Active Threads</h5>
-            ${threadsHTML}
-        </div>
-    `;
-}
-
-/**
- * Generate key events UI
- * @param {array} keyEvents - Key events data
- * @returns {string} HTML for key events
- */
-function generateKeyEventsUI(keyEvents) {
-    if (!keyEvents || keyEvents.length === 0) {
-        return '';
-    }
-    
-    const eventsHTML = keyEvents
-        .slice(-3) // Show last 3 key events
-        .map(event => {
-            const significance = event.significance || 0.5;
-            const significanceClass = significance > 0.8 ? 'event-major' : 
-                                    significance > 0.5 ? 'event-moderate' : 'event-minor';
-            const significanceIcon = significance > 0.8 ? '⭐' : 
-                                   significance > 0.5 ? '🔸' : '🔹';
-            
-            return `
-                <div class="key-event ${significanceClass}">
-                    <span class="event-icon">${significanceIcon}</span>
-                    <span class="event-text">${sanitizeText((event.description || '').slice(0, 80))}${event.description?.length > 80 ? '...' : ''}</span>
-                </div>
-            `;
-        }).join('');
-    
-    return `
-        <div class="key-events">
-            <h5>📖 Recent Events</h5>
-            ${eventsHTML}
-        </div>
-    `;
-}
-
-/**
- * Generate relationships UI
- * @param {object} relationships - Relationships data
- * @returns {string} HTML for relationships
- */
-function generateRelationshipsUI(relationships) {
-    if (!relationships || Object.keys(relationships).length === 0) {
-        return '';
-    }
-    
-    const relationshipsHTML = Object.entries(relationships)
-        .slice(0, 2) // Show top 2 most significant relationships
-        .map(([npcId, relationship]) => {
-            const trust = relationship.trust || 0;
-            const trustClass = trust > 0.6 ? 'relationship-positive' : 
-                              trust < 0.4 ? 'relationship-negative' : 'relationship-neutral';
-            const trustIcon = trust > 0.6 ? '💚' : trust < 0.4 ? '💔' : '💛';
-            
-            return `
-                <div class="relationship ${trustClass}">
-                    <span class="relationship-icon">${trustIcon}</span>
-                    <span class="relationship-name">${sanitizeText(relationship.name || npcId)}</span>
-                    <span class="relationship-status">${Math.round(trust * 100)}%</span>
-                </div>
-            `;
-        }).join('');
-    
-    if (relationshipsHTML) {
-        return `
-            <div class="relationships">
-                <h5>👥 Key Relationships</h5>
-                ${relationshipsHTML}
-            </div>
-        `;
-    }
-    
-    return '';
-}
-
-/**
- * Generate AI System Status UI
- * @returns {string} HTML for AI system status display
- */
-function generateAISystemStatusUI() {
-    if (!gameState) return '';
-    
-    const systems = [
-        { name: 'Dynamic Items', agent: gameState.dynamicItemRegistry, icon: '🎒', status: 'active' },
-        { name: 'Dynamic Spells', agent: gameState.dynamicSpellRegistry, icon: '✨', status: 'active' },
-        { name: 'Dynamic Enemies', agent: gameState.dynamicEnemyRegistry, icon: '👹', status: 'active' },
-        { name: 'Dynamic Locations', agent: gameState.dynamicLocationRegistry, icon: '🗺️', status: 'active' },
-        { name: 'Story Continuity', agent: gameState.storyContinuityAgent, icon: '📚', status: 'active' },
-        { name: 'Character Development', agent: gameState.characterDevelopmentAgent, icon: '🎭', status: 'active' },
-        { name: 'World Evolution', agent: gameState.worldEvolutionAgent, icon: '🌍', status: 'active' },
-        { name: 'Difficulty Adaptation', agent: gameState.difficultyAdaptationAgent, icon: '⚖️', status: 'active' },
-        { name: 'Context Optimization', agent: gameState.localAIContextOptimizer, icon: '🧠', status: 'active' }
-    ];
-    
-    const activeCount = systems.filter(s => s.agent).length;
-    const totalCount = systems.length;
-    
-    const systemsHTML = systems.map(system => {
-        const isActive = system.agent !== null && system.agent !== undefined;
-        const statusClass = isActive ? 'ai-system-active' : 'ai-system-inactive';
-        const statusIcon = isActive ? '✅' : '❌';
-        
-        return `
-            <div class="ai-system-item ${statusClass}">
-                <span class="ai-system-icon">${system.icon}</span>
-                <span class="ai-system-name">${sanitizeText(system.name)}</span>
-                <span class="ai-system-status">${statusIcon}</span>
-            </div>
-        `;
-    }).join('');
-    
-    return `
-        <div class="ai-system-status">
-            <div class="ai-system-header">
-                <h4>🤖 AI Systems Status</h4>
-                <span class="ai-system-count">${activeCount}/${totalCount} Active</span>
-            </div>
-            <div class="ai-systems-grid">
-                ${systemsHTML}
-            </div>
-        </div>
-    `;
-}
 
 /** Updates the game header (title, goal, turn, custom action visibility). */
 export function updateGameHeader() {
@@ -678,14 +464,6 @@ export function updateGameHeader() {
     if (chapterEl && nextEl) {
         chapterEl.textContent = gameState.isGoalComplete ? 'Quest complete!' : (step?.chapter || '');
         nextEl.textContent = gameState.isGoalComplete ? '· God mode: type anything to shape the world' : (step ? `· Next: ${step.next}` : '');
-    }
-
-    // Update custom action visibility based on game state
-    if (elements.customActionContainer) {
-        // Never shown: the golden god-mode box in the choices card is the one
-        // input (players saw two). This input only carries its text to
-        // handleCustomAction.
-        elements.customActionContainer.classList.add('hidden');
     }
 
     // Update quest progress
@@ -1162,6 +940,7 @@ export function renderChoices(choices, handler = null) {
     const log = window.displayVisualError || console.log;
     // Every set of story choices is shown in a fresh random order, whatever
     // path produced it (post-fight and fallback choices came in type order).
+    if (Array.isArray(choices) && !handler) choices = choices.filter(c => c?.type !== 'Defend');
     if (Array.isArray(choices) && choices.length > 1 && !handler) {
         choices = [...choices];
         for (let i = choices.length - 1; i > 0; i--) {
@@ -1169,6 +948,13 @@ export function renderChoices(choices, handler = null) {
             [choices[i], choices[j]] = [choices[j], choices[i]];
         }
         gameState.currentChoices = choices;
+    }
+    // Defend is a fixed battle command (like the classics): always offered,
+    // last, without costing the storyteller any words.
+    // (Added at render time only: stored, it was reshuffled into a random
+    // slot on every re-render.)
+    if (gameState.inCombat && !handler && Array.isArray(choices) && choices.length) {
+        choices = [...choices, { type: 'Defend', text: 'Raise your guard: half damage until your next turn, and catch your breath' }];
     }
     log(`UI: Rendering choices. Data type: ${typeof choices}, Is Array: ${Array.isArray(choices)}, Handler Mode: ${!!handler}`);
     
@@ -1247,6 +1033,7 @@ export function renderChoices(choices, handler = null) {
         log("UI: No valid choices data provided. Rendering default/loading state.");
         const loadingChoice = document.createElement('button');
         loadingChoice.className = 'choice-btn disabled';
+        loadingChoice.disabled = true;
         loadingChoice.textContent = 'Waiting for storyteller...';
         elements.choicesContainer.appendChild(loadingChoice);
         return;
@@ -1263,9 +1050,10 @@ export function renderChoices(choices, handler = null) {
         button.className = 'choice-btn';
         // Markdown from the model (**Ghost Step**) shows as raw asterisks.
         const plain = choice.text.replace(/\*\*|__|`/g, '');
+        button.dataset.text = plain; // the click handler sends this, not the badge + text
         // In a fight the move type is shown: Attack/Special/Item/Run are
         // mechanics, not hidden story options.
-        const badge = { Attack: '⚔️ Attack', Special: '✨ Special', Item: '🧪 Item', Run: '🏃 Run' }[choice.type];
+        const badge = { Attack: '⚔️ Attack', Special: '✨ Special', Item: '🧪 Item', Run: '🏃 Run', Defend: '🛡️ Defend' }[choice.type];
         if (badge) {
             const tag = document.createElement('span');
             tag.className = 'choice-badge';
@@ -1746,7 +1534,7 @@ export function updateHelpAllyModal(downedAllies, revivalItemCount, revivalItemN
     }
     const safeRevivalName = sanitizeText(revivalItemName);
     // Update status text using innerHTML to include styled count span
-    elements.revivalItemStatus.innerHTML = `Revival Items (${safeRevivalName}): <span id="revivalItemCount" class="${revivalItemCount > 0 ? 'has-items' : 'no-items'}">${revivalItemCount}</span>`;
+    elements.revivalItemStatus.innerHTML = `Revival Items (<span class="revival-item-name">${safeRevivalName}</span>): <span id="revivalItemCount" class="${revivalItemCount > 0 ? 'has-items' : 'no-items'}">${revivalItemCount}</span>`;
 
     // Clear previous list
     elements.helpAllyTargetList.innerHTML = '';
@@ -1807,19 +1595,6 @@ export function showStatus(element, message) {
     }
 }
 
-/**
- * Shows a success message in the specified element.
- * @param {HTMLElement} element - The element to show the success in.
- * @param {string} message - The success message to display.
- */
-export function showSuccess(element, message) {
-    if (element) {
-        element.textContent = message;
-        element.style.display = 'block';
-        element.classList.remove('error');
-        element.classList.add('success');
-    }
-}
 
 /**
  * Shows or hides the loading indicator with an optional message.
@@ -1857,31 +1632,6 @@ export function showLoading(isLoading, message = 'Loading...') {
     }
 }
 
-/**
- * Initializes the API key tab system
- */
-export function initializeApiTabs() {
-    if (!elements.apiTabs || !elements.apiSections) return;
-    
-    elements.apiTabs.forEach(tab => {
-        tab.addEventListener('click', () => {
-            const provider = tab.dataset.provider;
-            
-            // Update active tab
-            elements.apiTabs.forEach(t => t.classList.remove('active'));
-            tab.classList.add('active');
-            
-            // Update active section
-            elements.apiSections.forEach(section => {
-                section.classList.remove('active');
-                if (section.id === `${provider}-section`) {
-                    section.classList.add('active');
-                }
-            });
-        });
-    });
-
-}
 
 /* === QUEST PROGRESS UI FUNCTIONS === */
 

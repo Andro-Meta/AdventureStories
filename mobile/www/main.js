@@ -4,7 +4,7 @@
 // --- Game log ---
 // One capped log (window.__advLog, newest 1000 lines), also saved on the
 // device (localStorage 'adv.log', newest 400) so a slow or broken turn can be
-// read afterwards: tools/phone.mjs logs, or the in-app error log panel.
+// read afterwards: tools/phone.mjs logs, or AI Settings > Copy debug log.
 // It used to add a DOM node per line for the whole session (pages grew by
 // thousands of nodes) and wrote everything with console.error.
 window.__advLog = (() => { try { return JSON.parse(localStorage.getItem('adv.log') || '[]'); } catch (_) { return []; } })();
@@ -30,13 +30,6 @@ window.displayVisualError = (message, error = null) => {
     if (window.__advLog.length > 1000) window.__advLog.splice(0, window.__advLog.length - 1000);
     advLogDirty = true;
     (error ? console.error : console.log)(line);
-    // On-screen panel keeps only the newest 200 lines.
-    const box = document.getElementById('errorLogContent');
-    if (!box) return;
-    const div = document.createElement('div');
-    div.textContent = line;
-    box.appendChild(div);
-    while (box.childElementCount > 200) box.removeChild(box.firstChild);
 };
 
 // --- Android back button (MainActivity asks here first) ---
@@ -46,6 +39,8 @@ window.__advBack = () => {
     if (picker) { picker.querySelector('.bp-cancel')?.click(); return true; }
     const open = document.querySelector('.modal:not(.hidden)');
     if (open) { open.classList.add('hidden'); return true; }
+    // Mid-turn the menu button is locked; back must not get round it.
+    if (gameState?.isLoading || gameState?.combatRoundInProgress) return true;
     const active = document.querySelector('.screen.active')?.id || 'mainMenuScreen';
     if (active === 'mainMenuScreen') return false;
     const prev = {
@@ -108,8 +103,8 @@ const handleDOMContentLoaded = async () => {
         if (!UI || !UI.elements) { throw new Error("UI module or UI.elements are not available after import!"); }
         displayVisualError("DOMContentLoaded: Verifying essential UI elements...");
         // Add more checks if needed, but these are critical
-        if (!UI.elements.mainMenuScreen || !UI.elements.newGameBtn || !document.getElementById('errorLogToggleBtn')) {
-            throw new Error("Essential UI elements (e.g., mainMenuScreen, newGameBtn, errorLogToggleBtn) not found in the DOM!");
+        if (!UI.elements.mainMenuScreen || !UI.elements.newGameBtn) {
+            throw new Error("Essential UI elements (mainMenuScreen, newGameBtn) not found in the DOM!");
         }
         displayVisualError("DOMContentLoaded: Essential UI elements verified.");
 
@@ -257,48 +252,13 @@ function setupEventListeners(UI, setup, actionHandler, saveLoad) { // Added acti
     };
 
 
-    // --- Error Log Sidebar Button Listeners ---
-    const errorLogContainer = document.getElementById('errorLogContainer');
-    const errorLogToggleBtn = document.getElementById('errorLogToggleBtn');
-    const errorLogClearBtn = document.getElementById('errorLogClearBtn');
-    const errorLogCopyBtn = document.getElementById('errorLogCopyBtn'); // Get copy button
-    const errorLogContent = document.getElementById('errorLogContent');
-
-    // Toggle Button Listener
-    if (errorLogToggleBtn && errorLogContainer) {
-        safeAddListener('errorLogToggleBtn', 'click', () => { errorLogContainer.classList.toggle('hidden'); }, 'errorLogToggleBtn');
-    } else { displayVisualError("setupEventListeners FATAL: Element #errorLogToggleBtn or #errorLogContainer not found!"); }
-
-    // Clear Button Listener
-    if (errorLogClearBtn && errorLogContent) {
-        safeAddListener('errorLogClearBtn', 'click', () => { errorLogContent.innerHTML = ''; displayVisualError("Debug Log Cleared."); }, 'errorLogClearBtn');
-    } else { displayVisualError("setupEventListeners Warning: Element #errorLogClearBtn or #errorLogContent not found."); }
-
-    // Copy Button Listener
-    if (errorLogCopyBtn && errorLogContent) {
-        safeAddListener('errorLogCopyBtn', 'click', async () => { // Make handler async
-            const logText = errorLogContent.textContent || '';
-            if (!logText) {
-                UI.showPopup("Log is empty.", "info", 1500); return;
-            }
-            try {
-                await navigator.clipboard.writeText(logText); // Use modern clipboard API
-                const originalIcon = errorLogCopyBtn.textContent; errorLogCopyBtn.textContent = '✅';
-                setTimeout(() => { errorLogCopyBtn.textContent = originalIcon; }, 1500);
-                UI.showPopup("Debug log copied!", "success", 1500);
-            } catch (err) {
-                displayVisualError(" -> ERROR copying log to clipboard:", err);
-                UI.showPopup("Failed to copy log automatically.", "error", 2500);
-                // Fallback: Select text (less reliable, requires user action)
-                try {
-                     const range = document.createRange(); range.selectNodeContents(errorLogContent);
-                     const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
-                     UI.showPopup("Log selected. Press Ctrl+C / Cmd+C.", "info", 3000);
-                } catch(fallbackErr) { displayVisualError(" -> ERROR during fallback text selection:", fallbackErr); }
-            }
-        }, 'errorLogCopyBtn');
-    } else { displayVisualError("setupEventListeners Warning: Element #errorLogCopyBtn or #errorLogContent not found."); }
-
+    // The newest log lines, for a bug report (the old on-screen log panel
+    // could never be opened).
+    safeAddListener('copyDebugLogBtn', 'click', async () => {
+        const text = (window.__advLog || []).slice(-400).join('\n');
+        try { await navigator.clipboard.writeText(text); UI.showPopup('Debug log copied', 'success', 2000); }
+        catch (_) { UI.showPopup('Copy blocked on this device', 'info', 2500); }
+    }, 'copyDebugLogBtn');
 
     // --- Main Menu & Setup Navigation ---
     safeAddListener('newGameBtn', 'click', () => {
@@ -336,42 +296,25 @@ function setupEventListeners(UI, setup, actionHandler, saveLoad) { // Added acti
     safeAddListenerAll('.backBtn', 'click', (event, element) => {
         const targetScreen = element.dataset.target; if (targetScreen) { UI.showScreen(targetScreen); } else { displayVisualError(`Back button missing data-target attribute.`); }
     }, 'backBtn');
-    safeAddListenerAll('.menuDirectBtn', 'click', (event, element) => {
-        const target = element.dataset.target; if (!target) { displayVisualError("Menu direct button missing data-target."); return; }
-        if (target === 'inventoryScreen') UI.renderInventory(); else if (target === 'shopScreen') UI.renderShop(); else if (target === 'specialMovesScreen') UI.renderSpecialMoves();
-        // Set correct back button visibility for direct menu->subscreen navigation
-        document.querySelectorAll('.backToGameBtn').forEach(b => b.classList.add('hidden'));
-        document.querySelectorAll('.backToMenuBtn').forEach(b => b.classList.remove('hidden'));
-        UI.showScreen(target);
-    }, 'menuDirectBtn');
     safeAddListenerAll('.backToGameBtn', 'click', () => UI.showScreen('gameScreen'), 'backToGameBtn');
-    safeAddListenerAll('.backToMenuBtn', 'click', () => UI.showScreen('menuScreen'), 'backToMenuBtn');
 
 
     // --- Specific Element Listeners ---
     safeAddListener('adventureTypeSelect', 'change', setup.handleAdventureTypeSelectionChange, 'adventureTypeSelect');
     safeAddListener('inventoryBtn', 'click', () => {
         UI.renderInventory();
-        // Set correct back button visibility when coming from game screen
-        document.querySelectorAll('.backToGameBtn').forEach(b => b.classList.remove('hidden'));
-        document.querySelectorAll('.backToMenuBtn').forEach(b => b.classList.add('hidden'));
         UI.showScreen('inventoryScreen');
     }, 'inventoryBtn');
     safeAddListener('shopBtn', 'click', () => {
         UI.renderShop();
-        document.querySelectorAll('.backToGameBtn').forEach(b => b.classList.remove('hidden'));
-        document.querySelectorAll('.backToMenuBtn').forEach(b => b.classList.add('hidden'));
         UI.showScreen('shopScreen');
     }, 'shopBtn');
     safeAddListener('specialBtn', 'click', () => {
         UI.renderSpecialMoves();
-        document.querySelectorAll('.backToGameBtn').forEach(b => b.classList.remove('hidden'));
-        document.querySelectorAll('.backToMenuBtn').forEach(b => b.classList.add('hidden'));
         UI.showScreen('specialMovesScreen');
     }, 'specialBtn');
     safeAddListener('helpAllyBtn', 'click', actionHandler.openHelpAllyModal, 'helpAllyBtn');
     safeAddListener('menuBtn', 'click', () => UI.showScreen('menuScreen'), 'menuBtn');
-    safeAddListener('customActionBtn', 'click', actionHandler.handleCustomAction, 'customActionBtn'); // Is async
     safeAddListener('resumeBtn', 'click', () => UI.showScreen('gameScreen'), 'resumeBtn');
     safeAddListener('saveGameBtn', 'click', saveLoad.openSaveGameModal, 'saveGameBtn');
     safeAddListener('readStoryBtn', 'click', UI.showStoryBook, 'readStoryBtn');
@@ -403,12 +346,15 @@ function setupEventListeners(UI, setup, actionHandler, saveLoad) { // Added acti
         // Out of the lost fight, with something to press.
         gameState.inCombat = false;
         if (gameState.combat) gameState.combat.isActive = false;
+        gameState.enemies = [];
+        UI.clearCombatLog?.();
         UI.showScreen('gameScreen');
         UI.renderPlayerCards();
         UI.renderEnemyCards();
-        UI.renderChoices(gameState.currentChoices?.length ? gameState.currentChoices : [
-            { type: 'Explore', text: 'Get back on your feet and take stock' },
-            { type: 'Social', text: 'Look for help nearby' }
+        UI.renderChoices([
+            { type: 'Good', text: 'Get back on your feet and take stock' },
+            { type: 'Investigative', text: 'Look around for what went wrong' },
+            { type: 'Risky', text: 'Go after them again, smarter this time' }
         ]);
         UI.showPopup('You rise again — battered, but unbowed.', 'info', 4000);
     }, 'gameOverContinueBtn');
@@ -438,7 +384,7 @@ function setupEventListeners(UI, setup, actionHandler, saveLoad) { // Added acti
         document.querySelectorAll('#choicesContainer .choice-btn').forEach(btn => btn.disabled = true);
 
         let actionType = button.dataset.actionType;
-        let choiceText = button.textContent; // Get the displayed text
+        let choiceText = button.dataset.text || button.textContent; // the choice itself (textContent also has the battle badge)
         // Battle commands open a picker (which item / move / target), like a
         // classic RPG menu. Cancel returns to the choices.
         if (gameState.inCombat && ['Attack', 'Item', 'Special'].includes(actionType) && !gameState.isLoading) {
@@ -549,8 +495,6 @@ function setupEventListeners(UI, setup, actionHandler, saveLoad) { // Added acti
      }, 'helpAllyTargetListDelegation');
     // --- End Delegation ---
 
-    // Initialize API tabs
-    UI.initializeApiTabs();
     
     // Initialize quest progress UI
     UI.initializeQuestProgressUI();

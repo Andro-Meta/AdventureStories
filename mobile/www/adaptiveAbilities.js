@@ -3,7 +3,6 @@
 // Phase 3: Magic System Enhancement - Theme Adaptation
 
 import { gameState } from './state.js';
-import * as Config from './config.js';
 
 /**
  * Theme-Adaptive Ability System Configuration
