@@ -229,6 +229,13 @@ const HOOK_FLAVORS = {
  * theme actually warrants them. Folded into the system prompt so the
  * narrator avoids "Sunken Library" and "Heart of Shadow" type fallbacks.
  */
+const MOTIFS = [
+    'someone is lying', 'a debt is owed', 'two rivals must cooperate', 'a child knows the truth', 'the map is wrong',
+    'a friend asks for something forbidden', 'a deadline at the next sunrise', 'the reward is a trap', 'a creature is misunderstood',
+    'an old promise comes due', 'the weather turns against everyone', 'a stolen thing must be returned', 'a disguise', 'a broken tool that matters later',
+    'an unlikely helper', 'a secret family tie', 'a contest with a rule that can be bent', 'a message arrives too late',
+];
+
 export const FORBIDDEN_TROPES = [
     'Sunken Library',
     'Heart of Shadow',
@@ -254,8 +261,11 @@ export function pickStoryHook(theme, customDesc) {
     const archetype = ARCHETYPES[Math.floor(Math.random() * ARCHETYPES.length)];
     const flavorMap = HOOK_FLAVORS[theme] || HOOK_FLAVORS.fantasy;
     const flavor = flavorMap[archetype] || HOOK_FLAVORS.fantasy[archetype];
+    // A random twist so two games with the same archetype still diverge.
+    const motif = MOTIFS[Math.floor(Math.random() * MOTIFS.length)];
     return {
         archetype,
+        motif,
         flavor,
         themeForFlavor: theme,
         customDesc: customDesc || ''
@@ -274,9 +284,10 @@ export function describeHookForPrompt(hook) {
         : '';
     return `\n=== STORY HOOK FOR THIS RUN (use this as the inciting incident) ===
 Archetype: ${hook.archetype}
-Concrete inciting incident: ${hook.flavor}
+Example of this archetype, for flavor ONLY (do not use it: invent a different incident of the same kind, with your own people, place and object): ${hook.flavor}
+Twist to work in: ${hook.motif || 'someone is lying'}
 ${customLine}
-DO NOT default to library/scholar/scroll plotlines unless the theme warrants it. The hook above is your starting beat — anchor turn 1's prose to it. Vary every other detail (NPC names, place names, exact wording) so this run feels different from any past run.`;
+DO NOT default to library/scholar/scroll plotlines unless the theme warrants it. Every name, place and detail must be new for this run.`;
 }
 
 /**

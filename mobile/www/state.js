@@ -116,6 +116,7 @@ export const gameState = {
     messageHistory: [], // Array of { role: 'system' | 'user' | 'assistant', content: string }
     currentNarrative: '', // Current story narrative
     storyLog: [], // every scene shown, in order, for the re-readable story book
+    storyThreads: [], // setups owed a payoff: { text, turn, resolved }
     currentChoices: [], // Current available choices
     currentLocation: null, // Current location object { name, type, dangerLevel, etc }
     narrativeContext: {
@@ -669,6 +670,7 @@ export function resetGameState() {
         currentLocation: null,
         currentNarrative: '',
         storyLog: [],
+        storyThreads: [],
         questProgress: {
             currentPhase: 'beginning', completionPercentage: 0,
             milestones: [], currentObjectives: [], sideQuests: [],

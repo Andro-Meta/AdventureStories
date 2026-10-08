@@ -76,10 +76,11 @@ YOURS TO EMIT when the story makes them happen:
 - New named NPCs or notable items: add /entityMemory/npcs/<Name> or /entityMemory/items/<Name>; items the hero picks up: add ${P}/inventory/-.
 - A fight starts: add /enemies/- (hp, maxHp, atk, def, abilities) AND replace /inCombat true. During a fight the game handles enemy HP and defeat itself: never emit /enemies/<n>/hp or /isDefeated, and never re-add an enemy that is already there or was defeated.
 - Status effects with narrative weight (Poison, Burn, Stun, Fear, Regen, Shield...): add ${P}/statusEffects/- {name, duration}.
+- Setups (Chekhov's gun): when the story makes a point of a clue, object, promise or mystery, add /storyThreads/- {text}. When one pays off, replace /storyThreads/<n>/resolved true. Never plant something you won't use.
 - Quest beats: add /questProgress/milestones/- using the EXACT names from the MAIN QUEST STAGE block, plus replace /questProgress/completionPercentage. Favors or rumors: add /questProgress/sideQuests/- {name, description, reward}.
 ${gameState.adventureGoal ? '' : '- Set /adventureGoal once early (turn 4-6).\n'}- Main quest truly finished: add the "final_blow" milestone (the game then completes the quest).
 If the narration says the hero picked something up, met someone named, arrived somewhere named, or a fight began, the matching op MUST be in "ops". An empty list is only for a turn where nothing in the world changed.
-Examples:
+Format examples only (never use these names or details in the story):
 {"op":"add","path":"/entityMemory/locations/The Crystal Hall","value":{"name":"The Crystal Hall","description":"a vaulted chamber of humming crystals"}}
 {"op":"add","path":"/enemies/-","value":{"name":"Stone Guardian","hp":40,"maxHp":40,"atk":7,"def":4,"abilities":["Slam"]}}
 {"op":"add","path":"/questProgress/milestones/-","value":{"name":"call_to_adventure","description":"The locket whispers the hero's name."}}`;
@@ -89,7 +90,17 @@ export function buildChoiceInstructions(types, inCombat) {
     const list = types.map(t => `- ${t}: ${CHOICE_TYPE_MEANINGS[t]}`).join('\n');
     return `CHOICES: exactly ${types.length}, one of each type:
 ${list}
-Each choice: under 160 characters, starts with a verb, names something specific from the narration, and never states its type (no "safely", "risky", "silly").${inCombat ? ' Attack must name the enemy it targets.' : ' Make the five genuinely different from each other.'}`;
+Each choice: under 160 characters, starts with a verb, names something specific from the narration, and never states its type (no "safely", "risky", "silly").${inCombat ? ` Attack must name the enemy it targets.${combatKitLine()}` : ' Make the five genuinely different from each other.'}`;
+}
+
+// Item and Special choices must name what the acting hero really has: the
+// game uses that item or move (live: "hold up the blue silk scrap" drank a potion).
+function combatKitLine() {
+    const p = gameState.players?.[gameState.nextActorIndex ?? gameState.currentPlayerIndex ?? 0];
+    if (!p) return '';
+    const items = (p.inventory || []).filter(i => i?.type === 'Consumable' && (i.quantity == null || i.quantity > 0)).map(i => i.name);
+    const moves = (p.specialMoves || []).filter(m => !(m.currentCooldown > 0)).map(m => m.name);
+    return ` Item must use one of ${p.name}'s items: ${items.length ? [...new Set(items)].join(', ') : 'none (write it as searching their pack)'}. Special must use ${moves.length ? `one of: ${moves.join(', ')}` : 'a bold signature move'}.`;
 }
 
 /**
@@ -123,6 +134,8 @@ Reply with ONE JSON object with all three keys, and nothing else:
 
 NARRATION: ${words} words (at least ${wc.min}; replies under that are too thin), in 2 short paragraphs, third person, naming the hero who acted. Show what happens because of the action, then end on a moment that invites the next decision. No choices or bracket tokens inside the narration.
 
+STORY LOGIC (the South Park rule): link this scene to the last with THEREFORE (a direct consequence of the choice) or BUT (a complication that makes things harder), never "and then". At least every other scene needs a BUT: a twist, a cost, a rival, a door that won't open. Never repeat the last scene's beat; something new must happen.${openThreadsBlock()}
+
 ${nextActor && (gameState.players || []).length > 1 ? `NEXT TO ACT: ${nextActor.name}. Write the choices for ${nextActor.name}${nextActor.specialMoves?.length ? ` (special moves: ${nextActor.specialMoves.map(m => m.name).join(', ')})` : ''} and end the narration by turning to them.
 
 ` : ''}${buildChoiceInstructions(types, inCombat)}
@@ -151,6 +164,12 @@ ${buildDiffInstructions(pIdx)}`;
             .trim();
         const appliedDiff = applyDiff(validated.diff.ops || [], { strict: false });
         log(`narrative diff: applied ${appliedDiff.length}/${(validated.diff.ops || []).length} ops`);
+        // The opening names the starting place; if the narrator skipped the
+        // /currentLocation op, use the first place it recorded.
+        if (gameState.currentLocation?.name === 'Not named yet') {
+            const first = Object.values(gameState.entityMemory?.locations || {})[0];
+            if (first?.name) gameState.currentLocation = { ...gameState.currentLocation, name: first.name, description: first.description || '', isFallback: false };
+        }
 
         gameState.currentNarrative = cleanNarrative;
         try {
@@ -195,13 +214,32 @@ ${buildDiffInstructions(pIdx)}`;
  * finished story (world changes, reactions, each hero) before god mode.
  * Shown below the final turn's narration; failure just skips it.
  */
+// Names from this device's earlier games, so a replayed theme gets new
+// people and places (live: "Salty ..." in 4 of 4 pirate games).
+function usedNamesLine() {
+    let names = [];
+    try { names = JSON.parse(localStorage.getItem('adv.usedNames') || '[]'); } catch (_) {}
+    const mine = new Set(Object.keys(gameState.entityMemory?.npcs || {}).concat(Object.keys(gameState.entityMemory?.locations || {})));
+    names = names.filter(n => !mine.has(n)).slice(-40);
+    return names.length ? ` Names from earlier games, never reuse them or close variants: ${names.join(', ')}.` : '';
+}
+
+// The setups the story still owes a payoff, numbered by their index in
+// gameState.storyThreads so the narrator can mark them resolved.
+function openThreadsBlock() {
+    const open = (gameState.storyThreads || []).map((t, i) => ({ ...t, i })).filter(t => !t.resolved);
+    if (!open.length) return '';
+    return `\nOPEN THREADS (setups you owe a payoff; push one forward or pay it off soon, by number):\n${open.map(t => `${t.i}. ${t.text}`).join('\n')}`;
+}
+
 export async function writeEpilogue() {
     const heroes = (gameState.players || []).map(p => p.name).join(', ');
     const villain = gameState.questProgress?.villain;
     const payload = await API.getAIResponseJSON([
         { role: 'system', content: `You write the ending of a ${getThemeName()} text adventure. Reply with one JSON object only.` },
         { role: 'user', content: `QUEST WON: ${gameState.adventureGoal || 'the main quest'}${villain ? `
-VILLAIN DEFEATED: ${villain}` : ''}
+VILLAIN DEFEATED: ${villain}` : ''}${(gameState.storyThreads || []).length ? `
+STORY THREADS (pay off any still open in a line each): ${gameState.storyThreads.map(t => `${t.text}${t.resolved ? '' : ' (still open)'}`).join('; ')}` : ''}
 HEROES: ${heroes}
 FINAL SCENE:
 ${gameState.currentNarrative || ''}
@@ -771,9 +809,9 @@ export function generateSystemPrompt() {
 
     const tier = playerAge < 10 ? 'L1 child' : playerAge < 15 ? 'L2 tween' : 'L3 teen/adult';
     const policy = playerAge < 10
-        ? 'No gore, death, romance or slurs. Scary moments resolve quickly with reassurance; defeated foes flee, fall asleep or vanish in a puff of light.'
+        ? 'No blood, wounds, gore, death, romance or slurs. Show hits by their effect (knocked back, dizzy, a dented shield). Scary moments resolve quickly with reassurance; defeated foes flee, fall asleep or vanish in a puff of light.'
         : playerAge < 15
-            ? 'Fantasy violence is fine (no gore or dismemberment); death described tastefully; romance no further than blushing; no slurs.'
+            ? 'Exciting fantasy action, but no blood, gore or injury detail: show hits by their effect (knocked back, stumbling, a cracked shield), a scrape or bruise at most. Defeated foes are knocked out, captured or flee; any death happens off-screen and tastefully; romance no further than blushing; no slurs.'
             : 'Mature themes allowed in service of the story (loss, moral ambiguity, fantasy violence); no explicit sexual content or gratuitous gore.';
 
     // Pacing: every field here comes from one place (ageAppropriateReading.js)
@@ -801,7 +839,7 @@ CONTENT POLICY (${tier}): ${policy} If players ask for something off-policy, the
     parts.push(`THEME: ${gameState.adventureTheme}${gameState.customThemeDescription ? ` (${gameState.customThemeDescription})` : ''}. ${getThemeSpecificGuidance(gameState.adventureTheme)}
 Atmosphere: ${getThemeAtmosphere(gameState.adventureTheme)}
 Typical interactions: ${getThemeInteractions(gameState.adventureTheme)}
-Use names, people, places and props native to this theme (no village elders in cyberpunk, no libraries in dinosaur times). Avoid over-used names: Sunken Library, Heart of Shadow/Darkness, Shadow Blight, Whispering Woods, the Ancient Evil, the Chosen One.`);
+Use names, people, places and props native to this theme (no village elders in cyberpunk, no libraries in dinosaur times). Avoid over-used names: Sunken Library, Heart of Shadow/Darkness, Shadow Blight, Whispering Woods/Cove, anything 'Salty', the Ancient Evil, the Chosen One.${usedNamesLine()}`);
 
     if (gameState.storyHook && (gameState.turn || 0) <= 3) {
         parts.push(`STORY HOOK FOR THIS RUN (the opening must come from it): ${gameState.storyHook.archetype}: ${gameState.storyHook.flavor}`);
@@ -1168,11 +1206,11 @@ export async function makeAICallForSystemAction(prompt, preventTurnAdvance = fal
 
         prompt = `Please provide a rich, detailed story introduction in three parts for the start of a new ${themeBlurb} adventure starring ${playerNames}.
 
-Part 1: vivid scene-setting paragraph establishing the world, mood, and immediate location. USE VOCABULARY NATIVE TO THE THEME — for dinosaur, words like "tar pit", "migration", "claw-strike", "scaled feet"; for space, "habitat", "transponder", "parsec", "biosignal"; for pirate, "cog", "rigging", "salt-blasted", "doubloon"; for cyberpunk, "decker", "neon", "deck", "ICE", "chrome". Avoid generic-fantasy phrasing in non-fantasy themes.
+Part 1: vivid scene-setting paragraph establishing the world, mood, and immediate location. USE VOCABULARY NATIVE TO THE THEME (a dinosaur story talks of tar pits and migrations, a space story of habitats and transponders). Pick your own words; do not open with the same images every game. Avoid generic-fantasy phrasing in non-fantasy themes.
 Part 2: introduce the player character(s) — their situation right now and what makes this moment a turning point. Anchor names and props to the theme.
 Part 3: USE THE STORY HOOK BELOW as the inciting incident. Do not invent a different inciting incident — turn the hook's flavor text into prose.${hookBlock}
 
-This opening may run up to half again the READING LEVEL length. Use second-person voice ("You ..."). Avoid the over-used names listed under THEME.`;
+This opening may run up to half again the READING LEVEL length. Third person, like every turn. Avoid the over-used names listed under THEME. In "ops", replace /currentLocation with the named place where the story opens and add it under /entityMemory/locations.`;
     }
 
     // Who picks from the choices this call produces: the same hero when the
