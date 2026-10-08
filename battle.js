@@ -13,6 +13,7 @@ import { gameState } from './state.js';
  * ("Fire Storm", "a nova that scorches every foe").
  */
 export function isAreaSpell(spell) {
+    if (spell?.targeting === 'self' || spell?.targeting === 'ally') return false;
     if (['area', 'multiple', 'party', 'battlefield'].includes(spell?.targeting)) return true;
     const text = `${spell?.name || ''} ${spell?.description || ''} ${spell?.effect || ''}`;
     return /\b(all (foes|enemies|allies)|every (foe|enemy|ally)|everyone|whole party|area|storm|nova|blizzard|quake|earthquake|rain of|meteor|shockwave|wave of|burst|explosion|chain lightning)\b/i.test(text);

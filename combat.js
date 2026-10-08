@@ -103,6 +103,9 @@ export function initializeCombat(enemies) {
         enemy.statusEffects = enemy.statusEffects || [];
     });
 
+    // Power Strike's "every other round" is per fight (rounds restart at 1).
+    (gameState.players || []).forEach(p => { if (p) delete p.lastPowerStrikeRound; });
+
     // Get all valid combatants
     // Downed heroes are in the order too (their turns are skipped while down),
     // so one revived mid-fight gets turns again.
@@ -178,7 +181,8 @@ export async function advanceCombatTurn() {
     }
 
     // Process end-of-turn effects for current character if they exist
-    if (currentTurnChar?.statusEffects?.length > 0) {
+    // (not for a downed hero or fallen foe whose turn is only being skipped)
+    if (currentTurnChar?.statusEffects?.length > 0 && !currentTurnChar.isDowned && !currentTurnChar.isDefeated) {
         try {
             await processStatusEffectTicks(currentTurnChar);
         } catch (e) {

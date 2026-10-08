@@ -974,6 +974,82 @@ await block(async () => {
   check(gameState.players[0].inventory.length - inv0 === 1, `solo: one drop (${gameState.players[0].inventory.length - inv0})`);
 });
 
+// =====================================================================
+section('Batch 8: combat review findings');
+await block(async () => {
+  // Narrator starts the fight, then adds the foe in the next reply: it never acted.
+  fresh(); gameState.enemies = []; gameState.combat = { isActive: false, initiative: [], round: 1, currentTurnIndex: 0 };
+  Engine.applyDiff([{ op: 'replace', path: '/inCombat', value: true }]);
+  Engine.applyDiff([{ op: 'add', path: '/enemies/-', value: { name: 'Wolf', hp: 20, atk: 9 } }]);
+  const p = gameState.players[0]; const hp0 = p.hp; pinRandom(0.5);
+  await AH.handlePlayerChoice('Attack', 'Strike the wolf'); unpinRandom();
+  check(gameState.combat.isActive && gameState.combat.initiative.length === 2 && p.hp < hp0, `foe added after inCombat joins the turn order and fights back (order ${gameState.combat.initiative.length}, hero ${hp0} -> ${p.hp})`);
+});
+await block(async () => {
+  // Help Ally in a fight was free: no enemy reply, same hero acted again.
+  fresh();
+  const a = gameState.players[0], b = createNewPlayer('Bo', 10);
+  gameState.players = [a, b]; b.hp = 0; b.isDowned = true;
+  a.inventory.push({ id: 'rv', name: 'Phoenix Ash', type: 'Consumable', stats: { revive: true, healPercent: 0.25 }, quantity: 1 });
+  startFight(); gameState.combat.currentTurnIndex = gameState.combat.initiative.indexOf(a.id);
+  pinRandom(0.5); gameLog.length = 0;
+  await AH.helpAlly(b.id); unpinRandom();
+  const foeActed = gameLog.some(l => /Enemy Turn: Goblin is acting/.test(l));
+  const now = gameState.combat.initiative[gameState.combat.currentTurnIndex];
+  check(!b.isDowned && (foeActed || now !== a.id), `Help Ally in a fight passes the turn (Bo up ${!b.isDowned}, turn now ${now === a.id ? 'still Ava' : now}, foe acted ${foeActed})`);
+});
+await block(async () => {
+  // 'instant' damage spell with a status: the status was dropped.
+  const { p, e } = fresh();
+  const bolt = { id: 'sp_fb', name: 'Fire Bolt', level: 1, mpCost: 4, targeting: 'single', duration: 'instant', effects: { damage: 6, statusEffects: ['Burn'] } };
+  p.spellcasting = { knownSpells: [bolt], preparedSpells: [bolt], maxSpellLevel: 1 }; p.mp = 20;
+  startFight(); pinRandom(0.5);
+  await AH.handlePlayerChoice('Spell', 'Cast Fire Bolt'); unpinRandom();
+  check(e.statusEffects.some(s => s.name === 'Burn'), `instant spell applies its Burn (${e.statusEffects.map(s => s.name).join(',') || 'none'})`);
+});
+await block(async () => {
+  // Self buff named "Burst of Vigor" went to the foe.
+  const { p, e } = fresh();
+  const buff = { id: 'sp_bv', name: 'Burst of Vigor', level: 1, mpCost: 3, targeting: 'self', effects: { modifiers: { def: 3 } } };
+  p.spellcasting = { knownSpells: [buff], preparedSpells: [buff], maxSpellLevel: 1 }; p.mp = 20;
+  startFight(); const d0 = p.def, ed0 = e.def; pinRandom(0.5);
+  await AH.handlePlayerChoice('Spell', 'Cast Burst of Vigor'); unpinRandom();
+  check(p.def > d0 && e.def === ed0, `self buff with 'burst' in its name buffs the hero (hero DEF ${d0} -> ${p.def}, foe ${ed0} -> ${e.def})`);
+});
+await block(async () => {
+  // Power Strike stayed winded into the next fight.
+  const { p } = fresh(); p.lastPowerStrikeRound = 6; startFight();
+  const Battle = await import('../battle.js');
+  const ps = Battle.battleOptions('Special', p).find(o => o.label === 'Power Strike');
+  check(!/winded/.test(ps.detail), `new fight: Power Strike ready (${ps.detail})`);
+});
+await block(async () => {
+  // Battle Item with only a revive item drank it on yourself.
+  const { p } = fresh(); p.hp = 50;
+  p.inventory = [{ id: 'rv2', name: 'Phoenix Ash', type: 'Consumable', stats: { revive: true, healPercent: 0.25 }, quantity: 1 }];
+  startFight(); pinRandom(0.5);
+  await AH.handlePlayerChoice('Item', 'Use an item from your pack.'); unpinRandom();
+  check(p.inventory.some(i => i.id === 'rv2'), `battle Item keeps the revive item for a downed ally (still in pack ${p.inventory.some(i => i.id === 'rv2')})`);
+});
+await block(async () => {
+  // Narrator Poison twice stacked (ticked twice); Stun 999 never ended.
+  const { e } = fresh();
+  Engine.applyDiff([{ op: 'add', path: '/enemies/0/statusEffects/-', value: { name: 'Poison' } }]);
+  Engine.applyDiff([{ op: 'add', path: '/enemies/0/statusEffects/-', value: { name: 'Poison' } }]);
+  Engine.applyDiff([{ op: 'add', path: '/players/0/statusEffects/-', value: { name: 'Stun', duration: 999 } }]);
+  const stun = gameState.players[0].statusEffects.find(s => s.name === 'Stun');
+  check(e.statusEffects.filter(s => s.name === 'Poison').length === 1 && stun && stun.duration <= 10, `narrator effects merge and are capped (poison x${e.statusEffects.filter(s => s.name === 'Poison').length}, stun ${stun?.duration})`);
+});
+await block(async () => {
+  // Haste follow-up fired after a fizzled spell.
+  const { p, e } = fresh();
+  Combat.applyStatusEffect(p, 'Haste', 3, {}, 'test');
+  p.spellcasting = { knownSpells: [{ id: 'sp_big', name: 'Doom', level: 1, mpCost: 99, targeting: 'single', effects: { damage: 50 } }], preparedSpells: [], maxSpellLevel: 1 }; p.mp = 1;
+  startFight(); const e0 = e.hp; pinRandom(0.5);
+  await AH.handlePlayerChoice('Spell', 'Cast Doom'); unpinRandom();
+  check(e.hp === e0, `no hasted follow-up after a spell that fizzled (foe ${e0} -> ${e.hp})`);
+});
+
 console.error = realError;
 out(`\nfetch attempts blocked: ${fetchCalls}; elapsed ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 out(failed ? `✗ ${failed} mechanics check(s) failed` : '✓ all mechanics checks passed');

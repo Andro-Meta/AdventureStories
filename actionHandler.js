@@ -214,6 +214,7 @@ export async function handlePlayerChoice(actionType, choiceText) {
                 // Slow / Frost: every other turn is lost. Confusion: a blow may land on yourself or an ally.
                 if (actionType !== 'Disabled' && Combat.isSluggish(currentPlayer)) actionType = 'Sluggish';
                 const offensive = ['Attack', 'Special', 'Spell'].includes(actionType);
+                const foeHpBefore = (gameState.enemies || []).reduce((s, e) => s + (e?.hp || 0), 0);
                 if (offensive && Combat.confusedRoll(currentPlayer)) actionType = 'Confused';
 
                 switch (actionType) {
@@ -309,7 +310,7 @@ export async function handlePlayerChoice(actionType, choiceText) {
 
                     case 'Item': {
                         cbStep('3-Item', 'enter Item case');
-                        const usable = (currentPlayer.inventory || []).filter(i => i && i.type === 'Consumable' && (i.quantity == null || i.quantity > 0));
+                        const usable = (currentPlayer.inventory || []).filter(i => i && i.type === 'Consumable' && !i.stats?.revive && (i.quantity == null || i.quantity > 0));
                         const lowerChoice = String(choiceText || '').toLowerCase();
                         // The item the choice names, else one that heals, else any consumable.
                         // "Catch a breath" (battle menu, empty pack) uses nothing.
@@ -406,8 +407,9 @@ export async function handlePlayerChoice(actionType, choiceText) {
                 }
 
                 // Haste: a quick half-power follow-up strike after an attack, special or spell.
-                if (offensive && actionType !== 'Confused' && Combat.speedModOf(currentPlayer) > 0) {
-                    const foe = (gameState.enemies || []).find(e => e && !e.isDefeated && e.hp > 0);
+                const landed = (gameState.enemies || []).reduce((s, e) => s + (e?.hp || 0), 0) < foeHpBefore;
+                if (offensive && landed && actionType !== 'Confused' && Combat.speedModOf(currentPlayer) > 0) {
+                    const foe = (target && !target.isDefeated && target.hp > 0) ? target : (gameState.enemies || []).find(e => e && !e.isDefeated && e.hp > 0);
                     if (foe) {
                         const dmg = Math.max(1, Math.round(((currentPlayer.atk || 5) - (foe.def || 0) * 0.5) * 0.5));
                         foe.hp = Math.max(0, foe.hp - dmg);
@@ -2339,7 +2341,9 @@ export async function helpAlly(targetPlayerId) {
 
       // Turn advancement happens AFTER showing popups etc.
       log("Help Ally action complete. Advancing turn.");
-      await advanceTurn(); // Uses a turn
+      // In a fight the turn passes through the combat order, so the foes answer.
+      if (gameState.inCombat && gameState.combat?.isActive) await Combat.advanceCombatTurn();
+      else await advanceTurn(); // Uses a turn
       log("helpAlly finished.");
  }
 

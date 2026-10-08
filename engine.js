@@ -221,7 +221,7 @@ const PATHS = [
             // so named effects like "Poison" actually do damage-per-turn
             // even when the narrator only supplies the name.
             const effect = buildStatusEffectFromValue(value);
-            player.statusEffects.push(effect);
+            Combat.applyStatusEffect(player, effect.name, Math.min(10, Math.max(1, Math.round(effect.duration) || 1)), effect.effectTickData, 'narration');
             return `${player.name} status: +${effect.name}`;
         }
     },
@@ -483,7 +483,9 @@ const PATHS = [
                     // No enemies yet — defer; narrator should also add /enemies/-.
                     // Just ensure gs.combat is at least a stub so checks against
                     // gs.combat?.isActive don't drift.
-                    gs.combat = gs.combat || { isActive: true, round: 1, initiative: [], currentTurnIndex: 0, activeEffects: [], formation: { frontLine: [], backLine: [] } };
+                    // (a fresh stub: the old one from state.js is isActive:false, and
+                    // foes added next were then never put in the turn order)
+                    gs.combat = { isActive: true, round: 1, initiative: [], currentTurnIndex: 0, activeEffects: [], formation: { frontLine: [], backLine: [] } };
                 }
             } else if (!value && gs.combat) {
                 gs.combat.isActive = false;
@@ -552,7 +554,14 @@ const PATHS = [
             gs.enemies.push(enemy);
             // Joining a fight already in progress: give it a turn. Enemies added
             // mid-combat used to never act (they were missing from initiative).
-            if (gs.inCombat && gs.combat?.isActive && Array.isArray(gs.combat.initiative)) gs.combat.initiative.push(enemy.id);
+            // A fight with no proper turn order yet (inCombat came first, or a
+            // stale combat object) gets one built now, heroes included.
+            if (gs.inCombat) {
+                const order = gs.combat?.initiative || [];
+                if (!gs.combat?.isActive || !order.some(id => String(id).startsWith('player'))) {
+                    try { Combat.initializeCombat(gs.enemies.filter(e => e && !e.isDefeated)); } catch (_) {}
+                } else order.push(enemy.id);
+            }
             return `+enemy "${enemy.name}"${enemy.isBoss ? ' (BOSS)' : ''} (HP ${enemy.hp}/${enemy.maxHp})`;
         }
     },
@@ -578,7 +587,7 @@ const PATHS = [
             // named effects pull defaultDuration + defaultData so combat
             // tick logic actually applies the right damage / disable flags.
             const effect = buildStatusEffectFromValue(value);
-            enemy.statusEffects.push(effect);
+            Combat.applyStatusEffect(enemy, effect.name, Math.min(10, Math.max(1, Math.round(effect.duration) || 1)), effect.effectTickData, 'narration');
             return `${enemy.name} status: +${effect.name}`;
         }
     },
