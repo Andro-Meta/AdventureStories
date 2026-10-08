@@ -761,6 +761,9 @@ export function createNewPlayer(name, age) {
         isDowned: false,
         downedTurns: 0,
         statusEffects: [],
+        // Brave / Clever / Sneaky / Kind, 0-5 (progression.js); all start at 1
+        stats: { brave: 1, clever: 1, sneaky: 1, kind: 1 },
+        sparks: {}, statPoints: 0, level: 1, xp: 0,
     };
     log(`State: Player created with ID: ${player.id}`);
     return player;

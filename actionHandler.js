@@ -2,11 +2,13 @@
 // Handles player-initiated actions like choices, item use, special moves, etc.
 
 // --- Static Imports ---
-import { gameState, determineContext, getCurrentPlayer, canCurrentPlayerAct, calculateContextModifiers } from './state.js';
+import { gameState, determineContext, getCurrentPlayer, canCurrentPlayerAct } from './state.js';
 import * as Config from './config.js';
 import * as UI from './ui.js';
 import * as Combat from './combat.js';
 import * as Items from './items.js';
+import * as Progression from './progression.js';
+import { levelUp } from './battle.js';
  // May not be needed if all calls go through aiHandler
 import { generateId, getRandomElement, getRandomInt, clamp } from './utils.js';
 // Import aiHandler functions statically
@@ -329,7 +331,7 @@ export async function handlePlayerChoice(actionType, choiceText) {
                         } else {
                             const heal = item.stats?.heal || 0;
                             const healPct = item.stats?.healPercent || 0;
-                            const totalHeal = heal + Math.round((currentPlayer.maxHp || 100) * healPct);
+                            const totalHeal = Math.round((heal + (currentPlayer.maxHp || 100) * healPct) * Progression.kindHealing(currentPlayer)); // Kind: +10% per point
                             const parts = [];
                             if (item.stats?.throwStatus) {
                                 // Bombs, darts, powders: thrown at the foe, never at the hero.
@@ -390,7 +392,7 @@ export async function handlePlayerChoice(actionType, choiceText) {
                             combatLog = `${currentPlayer.name} looks for a way out, but there is no escaping this fight!`;
                             break;
                         }
-                        const fled = Math.random() < (Config.FLEE_CHANCE ?? 0.4);
+                        const fled = Math.random() < (Config.FLEE_CHANCE ?? 0.4) + 0.05 * Progression.statOf(currentPlayer, 'sneaky'); // Sneaky slips away
                         if (fled) {
                             combatLog = `${currentPlayer.name} successfully escapes from combat.`;
                             gameState.inCombat = false;
@@ -576,124 +578,67 @@ Fight round ${gameState.combat?.round || 1}. Narrate this round so the fight CHA
             return; // combat branch is fully handled here
         } else {
             // Handle exploration/story action with standard processing
-            outcomeSet = determineActionOutcomes(actionType, context);
-            if (!outcomeSet || !outcomeSet.outcomes) {
-                throw new Error(`Failed to determine outcomes for action type: ${actionType}`);
+            // A skill check (progression.js): d20 + the stat this kind of choice
+            // uses, against its difficulty; the odds were shown on the button.
+            // Coins, HP, items and XP follow from the result, never at random.
+            const checkType = validateAndMapActionType(actionType);
+            Progression.ensureStats(currentPlayer);
+            const roll = Progression.rollCheck(checkType, currentPlayer);
+            const result = Progression.outcomeFor(roll, currentPlayer);
+            const won = roll.band === 'success' || roll.band === 'crit';
+            success = won || roll.band === 'partial';
+            gameState.narrativeContext.lastOutcome = { success, band: roll.band, roll, context };
+            const statName = roll.stat ? Progression.STATS[roll.stat].name : 'Luck';
+            UI.showPopup(`🎲 ${statName}: ${Progression.describeRoll(roll)}`, won ? 'success' : roll.band === 'partial' ? 'info' : 'warning', 3500);
+            outcomeNotes.push(`${statName} check ${Progression.describeRoll(roll)}`);
+
+            if (result.hpLoss > 0) {
+                // Exploration never knocks a hero out (worst case 1 HP).
+                const before = currentPlayer.hp;
+                currentPlayer.hp = Math.max(Math.min(1, before), before - result.hpLoss);
+                UI.showPopup(`Lost ${before - currentPlayer.hp} HP!`, 'damage');
+                outcomeNotes.push(`lost ${before - currentPlayer.hp} HP (now ${currentPlayer.hp}/${currentPlayer.maxHp})`);
             }
-            
-            success = determineActionSuccess(outcomeSet.successChance);
-            
-            // Store outcome in narrative context
-            gameState.narrativeContext.lastOutcome = {
-                success,
-                effects: outcomeSet,
-                context: context
-            };
-
-            // Apply physical outcomes
-            if (outcomeSet.outcomes.physical) {
-                if (outcomeSet.outcomes.physical.hpChange) {
-                    const [min, max] = outcomeSet.outcomes.physical.hpChange;
-                    const hpChange = getRandomInt(min, max);
-                    if (hpChange !== 0) {
-                        // Exploration rolls leave a hero at 1 HP at worst: hp 0 outside
-                        // combat had no effect at all (no downed state, no warning).
-                        currentPlayer.hp = clamp(
-                            currentPlayer.hp + hpChange,
-                            Math.min(1, currentPlayer.hp),
-                            currentPlayer.maxHp
-                        );
-                        if (hpChange < 0) {
-                            UI.showPopup(`Lost ${Math.abs(hpChange)} HP!`, 'damage');
-                        } else {
-                            UI.showPopup(`Gained ${hpChange} HP!`, 'heal');
-                        }
-                        outcomeNotes.push(`${hpChange < 0 ? 'lost' : 'regained'} ${Math.abs(hpChange)} HP (now ${currentPlayer.hp}/${currentPlayer.maxHp})`);
-                    }
-                }
+            if (result.heal > 0) {
+                const before = currentPlayer.hp;
+                currentPlayer.hp = Math.min(currentPlayer.maxHp, before + Math.round(result.heal * Progression.kindHealing(currentPlayer)));
+                if (currentPlayer.hp > before) { UI.showPopup(`Gained ${currentPlayer.hp - before} HP!`, 'heal'); outcomeNotes.push(`regained ${currentPlayer.hp - before} HP (someone grateful patched them up)`); }
             }
-
-            // Apply resource outcomes
-            if (outcomeSet.outcomes.resource) {
-                if (outcomeSet.outcomes.resource.coinChange) {
-                    const [min, max] = outcomeSet.outcomes.resource.coinChange;
-                    const coinChange = getRandomInt(min, max);
-                    if (coinChange !== 0) {
-                        currentPlayer.coins = Math.max(0, (currentPlayer.coins || 0) + coinChange);
-                        if (coinChange > 0) {
-                            UI.showPopup(`Found ${coinChange} coins!`, 'success');
-                        } else if (coinChange < 0) {
-                            UI.showPopup(`Lost ${Math.abs(coinChange)} coins!`, 'warning');
-                        }
-                        outcomeNotes.push(`${coinChange > 0 ? 'found' : 'lost'} ${Math.abs(coinChange)} coins`);
-                    }
-                }
-
-                // Handle item drops
-                // Loot only when the action works out; "Bad" has the richest table
-                // and used to pay out even on failure, which made it the best pick.
-                if (success && outcomeSet.outcomes.resource.itemChance && Math.random() < outcomeSet.outcomes.resource.itemChance) {
-                    const tier = getRandomElement(outcomeSet.outcomes.resource.itemOptions.tiers);
-                    const type = getRandomElement(outcomeSet.outcomes.resource.itemOptions.types);
-                    const newItem = Items.generateThemedItem(gameState.adventureTheme, tier, type);
-                    if (newItem) {
-                        currentPlayer.inventory.push(newItem);
-                        UI.showPopup(`Found ${newItem.name}!`, 'item');
-                        outcomeNotes.push(`found ${newItem.name} (already in the inventory)`);
-                        // Track significant item finds
-                        if (newItem.rarity === 'Rare' || newItem.rarity === 'Legendary') {
-                            gameState.narrativeContext.significantEvents.push({
-                                type: 'itemFound',
-                                item: newItem.name,
-                                turn: gameState.turn
-                            });
-                        }
-                    }
+            if (result.coins !== 0) {
+                const before = currentPlayer.coins || 0;
+                currentPlayer.coins = Math.max(0, before + result.coins);
+                const d = currentPlayer.coins - before;
+                if (d > 0) { UI.showPopup(`${result.jackpot ? '💰 Jackpot! ' : ''}Found ${d} coins!`, result.jackpot ? 'legendary' : 'coins'); outcomeNotes.push(`found ${d} coins${result.note ? ` (${result.note})` : ''}`); }
+                else if (d < 0) { UI.showPopup(`Lost ${-d} coins!`, 'warning'); outcomeNotes.push(`lost ${-d} coins`); }
+            } else if (result.note) outcomeNotes.push(`found ${result.note}`);
+            if (result.item) {
+                const newItem = Items.generateThemedItem(gameState.adventureTheme, getRandomElement(result.item.tierPool), getRandomElement(result.item.typePool));
+                if (newItem) {
+                    currentPlayer.inventory.push(newItem);
+                    UI.showPopup(`Found ${newItem.name}!`, 'item');
+                    outcomeNotes.push(`found ${newItem.name} (already in the inventory)`);
                 }
             }
-
-            // Apply reputation outcomes (NEW FACTION SYSTEM)
-            if (outcomeSet.outcomes.reputation) {
-                await applyReputationChanges(outcomeSet.outcomes.reputation, actionType, choiceText);
+            if (result.fluster) {
+                Combat.applyStatusEffect(currentPlayer, 'Flustered', 3, {}, 'fumble');
+                outcomeNotes.push(`${currentPlayer.name} is flustered (-2 on checks for a few turns)`);
+            }
+            // XP and growth: every check teaches something; successes build the stat.
+            const levelsUp = Progression.gainXp(currentPlayer, result.xp, levelUp);
+            UI.showPopup(`+${result.xp} XP`, 'skill', 1800);
+            if (levelsUp) {
+                UI.showPopup(`⭐ ${currentPlayer.name} reached level ${currentPlayer.level}! Choose a stat to raise.`, 'legendary', 4000);
+                outcomeNotes.push(`${currentPlayer.name} reached level ${currentPlayer.level}`);
+            }
+            const grew = won ? Progression.addSpark(currentPlayer, roll.stat) : null;
+            if (grew) {
+                UI.showPopup(`${Progression.STATS[grew].icon} ${currentPlayer.name}'s ${Progression.STATS[grew].name} grew to ${currentPlayer.stats[grew]} from practice!`, 'legendary', 4000);
+                outcomeNotes.push(`${currentPlayer.name}'s ${Progression.STATS[grew].name} grew from practice`);
             }
 
-            // Apply narrative outcomes
-            if (outcomeSet.outcomes.narrative) {
-                if (outcomeSet.outcomes.narrative.reputationChange) {
-                    const [min, max] = outcomeSet.outcomes.narrative.reputationChange;
-                    const repChange = getRandomInt(min, max);
-                    if (repChange !== 0) {
-                        currentPlayer.reputation = (currentPlayer.reputation || 0) + repChange;
-                        // Track significant reputation changes
-                        if (Math.abs(repChange) >= 2) {
-                            gameState.narrativeContext.relationshipChanges.push({
-                                type: 'reputation',
-                                change: repChange,
-                                turn: gameState.turn
-                            });
-                        }
-                    }
-                }
-
-                // Handle information gain
-                if (outcomeSet.outcomes.narrative.informationGain) {
-                    gameState.narrativeContext.discoveredSecrets.push({
-                        action: choiceText,
-                        turn: gameState.turn
-                    });
-                }
-
-                // Handle special ability gain
-                if (outcomeSet.outcomes.narrative.specialAbility) {
-                    const newAbility = {
-                        name: outcomeSet.outcomes.narrative.specialAbility.name,
-                        effect: outcomeSet.outcomes.narrative.specialAbility.effect,
-                        usageContext: outcomeSet.outcomes.narrative.specialAbility.usageContext || 'both',
-                        mechanics: outcomeSet.outcomes.narrative.specialAbility.mechanics || {}
-                    };
-                    addSpecialMove(newAbility);
-                }
-            }
+            // Faction standing still reacts to the kind of choice.
+            const repConfig = Config.ChoiceOutcomeConfig.baseOutcomes[checkType]?.reputation;
+            if (repConfig) await applyReputationChanges(repConfig, actionType, choiceText);
         }
 
         // Update UI
@@ -791,7 +736,7 @@ Fight round ${gameState.combat?.round || 1}. Narrate this round so the fight CHA
 Already applied by the game (show these in the story; do not emit ops for them): ${outcomeNotes.join('; ')}.`
             : '';
         const actionLog = `${currentPlayer.name} chose (${actionType}): "${choiceText}"
-Result: ${gameState.narrativeContext.lastOutcome?.success ? 'it works out' : 'it goes wrong'}.${outcomeText}`;
+Result: ${{ crit: 'a brilliant success', success: 'it works out', partial: 'it works, but at a cost (show the cost)' }[gameState.narrativeContext.lastOutcome?.band] || (gameState.narrativeContext.lastOutcome?.success ? 'it works out' : 'it goes wrong: the story turns against them (a complication, not a dead end)')}.${outcomeText}`;
         gameState.lastActionMeta = { actor: currentPlayer.name, action: choiceText, success: !!gameState.narrativeContext.lastOutcome?.success, notes: outcomeNotes.join('; ') };
 
         log(`Constructed AI prompt with enhanced context: ${actionLog}`);
@@ -1042,113 +987,6 @@ function validateAndMapActionType(actionType) {
     return 'Investigative'; // Safe default for exploration-like actions
 }
 
-/**
- * Determines the potential outcomes for an action based on its type and context
- * @param {string} actionType - The type of action ('Good', 'Bad', 'Risky', 'Silly', 'Investigative')
- * @param {Object} context - The current game context
- * @returns {Object} Object containing success chance and potential outcomes
- */
-function determineActionOutcomes(actionType, context) {
-    // Validate and map action types
-    const validActionType = validateAndMapActionType(actionType);
-    const baseConfig = Config.ChoiceOutcomeConfig.baseOutcomes[validActionType];
-    
-    if (!baseConfig) {
-        throw new Error(`No outcome configuration for action type: ${validActionType} (original: ${actionType})`);
-    }
-
-    const contextMods = calculateContextModifiers(context);
-    const outcomes = {
-        successChance: baseConfig.successChance,
-        outcomes: {
-            physical: {},
-            resource: {},
-            narrative: {}
-        }
-    };
-
-    // Apply base outcomes
-    if (baseConfig.physical) {
-        outcomes.outcomes.physical = { ...baseConfig.physical };
-        if (contextMods.physical) {
-            // Modify HP changes
-            if (outcomes.outcomes.physical.hpChange && contextMods.physical.hpMod) {
-                outcomes.outcomes.physical.hpChange = outcomes.outcomes.physical.hpChange.map(
-                    val => Math.round(val * contextMods.physical.hpMod)
-                );
-            }
-        }
-    }
-
-    if (baseConfig.resource) {
-        outcomes.outcomes.resource = { ...baseConfig.resource };
-        if (contextMods.resource) {
-            // Modify coin changes
-            if (outcomes.outcomes.resource.coinChange && contextMods.resource.coinMod) {
-                outcomes.outcomes.resource.coinChange = outcomes.outcomes.resource.coinChange.map(
-                    val => Math.round(val * contextMods.resource.coinMod)
-                );
-            }
-            // Modify item chances
-            if (outcomes.outcomes.resource.itemChance && contextMods.resource.itemChanceMod) {
-                outcomes.outcomes.resource.itemChance *= contextMods.resource.itemChanceMod;
-            }
-        }
-    }
-
-    if (baseConfig.narrative) {
-        outcomes.outcomes.narrative = { ...baseConfig.narrative };
-        if (contextMods.narrative) {
-            // Modify reputation changes
-            if (outcomes.outcomes.narrative.reputationChange && contextMods.narrative.repMod) {
-                outcomes.outcomes.narrative.reputationChange = outcomes.outcomes.narrative.reputationChange.map(
-                    val => Math.round(val * contextMods.narrative.repMod)
-                );
-            }
-        }
-
-        // Check for special ability gain based on context
-        if (context.situation === 'discovery' || context.situation === 'revelation') {
-            // Higher chance for special abilities during discoveries
-            if (Math.random() < 0.3) { // 30% chance
-                outcomes.outcomes.narrative.specialAbility = {
-                    name: "Hydrokinesis",
-                    effect: "Control and manipulate water currents with newfound Hydrokin abilities",
-                    usageContext: "both",
-                    mechanics: {
-                        damage: 20,
-                        statusEffects: ["Drenched"],
-                        exploration: {
-                            obstacleTypes: ["water", "current"],
-                            puzzleBonus: 2,
-                            environmentalEffect: "manipulate water currents"
-                        }
-                    }
-                };
-            }
-        }
-    }
-
-    // Apply success chance modifiers
-    if (contextMods.successChanceMod) {
-        outcomes.successChance = clamp(
-            outcomes.successChance * contextMods.successChanceMod,
-            0.1,  // Minimum 10% chance
-            0.9   // Maximum 90% chance
-        );
-    }
-
-    return outcomes;
-}
-
-/**
- * Determines if an action is successful based on its success chance
- * @param {number} successChance - The probability of success (0-1)
- * @returns {boolean} Whether the action succeeded
- */
-function determineActionSuccess(successChance) {
-    return Math.random() < successChance;
-}
 
 /**
  * Deterministic god-mode intent extractor. Parses the player's free-form
@@ -1196,6 +1034,16 @@ export function extractGodModeDiffOps(text) {
             n = Math.min(99999, (getCurrentPlayer()?.coins || 0) + n);
         }
         ops.push({ op: 'replace', path: '/players/0/coins', value: n });
+    }
+
+    // --- Stats (progression.js): "max stats", "my Brave is 5", "Clever 4" ---
+    if (/\b(max(imum|ed)?|all)\s+(my\s+)?stats\b|\bstats\s+(to\s+)?max\b/i.test(t)) {
+        for (const k of ['brave', 'clever', 'sneaky', 'kind']) ops.push({ op: 'replace', path: `/players/0/stats/${k}`, value: 5 });
+    } else {
+        for (const k of ['brave', 'clever', 'sneaky', 'kind']) {
+            const m = t.match(new RegExp(`\\b(?:my\\s+)?${k}(?:ness)?\\s*(?:is\\s+(?:now\\s+)?|=|to\\s+|:\\s*)?(\\d)\\b`, 'i'));
+            if (m) ops.push({ op: 'replace', path: `/players/0/stats/${k}`, value: Math.min(5, Number(m[1])) });
+        }
     }
 
     // --- Health, mana, levels (live: "full health, level up" matched nothing) ---
@@ -1610,7 +1458,7 @@ export async function useInventoryItem(itemId) {
      }
      if (item.type === 'Consumable') {
         // Heal Effect (with trust-based penalties)
-        const baseHeal = (Number(item.stats?.heal) || 0) + Math.round((player.maxHp || 100) * (Number(item.stats?.healPercent) || 0));
+        const baseHeal = Math.round(((Number(item.stats?.heal) || 0) + (player.maxHp || 100) * (Number(item.stats?.healPercent) || 0)) * Progression.kindHealing(player)); // Kind: +10% per point
         if (baseHeal > 0) {
             consumed = true;
             const oldHp = player.hp;
@@ -2337,50 +2185,6 @@ export async function helpAlly(targetPlayerId) {
       log("helpAlly finished.");
  }
 
-/** Adds a new special move to the current player. */
-export function addSpecialMove(moveData) {
-    const log = window.displayVisualError || console.log;
-    log(`Attempting to add special move: ${moveData.name}`);
-    
-    const player = getCurrentPlayer();
-    if (!player) { 
-        log("ERROR: Cannot find player to add special move."); 
-        return; 
-    }
-
-    // Initialize specialMoves array if it doesn't exist
-    if (!player.specialMoves) {
-        player.specialMoves = [];
-    }
-
-    // Generate unique ID for the move
-    const moveId = generateId('move');
-    
-    // Create the special move object
-    const specialMove = {
-        id: moveId,
-        name: moveData.name,
-        effect: moveData.effect,
-        usageContext: moveData.usageContext || 'both',
-        cooldown: moveData.cooldown || 5,
-        currentCooldown: 0,
-        mechanics: moveData.mechanics || {}
-    };
-
-    // Add the move to player's special moves
-    player.specialMoves.push(specialMove);
-    log(`Added special move ${specialMove.name} to player ${player.name}`);
-    
-    // Show feedback
-    UI.showPopup(`Learned new ability: ${specialMove.name}!`, 'skill');
-    
-    // Update UI if on special moves screen
-    if (gameState.currentScreen === 'specialMovesScreen') {
-        UI.renderSpecialMoves();
-    }
-
-    return specialMove;
-}
 
 /**
  * Apply reputation changes from choice outcomes

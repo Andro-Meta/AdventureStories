@@ -4,6 +4,7 @@
 // --- Module Imports ---
 import { gameState, determineContext, getCurrentPlayer } from './state.js'; // Needs gameState to access players/enemies
 import * as Config from './config.js'; // Needs config values
+import * as Progression from './progression.js';
 // Import specific functions from utils needed here
 import { getRandomInt, getRandomElement, clamp, generateId } from './utils.js';
 // Import item functions needed for enemy loot generation
@@ -359,6 +360,7 @@ export function calculateDamage(attacker, defender, options = {}) {
     // capped at 10% (it was unbounded: DEF 30 vs ATK 5 hit 40% of the time) and safe at ATK 0
     const defenseAdvantage = Math.min(1, Math.max(0, (defender.def || 0) - (attacker.atk || 0)) / Math.max(1, attacker.atk || 0));
     accuracy -= defenseAdvantage * 0.1; // Up to 10% accuracy reduction
+    if (String(defender?.id || '').startsWith('player')) accuracy -= Progression.sneakyDodge(defender); // Sneaky heroes dodge
     
     // Accuracy check
     const accuracyRoll = Math.random();
@@ -898,6 +900,7 @@ export function recalculateCharacterStats(character) {
         const armorBonus = armor?.stats?.def || 0;
         currentAtk += weaponBonus;
         currentDef += armorBonus;
+        currentAtk += Progression.braveAttack(character); // +1 attack per point of Brave
         if (weaponBonus !== 0 || armorBonus !== 0) log(` -> After Equip: ATK=${currentAtk} (+${weaponBonus}), DEF=${currentDef} (+${armorBonus})`);
      }
      let flatAtkMod = 0, flatDefMod = 0, atkMultiplier = 1.0, defMultiplier = 1.0;

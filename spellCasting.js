@@ -16,8 +16,8 @@ const StatusEffects = { applyStatusEffect: (target, effect) => {
     const turns = Number(effect?.duration) > 0 ? Number(effect.duration) : (Combat.lookupStatusEffect(name)?.defaultDuration || 2);
     return Combat.applyStatusEffect(target, name, turns, effect?.effectTickData || {}, 'spell');
 } };
-import * as AdaptiveAbilities from './adaptiveAbilities.js';
 import { isAreaSpell } from './battle.js';
+import * as Progression from './progression.js';
 
 /**
  * Cast a spell with full mechanics and effects
@@ -387,7 +387,7 @@ async function applySpellEffectToTarget(spell, caster, target) {
     
     // Apply healing
     if (spell.effects.healing) {
-        const healing = Math.round(spell.effects.healing * spellPower);
+        const healing = Math.round(spell.effects.healing * spellPower * Progression.kindHealing(caster) / Progression.cleverPower(caster)); // heals scale with Kind, not Clever
         const actualHealing = Math.min(healing, target.maxHp - target.hp);
         target.hp = Math.min(target.maxHp, target.hp + healing);
         result.effects.push({ type: 'healing', value: actualHealing });
@@ -464,6 +464,7 @@ function calculateSpellPower(spell, caster) {
         power += caster.spellcasting.castingModifiers.powerBonus;
     }
     
+    power *= Progression.cleverPower(caster); // Clever: +10% per point
     return Math.max(0.5, Math.min(3.0, power)); // Cap between 50% and 300%
 }
 

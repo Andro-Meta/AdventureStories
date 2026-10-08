@@ -6,6 +6,7 @@
 //  - experience and levels: every defeated foe gives XP to the whole party;
 //    a level-up raises max HP/MP, attack, defense and heals a little.
 import { gameState } from './state.js';
+import { gainXp } from './progression.js';
 import { getCurrentThemeAdaptation } from './adaptiveAbilities.js';
 
 /**
@@ -21,7 +22,7 @@ export function isAreaSpell(spell) {
 }
 
 // ---------------------------------------------------------------- XP / levels
-export const xpForLevel = (level) => 40 * level; // XP needed to go from `level` to the next
+export { xpForLevel } from './progression.js'; // 100, 150, 200... per level (totals 100/250/450/700)
 
 /** Raise one hero's level by n with the normal per-level gains (god mode, wishes). */
 export function levelUp(p, n = 1) {
@@ -48,18 +49,13 @@ export function awardXp(enemy) {
     const party = Math.max(1, (gameState.players || []).filter(Boolean).length);
     const hpScale = enemy?.isBoss ? (40 + 20 * party) / 60 : (15 + 10 * party) / 25;
     const soloHp = (enemy?.maxHp || 20) / hpScale;
-    const soloXp = Math.max(5, Math.round(soloHp * 0.6)) * (enemy?.isBoss ? 3 : 1);
+    const soloXp = Math.max(8, Math.round(soloHp * 0.9)) * (enemy?.isBoss ? 3 : 1); // a 25-HP foe: 22 XP
     const standing = (gameState.players || []).filter(p => p && !p.isDowned);
     const xp = Math.max(1, Math.ceil(soloXp * party / Math.max(1, standing.length)));
     const ups = [];
     for (const p of standing) {
-        p.level = p.level || 1;
-        p.xp = (p.xp || 0) + xp;
-        while (p.xp >= xpForLevel(p.level)) {
-            p.xp -= xpForLevel(p.level);
-            levelUp(p, 1);
-            ups.push(`${p.name} reached level ${p.level}!`);
-        }
+        const n = gainXp(p, xp, levelUp); // also gives a stat point per level
+        for (let i = n - 1; i >= 0; i--) ups.push(`${p.name} reached level ${p.level - i}! Choose a stat to raise.`);
     }
     return { xp, ups };
 }

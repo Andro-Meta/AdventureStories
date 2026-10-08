@@ -439,6 +439,17 @@ export const STATUS_EFFECTS = {
         resistanceType: 'Time',
         canStack: false
     },
+    FLUSTERED: {
+        name: 'Flustered',
+        type: 'debuff',
+        description: 'Rattled: -2 on choice checks for a few turns',
+        icon: '😵',
+        color: '#ffaa44',
+        defaultDuration: 3,
+        defaultData: {},
+        resistanceType: 'None',
+        canStack: false
+    },
     GUARDING: {
         name: 'Guarding',
         type: 'buff',

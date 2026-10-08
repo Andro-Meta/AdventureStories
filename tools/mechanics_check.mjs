@@ -63,6 +63,7 @@ function fresh({ enemy = {}, player = {} } = {}) {
   gameState.adventureTheme = 'fantasy';
   gameState.turn = 3;
   const p = createNewPlayer('Ava', 10);
+  p.stats = { brave: 0, clever: 0, sneaky: 0, kind: 0 }; // base rules; stat effects are checked on their own
   Object.assign(p, player);
   gameState.players = [p];
   gameState.currentPlayerIndex = 0;
@@ -946,20 +947,20 @@ await block(async () => {
 });
 await block(async () => {
   // XP pot scales with the party like the foes do: every hero earns what a
-  // solo hero would (foe sized 25 HP solo / 35 HP for two: 15 XP each).
+  // solo hero would (foe sized 25 HP solo / 35 HP for two: 23 XP each).
   const Battle = await import('../battle.js');
   fresh();
   const solo = Battle.awardXp({ maxHp: 25 });
   const a = createNewPlayer('A', 10), b = createNewPlayer('B', 10);
   gameState.players = [a, b];
   const duo = Battle.awardXp({ maxHp: 35 });
-  check(solo.xp === 15 && duo.xp === 15 && a.xp === 15 && b.xp === 15, `solo 25-HP foe ${solo.xp} XP; duo vs 35-HP foe ${a.xp}/${b.xp} XP each`);
+  check(solo.xp === 23 && duo.xp === 23 && a.xp === 23 && b.xp === 23, `solo 25-HP foe ${solo.xp} XP; duo vs 35-HP foe ${a.xp}/${b.xp} XP each`);
   b.isDowned = true; a.xp = 0;
   Battle.awardXp({ maxHp: 35 });
-  check(a.xp === 30, `ally down: the standing hero takes the whole pot (${a.xp})`);
+  check(a.xp === 46, `ally down: the standing hero takes the whole pot (${a.xp})`);
   gameState.players = [createNewPlayer('C', 10), createNewPlayer('D', 10), createNewPlayer('E', 10)];
-  const boss = Battle.awardXp({ maxHp: 100, isBoss: true }); // boss sized for 3 = solo 60 HP -> 36*3 = 108
-  check(boss.xp === 108, `3-hero boss (100 HP): ${boss.xp} XP each, same as a solo boss`);
+  const boss = Battle.awardXp({ maxHp: 100, isBoss: true }); // boss sized for 3 = solo 60 HP -> 54*3 = 162
+  check(boss.xp === 162, `3-hero boss (100 HP): ${boss.xp} XP each, same as a solo boss`);
 });
 await block(async () => {
   // Loot: one roll per standing hero, each to a different hero; coins split.
@@ -1143,6 +1144,97 @@ await block(async () => {
   check(flagged.length === 0, `new directions are not flagged (${flagged.length ? flagged.join(' | ') : 'none flagged'})`);
   const ins = AIH.buildChoiceInstructions(['Good', 'Bad'], false, done);
   check(/Never offer an action the heroes already took/.test(ins) && ins.includes('biometric key'), 'choice instructions list the actions already taken');
+});
+
+// =====================================================================
+section('Batch 13: stats, checks, rewards and levels (progression.js)');
+const Prog = await import('../progression.js');
+await block(async () => {
+  const h = Prog.ensureStats({ stats: {} });
+  const pct = (t) => Math.round(Prog.chanceFor(t, h) * 100);
+  check(pct('Good') === 70 && pct('Investigative') === 60 && pct('Risky') === 40 && pct('Bad') === 45 && pct('Silly') === 55, `odds at stat 1: Good ${pct('Good')}% Inv ${pct('Investigative')}% Risky ${pct('Risky')}% Bad ${pct('Bad')}% Silly ${pct('Silly')}%`);
+  h.stats.brave = 5;
+  check(pct('Risky') === 60, `Brave 5 raises Risky odds 40% -> ${pct('Risky')}%`);
+  const seq = (v) => () => v;
+  check(Prog.rollCheck('Risky', h, seq(0.99)).band === 'crit' && Prog.rollCheck('Risky', h, seq(0)).band === 'fumble', 'natural 20 is a crit, natural 1 a fumble');
+  const r = Prog.rollCheck('Risky', h, seq(0.30)); // die 7 + 5 = 12 vs 14: within 3 -> partial
+  check(r.band === 'partial', `7 + Brave 5 = 12 vs 14 is a success at a cost (${r.band})`);
+});
+await block(async () => {
+  // Harm only from failed Risky/Bad (and tiny silly fails); successes never hurt.
+  const h = Prog.ensureStats({ stats: {}, maxHp: 100, level: 1 });
+  let bad = [];
+  for (const type of ['Good', 'Investigative', 'Risky', 'Bad', 'Silly']) {
+    for (let i = 0; i < 300; i++) {
+      const roll = Prog.rollCheck(type, h);
+      const o = Prog.outcomeFor(roll, h);
+      const won = roll.band === 'success' || roll.band === 'crit';
+      if (won && o.hpLoss > 0) bad.push(`${type} success hurt`);
+      if ((type === 'Good' || type === 'Investigative') && o.hpLoss > 0) bad.push(`${type} hurt`);
+      if (type === 'Silly' && o.hpLoss > 4) bad.push('Silly hurt more than 4');
+      if (o.xp < 5) bad.push(`${type} gave ${o.xp} XP`);
+    }
+  }
+  check(bad.length === 0, `harm only follows failed bold/reckless moves; every check gives XP (${[...new Set(bad)].join(', ') || 'clean'})`);
+  const fail = Prog.outcomeFor({ type: 'Bad', band: 'fail', die: 3, stat: 'sneaky', dc: 13, total: 4 }, h, () => 0.5);
+  check(fail.hpLoss >= 12 && fail.coins < 0, `a failed Bad move hurts and costs coins (${fail.hpLoss} HP, ${fail.coins} coins)`);
+  const jack = Prog.outcomeFor({ type: 'Silly', band: 'success', die: 19, stat: null, dc: 10, total: 19 }, h, () => 0.5);
+  check(jack.jackpot && jack.coins >= 25, `Silly natural 19 is a jackpot (${jack.coins} coins)`);
+});
+await block(async () => {
+  // Levels: 100 XP to level 2 with a stat point; 6 successes with a stat raise it.
+  const h = Prog.ensureStats({ stats: {}, maxHp: 100, hp: 100, level: 1, xp: 0 });
+  const Battle = await import('../battle.js');
+  const n = Prog.gainXp(h, 100, Battle.levelUp);
+  check(n === 1 && h.level === 2 && h.statPoints === 1 && h.maxHp === 110, `100 XP -> level ${h.level}, ${h.statPoints} stat point, max HP ${h.maxHp}`);
+  check(Prog.spendStatPoint(h, 'clever') && h.stats.clever === 2 && h.statPoints === 0, `level-up point raises Clever to ${h.stats.clever}`);
+  let grew = null; for (let i = 0; i < 6; i++) grew = Prog.addSpark(h, 'kind') || grew;
+  check(grew === 'kind' && h.stats.kind === 2, `6 Kind successes raise Kind to ${h.stats.kind}`);
+});
+await block(async () => {
+  // A real exploration turn: the roll decides; a crit can't hurt; a failed Bad move does.
+  const { p } = fresh(); p.stats = { brave: 1, clever: 1, sneaky: 1, kind: 1 };
+  const xp0 = p.xp || 0, hp0 = p.hp;
+  pinRandom(0.99); // natural 20
+  await AH.handlePlayerChoice('Risky', 'Leap across the broken bridge'); unpinRandom();
+  check(p.hp === hp0 && (p.xp || 0) > xp0 && gameState.narrativeContext.lastOutcome?.band === 'crit', `Risky crit: no harm, XP ${xp0} -> ${p.xp} (band ${gameState.narrativeContext.lastOutcome?.band})`);
+  const g = fresh(); g.p.stats = { brave: 1, clever: 1, sneaky: 1, kind: 1 }; g.p.coins = 50;
+  pinRandom(0.1); // die 3: a clear failure
+  await AH.handlePlayerChoice('Bad', 'Kick the guard dog to get past it'); unpinRandom();
+  check(g.p.hp < 100 && g.p.coins < 50, `failed Bad move: HP 100 -> ${g.p.hp}, coins 50 -> ${g.p.coins}`);
+  const k = fresh(); k.p.stats = { brave: 1, clever: 1, sneaky: 1, kind: 1 };
+  pinRandom(0.1);
+  await AH.handlePlayerChoice('Good', 'Help the fisherman haul his net'); unpinRandom();
+  check(k.p.hp === 100, `failed Good move costs no HP (HP ${k.p.hp})`);
+});
+await block(async () => {
+  // Story milestones pay XP and coins.
+  const { p } = fresh(); gameState.questProgress = { milestones: [] }; p.coins = 0; p.xp = 0;
+  Engine.applyDiff([{ op: 'add', path: '/questProgress/milestones/-', value: { name: 'call_to_adventure' } }]);
+  check(p.xp === 50 && p.coins >= 15, `milestone: +${p.xp} XP, +${p.coins} coins`);
+});
+await block(async () => {
+  // Stats in fights: Brave adds attack, Kind heals more.
+  const { p } = fresh(); p.stats = { brave: 3, clever: 0, sneaky: 0, kind: 0 };
+  Combat.recalculateCharacterStats(p);
+  check(p.atk === 5 + 3, `Brave 3: ATK 5 -> ${p.atk}`);
+  const k = fresh(); k.p.stats = { brave: 0, clever: 0, sneaky: 0, kind: 5 }; k.p.hp = 40;
+  k.p.inventory.push({ id: 'pk', name: 'Healing Potion', type: 'Consumable', stats: { heal: 20 }, quantity: 1, effect: 'Restores HP.' });
+  await AH.useInventoryItem('pk');
+  check(k.p.hp === 70, `Kind 5: a 20-HP potion heals 30 (HP 40 -> ${k.p.hp})`);
+});
+
+// =====================================================================
+section('Batch 14: stats in god mode');
+await block(async () => {
+  const { p } = fresh(); gameState.isGoalComplete = true;
+  Engine.applyDiff(AH.extractGodModeDiffOps('my Brave is 5 and Clever 4'));
+  check(p.stats.brave === 5 && p.stats.clever === 4, `god mode "my Brave is 5 and Clever 4" (brave ${p.stats.brave}, clever ${p.stats.clever})`);
+  Engine.applyDiff([{ op: 'replace', path: '/players/0/level', value: 4 }]);
+  check(p.statPoints === 3, `god-mode level 1 -> 4 gives 3 stat points (${p.statPoints})`);
+  const q = fresh(); gameState.isGoalComplete = false;
+  Engine.applyDiff([{ op: 'replace', path: '/players/0/stats/brave', value: 5 }]);
+  check(q.p.stats.brave === 0, `outside god mode the storyteller can't set stats (brave ${q.p.stats.brave})`);
 });
 
 console.error = realError;
