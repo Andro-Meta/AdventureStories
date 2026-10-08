@@ -33,6 +33,7 @@ export const MAIN_QUEST_ARC = [
         targetTurnRange: [1, 12],
         narratorHint:
 `This is Act 1 of the main quest. You are establishing the world and the threat.
+- STORY CIRCLE 1-2 (You, Need): first show the heroes in their ordinary world, then hit them with a want or problem that breaks it.
 - Introduce 1-2 named NPCs and at least one named location.
 - Plant the inciting incident: something is wrong, the player is the only one who can fix it.
 - By turn 4-6, you MUST set /adventureGoal to a clear sentence ("Restore the X before the Y").
@@ -52,6 +53,7 @@ export const MAIN_QUEST_ARC = [
         targetTurnRange: [13, 30],
         narratorHint:
 `This is Act 2 of the main quest. The player is in the middle of the journey.
+- STORY CIRCLE 3-5 (Go, Search, Find): push them into unfamiliar places, let them try and fail and adapt, then let them find what they sought, but not the way they expected.
 - Introduce the antagonist (NPC) or their reach (location/item).
 - Give the player tangible progress: an ally NPC, a key item, a partial victory.
 - Include at least one combat encounter (spawn an enemy via /enemies/-, set /inCombat: true).
@@ -75,6 +77,8 @@ export const MAIN_QUEST_ARC = [
 `- The main villain is a BOSS: when the final fight starts, add it with /enemies/- including "isBoss": true.
   If a MAIN VILLAIN is named below, the boss IS that villain: use that exact name.
 This is Act 3 of the main quest. The player is at the climax.
+- STORY CIRCLE 6-8 (Take, Return, Change): before the victory the heroes pay a real price (a loss, a broken treasure, a hard choice, an ally hurt). Then they win, and the closing beats show how they have changed.
+- Pay off every OPEN THREAD before the final_blow: each setup gets its moment.
 - Stage a climactic encounter — usually combat, sometimes a moral choice or sacrifice.
 - Use these EXACT milestone names verbatim, in order:
    1. "final_confrontation" — when the player faces the antagonist directly.

@@ -101,6 +101,20 @@ async function playTurn(i) {
   return { picked, ok };
 }
 
+// --turns N [--tag name]: play N natural turns, save the story for
+// tools/story_judge.mjs, stop (story-quality measurement, not a pass/fail run).
+const TURNS = Number(args[args.indexOf('--turns') + 1]) || 0;
+if (TURNS) {
+  for (let t = 0; t < TURNS; t++) {
+    if (await gs(g => g.inCombat)) { await clickType('Attack'); await settle(); } else await playTurn(t);
+  }
+  const tag = args.includes('--tag') ? args[args.indexOf('--tag') + 1] : 'run';
+  const story = await gs(g => ({ goal: g.adventureGoal, villain: g.questProgress?.villain, threads: g.storyThreads || [], log: g.storyLog }));
+  fs.writeFileSync(`${ROOT}test-results/story_${tag}.json`, JSON.stringify(story, null, 2));
+  console.log(`saved ${story.log.length} scenes -> test-results/story_${tag}.json | AI calls ${usage.calls} | tokens in ${usage.in} out ${usage.out}`);
+  await browser.close(); server.kill(); process.exit(0);
+}
+
 if (FULL) {
   // --- whole game ------------------------------------------------------------
   let t = 0;

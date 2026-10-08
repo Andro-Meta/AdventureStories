@@ -126,5 +126,17 @@ check(typeof AI.writeEpilogue === 'function', 'epilogue writer exists');
   check(Object.keys(firsts).length === 5 && max < 120, `choices render in random order (first-slot counts ${JSON.stringify(firsts)})`);
 }
 
+// Story threads (Chekhov's gun): planted, capped at 4 open, paid off.
+gameState.storyThreads = [];
+Engine.applyDiff([1, 2, 3, 4, 5].map(n => ({ op: 'add', path: '/storyThreads/-', value: { text: `clue ${n}` } })), { strict: false });
+check(gameState.storyThreads.length === 4, `at most 4 open threads (${gameState.storyThreads.length})`);
+Engine.applyDiff([{ op: 'replace', path: '/storyThreads/1/resolved', value: true }], { strict: false });
+check(gameState.storyThreads[1].resolved === true, 'a thread can be paid off');
+Engine.applyDiff([{ op: 'add', path: '/storyThreads/-', value: 'clue 5' }], { strict: false });
+check(gameState.storyThreads.length === 5, 'paying one off makes room for a new thread');
+check(Engine.describeAllowedPaths().includes('/storyThreads/-'), 'narrator is told about /storyThreads');
+check(Q.MAIN_QUEST_ARC.every(a => /STORY CIRCLE/.test(a.narratorHint)), 'every act carries its Story Circle beats');
+check(/OPEN THREAD/.test(Q.MAIN_QUEST_ARC[2].narratorHint), 'Act 3 demands open threads be paid off');
+
 console.log(failed ? `✗ ${failed} PROMPT CHECK FAILURE(S)` : '✓ prompt checks pass');
 process.exit(failed ? 1 : 0);

@@ -76,6 +76,7 @@ YOURS TO EMIT when the story makes them happen:
 - New named NPCs or notable items: add /entityMemory/npcs/<Name> or /entityMemory/items/<Name>; items the hero picks up: add ${P}/inventory/-.
 - A fight starts: add /enemies/- (hp, maxHp, atk, def, abilities) AND replace /inCombat true. During a fight the game handles enemy HP and defeat itself: never emit /enemies/<n>/hp or /isDefeated, and never re-add an enemy that is already there or was defeated.
 - Status effects with narrative weight (Poison, Burn, Stun, Fear, Regen, Shield...): add ${P}/statusEffects/- {name, duration}.
+- Setups (Chekhov's gun): when the story makes a point of a clue, object, promise or mystery, add /storyThreads/- {text}. When one pays off, replace /storyThreads/<n>/resolved true. Never plant something you won't use.
 - Quest beats: add /questProgress/milestones/- using the EXACT names from the MAIN QUEST STAGE block, plus replace /questProgress/completionPercentage. Favors or rumors: add /questProgress/sideQuests/- {name, description, reward}.
 ${gameState.adventureGoal ? '' : '- Set /adventureGoal once early (turn 4-6).\n'}- Main quest truly finished: add the "final_blow" milestone (the game then completes the quest).
 If the narration says the hero picked something up, met someone named, arrived somewhere named, or a fight began, the matching op MUST be in "ops". An empty list is only for a turn where nothing in the world changed.
@@ -122,6 +123,8 @@ Reply with ONE JSON object with all three keys, and nothing else:
 {"narration":"...","ops":[],"choices":[${types.map(t => `{"type":"${t}","text":"..."}`).join(',')}]}
 
 NARRATION: ${words} words (at least ${wc.min}; replies under that are too thin), in 2 short paragraphs, third person, naming the hero who acted. Show what happens because of the action, then end on a moment that invites the next decision. No choices or bracket tokens inside the narration.
+
+STORY LOGIC (the South Park rule): link this scene to the last with THEREFORE (a direct consequence of the choice) or BUT (a complication that makes things harder), never "and then". At least every other scene needs a BUT: a twist, a cost, a rival, a door that won't open. Never repeat the last scene's beat; something new must happen.${openThreadsBlock()}
 
 ${nextActor && (gameState.players || []).length > 1 ? `NEXT TO ACT: ${nextActor.name}. Write the choices for ${nextActor.name}${nextActor.specialMoves?.length ? ` (special moves: ${nextActor.specialMoves.map(m => m.name).join(', ')})` : ''} and end the narration by turning to them.
 
@@ -195,13 +198,22 @@ ${buildDiffInstructions(pIdx)}`;
  * finished story (world changes, reactions, each hero) before god mode.
  * Shown below the final turn's narration; failure just skips it.
  */
+// The setups the story still owes a payoff, numbered by their index in
+// gameState.storyThreads so the narrator can mark them resolved.
+function openThreadsBlock() {
+    const open = (gameState.storyThreads || []).map((t, i) => ({ ...t, i })).filter(t => !t.resolved);
+    if (!open.length) return '';
+    return `\nOPEN THREADS (setups you owe a payoff; push one forward or pay it off soon, by number):\n${open.map(t => `${t.i}. ${t.text}`).join('\n')}`;
+}
+
 export async function writeEpilogue() {
     const heroes = (gameState.players || []).map(p => p.name).join(', ');
     const villain = gameState.questProgress?.villain;
     const payload = await API.getAIResponseJSON([
         { role: 'system', content: `You write the ending of a ${getThemeName()} text adventure. Reply with one JSON object only.` },
         { role: 'user', content: `QUEST WON: ${gameState.adventureGoal || 'the main quest'}${villain ? `
-VILLAIN DEFEATED: ${villain}` : ''}
+VILLAIN DEFEATED: ${villain}` : ''}${(gameState.storyThreads || []).length ? `
+STORY THREADS (pay off any still open in a line each): ${gameState.storyThreads.map(t => `${t.text}${t.resolved ? '' : ' (still open)'}`).join('; ')}` : ''}
 HEROES: ${heroes}
 FINAL SCENE:
 ${gameState.currentNarrative || ''}

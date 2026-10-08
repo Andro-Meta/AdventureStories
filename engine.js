@@ -680,6 +680,41 @@ const PATHS = [
             return `milestone: ${canonicalName}${canonicalName !== original ? ` (normalized from "${original}")` : ''}`;
         }
     },
+    // ---- Story threads (Chekhov's gun): setups the story owes a payoff ----
+    // The narrator plants one when it makes a point of a clue, object, promise
+    // or mystery, and marks it resolved when it pays off. Open threads are
+    // shown every turn (live baseline: 6-8 of ~25 setups were never paid off).
+    {
+        regex: /^\/storyThreads\/-$/,
+        ops: ['add'],
+        validate: (_m, value, gs) => {
+            const text = typeof value === 'string' ? value : value?.text;
+            if (!text || typeof text !== 'string' || !text.trim()) return 'thread needs text';
+            const open = (gs.storyThreads || []).filter(t => !t.resolved);
+            if (open.length >= 4) return 'already 4 open threads: pay one off first';
+            const low = text.trim().toLowerCase();
+            if ((gs.storyThreads || []).some(t => t.text.toLowerCase() === low)) return 'thread already planted';
+            return null;
+        },
+        apply: (_m, value, gs) => {
+            const text = String(typeof value === 'string' ? value : value.text).trim().slice(0, 140);
+            (gs.storyThreads = gs.storyThreads || []).push({ text, turn: gs.turn, resolved: false });
+            return `thread planted: ${text}`;
+        }
+    },
+    {
+        regex: /^\/storyThreads\/(\d+)\/resolved$/,
+        ops: ['replace'],
+        validate: (m, value, gs) => {
+            if (!gs.storyThreads?.[Number(m[1])]) return `storyThreads[${m[1]}] does not exist`;
+            return value === true ? null : 'resolved can only be set to true';
+        },
+        apply: (m, _value, gs) => {
+            const t = gs.storyThreads[Number(m[1])];
+            t.resolved = true; t.resolvedTurn = gs.turn;
+            return `thread paid off: ${t.text}`;
+        }
+    },
     {
         regex: /^\/questProgress\/completionPercentage$/,
         ops: ['replace'],
@@ -971,6 +1006,8 @@ export function describeAllowedPaths() {
         '/questProgress/sideQuests/- (add, {name, description, giver, location, reward})',
         '/questProgress/sideQuests/<id>/completed (replace, boolean)',
         '/questProgress/sideQuests/<id>/progress (replace, 0-100)',
+        '/storyThreads/-       (add, {text}) - a setup the story must pay off later',
+        '/storyThreads/<n>/resolved (replace, true) - that setup just paid off',
         '/isGoalComplete      (replace, boolean) - unlocks god mode',
         '/entityMemory/npcs/<name>      (add|replace, {name, description, traits, relationship})',
         '/entityMemory/locations/<name> (add|replace, {name, description, traits})',
