@@ -558,6 +558,21 @@ await block(async () => {
   check(Battle.battleOptions('Attack', p) === null, 'one foe: Attack needs no target menu');
 });
 
+await block(async () => {
+  // Every hero can fight and heal with magic; a healing spell in a fight heals the caster.
+  const Spells = await import('../spells.js');
+  const { p, e } = fresh();
+  p.spellcasting = { knownSpells: [{ name: 'Aether Sense', effects: {} }], preparedSpells: [] };
+  Spells.ensureBattleSpells(p);
+  const atk = p.spellcasting.knownSpells.find(s => s.effects?.damage > 0), heal = p.spellcasting.knownSpells.find(s => s.effects?.healing > 0);
+  check(!!atk && !!heal, `utility-only spellbook gains an attack and a healing spell (${atk?.name}, ${heal?.name})`);
+  p.hp = 40; p.mp = 20; startFight(); pinRandom(0.5);
+  const foe0 = e.hp;
+  await AH.handlePlayerChoice('Spell', `Cast ${heal.name}`);
+  unpinRandom();
+  check(p.hp > 40 && e.hp === foe0, `healing spell in a fight heals the hero, not the foe (hero 40 -> ${p.hp}, foe ${foe0} -> ${e.hp})`);
+});
+
 console.error = realError;
 out(`\nfetch attempts blocked: ${fetchCalls}; elapsed ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 out(failed ? `✗ ${failed} mechanics check(s) failed` : '✓ all mechanics checks passed');

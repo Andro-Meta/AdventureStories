@@ -415,6 +415,8 @@ export function updateGameUI() {
         gameState.players.forEach(async (player) => {
             if (player && !player.spellcasting) {
                 await Spells.initializePlayerSpellcasting(player);
+            } else if (player) {
+                Spells.ensureBattleSpells(player); // saves from before every hero got an attack + heal spell
             }
         });
     }
