@@ -1397,6 +1397,11 @@ export function renderSavedGamesList(saves) {
              if (savedState.adventureTheme === 'custom') { theme = (savedState.customThemeDescription?.substring(0, 20) || 'Custom') + (savedState.customThemeDescription?.length > 20 ? '...' : ''); }
              else { const selectOption = elements.adventureTypeSelect?.querySelector(`option[value="${savedState.adventureTheme}"]`); theme = selectOption?.textContent || savedState.adventureTheme || 'Unknown Theme'; }
          }
+        // Which game is which: round, quest progress and goal at a glance.
+        const pct = savedState?.questProgress?.completionPercentage ?? 0;
+        const progressLine = savedState ? (savedState.isGoalComplete ? `Round ${savedState.turn || 1} · Quest complete (god mode)`
+            : `Round ${savedState.turn || 1} · Quest ${pct}%${savedState.imprisoned ? ' · captured!' : ''}`) : '';
+        const goalLine = (savedState?.adventureGoal || '').slice(0, 120);
         const card = document.createElement('div');
         card.className = 'saved-game-card';
         card.dataset.saveName = saveName; // Store save name for delegation
@@ -1404,6 +1409,8 @@ export function renderSavedGamesList(saves) {
             <h4>${sanitizeText(saveName)}</h4>
             <p>Players: ${sanitizeText(playerNames)}</p>
             <p>Theme: ${sanitizeText(theme)}</p>
+            ${progressLine ? `<p>${sanitizeText(progressLine)}</p>` : ''}
+            ${goalLine ? `<p class="save-goal">Goal: ${sanitizeText(goalLine)}</p>` : ''}
             <p>Saved: ${date}</p>
             <div class="load-delete-buttons">
                 <button class="load-btn">Load</button>

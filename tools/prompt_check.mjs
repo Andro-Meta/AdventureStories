@@ -70,5 +70,11 @@ Engine.applyDiff([{ op: 'add', path: '/entityMemory/locations/the grand foyer', 
 check(Object.keys(gameState.entityMemory.locations).length === 1 && gameState.entityMemory.locations['Grand Foyer'].description === 'dusty', 'renamed place updates the existing entity');
 check(AI.findEntityKey({ 'Grand Foyer': {} }, 'The grand-foyer') === 'Grand Foyer', 'summarizer merge matches "The grand-foyer" to "Grand Foyer"');
 
+// Bosses and mid-fight reinforcements.
+Engine.applyDiff([{ op: 'add', path: '/enemies/-', value: { name: 'Kraken Queen', hp: 30, atk: 4, def: 1, isBoss: true } }], { strict: false });
+const boss = gameState.enemies.find(e => e.name === 'Kraken Queen');
+check(boss?.isBoss && boss.maxHp >= 120 && boss.lootChance === 1, `boss gets a 2-player floor (hp ${boss?.maxHp}) and a sure drop`);
+check(gameState.combat.initiative.includes(boss.id), 'an enemy added mid-fight joins the turn order');
+
 console.log(failed ? `✗ ${failed} PROMPT CHECK FAILURE(S)` : '✓ prompt checks pass');
 process.exit(failed ? 1 : 0);

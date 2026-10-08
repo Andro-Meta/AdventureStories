@@ -70,7 +70,8 @@ export const MAIN_QUEST_ARC = [
         targetMilestones: ['final_confrontation', 'final_blow', 'aftermath'],
         targetTurnRange: [31, 50],
         narratorHint:
-`This is Act 3 of the main quest. The player is at the climax.
+`- The main villain is a BOSS: when the final fight starts, add it with /enemies/- including "isBoss": true.
+This is Act 3 of the main quest. The player is at the climax.
 - Stage a climactic encounter — usually combat, sometimes a moral choice or sacrifice.
 - Use these EXACT milestone names verbatim, in order:
    1. "final_confrontation" — when the player faces the antagonist directly.
@@ -159,7 +160,7 @@ function act3Deadline(gameState, act) {
     const names = (qp.milestones || []).map(m => String(m.name || '').toLowerCase());
     const confronted = names.some(n => n.includes('final_confrontation') || n.includes('final confrontation'));
     if (confronted && rounds >= 2) return `\nDEADLINE: the final confrontation is under way. Resolve it THIS turn and add the "final_blow" milestone.`;
-    if (rounds >= 6) return `\nDEADLINE: the story has been in Act 3 for ${rounds} rounds. Bring the final confrontation THIS turn (add "final_confrontation"; spawn the main threat as an enemy if it is a fight).`;
+    if (rounds >= 6) return `\nDEADLINE: the story has been in Act 3 for ${rounds} rounds. Bring the final confrontation THIS turn (add "final_confrontation"; if it is a fight, spawn the main threat with /enemies/- and "isBoss": true).`;
     return '';
 }
 

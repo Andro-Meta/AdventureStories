@@ -1498,6 +1498,24 @@ export async function handleEnemyTurn(enemyId) {
         return;
     }
 
+    // Boss signature move every other round: hits every conscious hero.
+    if (enemy.isBoss && (gameState.combat?.round || 1) % 2 === 0) {
+        const move = enemy.abilities?.[0] || 'Crushing Blow';
+        const hits = [];
+        for (const hero of validTargets) {
+            const dmg = Math.max(3, Math.round(enemy.atk * 1.2 - (hero.def || 0) * 0.5));
+            hero.hp = Math.max(0, hero.hp - dmg);
+            hits.push(`${hero.name} -${dmg}`);
+            if (hero.hp <= 0) { hero.isDowned = true; showPopup(`${hero.name} has been defeated!`, 'error'); }
+        }
+        showPopup(`\u{1F451} ${enemy.name} unleashes ${move}! (${hits.join(', ')})`, 'damage', 4000);
+        try { (await import('./ui.js')).appendCombatLog?.(`${enemy.name} unleashes ${move}: ${hits.join(', ')}`, 'attack'); } catch (_) {}
+        renderPlayerCards();
+        if (enemy.statusEffects?.length > 0) await processStatusEffectTicks(enemy);
+        await advanceCombatTurn();
+        return;
+    }
+
     // Select action based on enemy's abilities and state
     const action = await selectEnemyAction(enemy);
     

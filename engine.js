@@ -485,8 +485,24 @@ const PATHS = [
                 lootTier: value.lootTier || 'Low',
                 lootChance: typeof value.lootChance === 'number' ? value.lootChance : 0.5
             };
+            // Bosses (the narrator marks the main threat isBoss): a sturdier
+            // floor that scales with party size, a guaranteed good drop, and a
+            // signature attack every other round (combat.js handleEnemyTurn).
+            if (value.isBoss) {
+                const party = Math.max(1, (gs.players || []).length);
+                enemy.isBoss = true;
+                enemy.hp = enemy.maxHp = Math.max(enemy.maxHp, 60 + 30 * party);
+                enemy.atk = Math.max(enemy.atk, 9);
+                enemy.def = Math.max(enemy.def, 4);
+                enemy.lootTier = 'High';
+                enemy.lootChance = 1;
+                if (!Array.isArray(value.abilities) || !value.abilities.length) enemy.abilities = ['Crushing Blow'];
+            }
             gs.enemies.push(enemy);
-            return `+enemy "${enemy.name}" (HP ${enemy.hp}/${enemy.maxHp})`;
+            // Joining a fight already in progress: give it a turn. Enemies added
+            // mid-combat used to never act (they were missing from initiative).
+            if (gs.inCombat && gs.combat?.isActive && Array.isArray(gs.combat.initiative)) gs.combat.initiative.push(enemy.id);
+            return `+enemy "${enemy.name}"${enemy.isBoss ? ' (BOSS)' : ''} (HP ${enemy.hp}/${enemy.maxHp})`;
         }
     },
 
@@ -885,7 +901,7 @@ export function describeAllowedPaths() {
         '/players/0/statusEffects/- (add, {name, duration, effectTickData})',
         '/players/0/specialMoves/- (add, {name, description, cooldown, mpCost, usageContext, mechanics})',
         '/inCombat            (replace, boolean) - true to enter combat',
-        '/enemies/-           (add, {name, hp, maxHp, atk, def, abilities})',
+        '/enemies/-           (add, {name, hp, maxHp, atk, def, abilities, isBoss: true only for the main villain})',
         '/enemies/<idx>/hp    (replace, number)',
         '/enemies/<idx>/isDefeated (replace, boolean)',
         '/enemies/<idx>/statusEffects/- (add, {name, duration, effectTickData})',
