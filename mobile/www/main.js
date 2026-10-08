@@ -571,6 +571,31 @@ function mainKeyProvider(providerKey) {
     return providerKey === 'auto' ? 'openrouter_free' : providerKey;
 }
 
+/** AI Settings: which storyteller is in use, its speed, today's count, who's resting. */
+async function renderAIHealth(auto) {
+    const list = document.getElementById('aiHealthList');
+    if (!list) return;
+    list.replaceChildren();
+    if (!auto) return;
+    const [Router, { benchKey }] = await Promise.all([import('./aiRouter.js'), import('./localAI.js')]);
+    const chain = Config.providerChain();
+    const rows = Router.snapshot(chain.map(benchKey));
+    chain.forEach((p, i) => {
+        const r = rows[i];
+        const li = document.createElement('li');
+        const name = p.name.split(' — ')[0] + (p.keySlot ? ' (2nd key)' : '');
+        const bits = [];
+        if (!Config.keyForProvider(p)) bits.push('no key');
+        else if (r.restingUntil) bits.push(`resting until ${new Date(r.restingUntil).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}${r.why ? ` (${r.why})` : ''}`);
+        else bits.push('ready');
+        if (r.avgMs != null) bits.push(`${(r.avgMs / 1000).toFixed(1)} s avg`);
+        if (r.today) bits.push(`${r.today} today`);
+        if (r.remaining != null) bits.push(`${r.remaining} left today`);
+        li.textContent = `${r.active ? '▶ ' : ''}${name}: ${bits.join(' · ')}`;
+        list.appendChild(li);
+    });
+}
+
 function updateCloudProviderNotes(providerKey) {
     const provider = Config.CLOUD_PROVIDERS[providerKey];
     if (!provider) return;
@@ -587,6 +612,9 @@ function updateCloudProviderNotes(providerKey) {
     if (g2Input) { g2Input.value = ''; g2Input.placeholder = saved('flashlite_google_2') || 'Optional: key from a second Google account'; }
     const groqInput = document.getElementById('groqApiKeyInput');
     if (groqInput) { groqInput.value = ''; groqInput.placeholder = saved('groq_qwen') || 'Paste your free Groq key'; }
+    const groq2Input = document.getElementById('groqApiKey2Input');
+    if (groq2Input) { groq2Input.value = ''; groq2Input.placeholder = saved('groq_qwen_2') || 'Optional: key from a second Groq account'; }
+    renderAIHealth(auto);
     const signupUrl = (auto ? Config.CLOUD_PROVIDERS.openrouter_free : provider).signupUrl;
     const notesEl = document.getElementById('cloudProviderNotes');
     const signupEl = document.getElementById('cloudSignupLink');
@@ -650,7 +678,7 @@ function setupCloudBackendListeners() {
             await afterKeySaved(providerKey);
         });
     }
-    for (const [btnId, inputId, slot] of [['googleApiKeySaveBtn', 'googleApiKeyInput', 'flashlite_google'], ['googleApiKey2SaveBtn', 'googleApiKey2Input', 'flashlite_google_2'], ['groqApiKeySaveBtn', 'groqApiKeyInput', 'groq_qwen']]) {
+    for (const [btnId, inputId, slot] of [['googleApiKeySaveBtn', 'googleApiKeyInput', 'flashlite_google'], ['googleApiKey2SaveBtn', 'googleApiKey2Input', 'flashlite_google_2'], ['groqApiKeySaveBtn', 'groqApiKeyInput', 'groq_qwen'], ['groqApiKey2SaveBtn', 'groqApiKey2Input', 'groq_qwen_2']]) {
         document.getElementById(btnId)?.addEventListener('click', async () => {
             const key = document.getElementById(inputId)?.value?.trim() || '';
             if (!key) { UI.showPopup('Paste your key first.', 'warning'); return; }

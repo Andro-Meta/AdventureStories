@@ -50,7 +50,7 @@ export const CLOUD_PROVIDERS = {
         // Groq added 2026-10-08 (Michael): on a day Gemini was overloaded and
         // OpenRouter's free quota was spent, nothing answered. Groq's free tier
         // (no card on file, so it can't bill) serves Qwen 3.8 27B fast.
-        chain: ['flashlite_google', 'flashlite_google_2', 'groq_qwen', 'nemotron_openrouter'],
+        chain: ['flashlite_google', 'flashlite_google_2', 'groq_qwen', 'groq_qwen_2', 'nemotron_openrouter'],
         baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
         model: 'gemini-flash-lite-latest',
         signupUrl: 'https://aistudio.google.com/apikey',
@@ -107,6 +107,16 @@ export const CLOUD_PROVIDERS = {
         contextWindow: 131072,
         rateLimit: 'Groq free tier: about 1,000 requests a day, 30 a minute',
         notes: 'Free Groq account (no credit card); very fast.'
+    },
+    groq_qwen_2: {
+        name: 'Groq — Qwen 3.8 27B (2nd key)',
+        keySlot: 'api.groq.com#2',
+        baseUrl: 'https://api.groq.com/openai/v1',
+        model: 'qwen/qwen3.8-27b',
+        signupUrl: 'https://console.groq.com/keys',
+        contextWindow: 131072,
+        rateLimit: 'Groq free tier: about 1,000 requests a day, 30 a minute',
+        notes: 'Optional key from a second Groq account.'
     },
     // Auto's OpenRouter step: Nemotron 3 Super free only, no other models.
     nemotron_openrouter: {

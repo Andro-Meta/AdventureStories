@@ -64,6 +64,7 @@
                     </select>
 
                     <p id="cloudProviderNotes" class="cloud-provider-notes"></p>
+                    <ul id="aiHealthList" class="cloud-provider-notes ai-health"></ul>
 
                     <div id="googleKeyBlock" class="hidden">
                         <h3>Google AI Studio Key (used first):</h3>
@@ -81,6 +82,11 @@
                         <div class="api-key-row">
                             <input type="password" id="groqApiKeyInput" class="api-key-input" placeholder="Paste your free Groq key" autocomplete="off" spellcheck="false">
                             <button id="groqApiKeySaveBtn" class="primary">Save</button>
+                        </div>
+                        <h3>Second Groq Key (optional, another account):</h3>
+                        <div class="api-key-row">
+                            <input type="password" id="groqApiKey2Input" class="api-key-input" placeholder="Optional: key from a second Groq account" autocomplete="off" spellcheck="false">
+                            <button id="groqApiKey2SaveBtn" class="primary">Save</button>
                         </div>
                         <p class="api-key-hint">Free key: <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer">console.groq.com/keys →</a> (no credit card)</p>
                     </div>
