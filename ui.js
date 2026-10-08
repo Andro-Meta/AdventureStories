@@ -187,6 +187,11 @@ export function showPopup(message, type = 'info', duration = 3000) {
     const log = window.displayVisualError || console.log;
     log(`Showing popup: ${message} (${type})`);
 
+    // God-mode tutorial passed a whole HTML panel, shown as raw markup in a toast.
+    if (type === 'god_mode_tutorial' || /<\/?div/i.test(String(message))) {
+        message = '⚡ God mode: type anything in the golden box and it happens.';
+        type = 'legendary'; duration = Math.max(duration, 4000);
+    }
     // Queue lives in this module, not gameState: it was saved with the game,
     // and a reloaded queue of 18 stale toasts never started again.
     popupQueue.push({ message, type, duration });

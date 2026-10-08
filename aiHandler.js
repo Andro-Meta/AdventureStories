@@ -259,7 +259,8 @@ ${describeAllowedPaths()}
 - Level ups: replace /players/0/level with the new level (the game adds the stat gains).
 - New weapons/armor: add /players/0/inventory/- {name, type: Weapon|Armor, tier: Legendary, stats: {atk|def: N}} then replace /players/0/equipment/weapon|armor with the item name.
 - New powers: add /players/0/specialMoves/- {name, description, cooldown, mpCost, mechanics: {directDamage: N}}.
-Values are totals, not deltas. Reply exactly as {"ops":[...]} ({"ops":[]} if the wish changes nothing concrete).` }
+- Vague powers or blessings ("divine power", "become a god", "unstoppable"): invent a fitting, generous concrete effect (a named special move with big directDamage, a large stat boost, a legendary item). Never return nothing for a power.
+Values are totals, not deltas. Reply exactly as {"ops":[...]}; only a purely cosmetic wish gets {"ops":[]}.` }
     ], { type: 'object', properties: { ops: { type: 'array' } }, required: ['ops'] }, { jsonSchemaName: 'wish_ops', max_tokens: 700, temperature: 0.2 });
     return Array.isArray(payload?.ops) ? payload.ops.filter(o => o && typeof o.path === 'string').slice(0, 12) : [];
 }
