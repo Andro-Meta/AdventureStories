@@ -852,6 +852,126 @@ await block(async () => {
   check(gameState.inCombat === true, `story cannot end a boss fight with the boss standing (in combat ${gameState.inCombat})`);
 });
 
+// =====================================================================
+section('Batch 7: Defend, Haste/Slow, Confusion, area spells, party XP and loot');
+await block(async () => {
+  // Defend: half damage from the foe's next hit, a small breather, and the guard ends after the hero's next turn.
+  const hit = async (defend) => {
+    const { p } = fresh();
+    startFight(); pinRandom(0.5);
+    p.hp = 60;
+    if (defend) await AH.handlePlayerChoice('Defend', 'Raise your guard');
+    else { const hp0 = p.hp; await enemyTurn(); unpinRandom(); return hp0 - p.hp; }
+    unpinRandom();
+    return { taken: 60 + Math.max(2, Math.round(100 * 0.05)) - p.hp, guard: p.statusEffects.find(s => s.name === 'Guarding')?.duration };
+  };
+  const open = await hit(false);
+  const g = await hit(true);
+  check(g.taken > 0 && g.taken <= Math.ceil(open / 2), `Defend halves the foe's hit (open ${open}, guarded ${g.taken}), guard left ${g.guard}`);
+  const { p } = fresh(); startFight(); pinRandom(0.5);
+  await AH.handlePlayerChoice('Defend', 'guard'); await AH.handlePlayerChoice('Attack', 'Strike the goblin');
+  unpinRandom();
+  check(!p.statusEffects.some(s => s.name === 'Guarding'), `guard is gone after the hero's next turn (${p.statusEffects.map(s => s.name + ':' + s.duration).join(',') || 'none'})`);
+});
+await block(async () => {
+  // Defend is offered in every fight, as a fixed battle button.
+  fresh(); startFight();
+  UI.renderChoices([{ type: 'Attack', text: 'Hit the goblin' }, { type: 'Run', text: 'Flee' }]);
+  check(gameState.currentChoices.some(c => c.type === 'Defend'), `battle choices include Defend (${gameState.currentChoices.map(c => c.type).join(',')})`);
+  gameState.inCombat = false;
+  UI.renderChoices([{ type: 'Good', text: 'a' }, { type: 'Bad', text: 'b' }]);
+  check(!gameState.currentChoices.some(c => c.type === 'Defend'), 'no Defend outside a fight');
+});
+await block(async () => {
+  // Haste: the hero follows up with a quick strike; a hasted foe strikes twice.
+  const dealt = async (haste) => {
+    const { p, e } = fresh(); startFight(); pinRandom(0.5);
+    if (haste) Combat.applyStatusEffect(p, 'Haste', 3, {}, 'test');
+    const hp0 = e.hp; await AH.handlePlayerChoice('Attack', 'Strike the goblin'); unpinRandom(); return hp0 - e.hp;
+  };
+  const a = await dealt(false), b = await dealt(true);
+  check(b > a, `hasted hero deals more per turn (${a} -> ${b})`);
+  const taken = async (haste) => {
+    const { p, e } = fresh(); startFight(); pinRandom(0.5);
+    if (haste) Combat.applyStatusEffect(e, 'Haste', 3, {}, 'test');
+    const hp0 = p.hp; await enemyTurn(); unpinRandom(); return hp0 - p.hp;
+  };
+  const c = await taken(false), d = await taken(true);
+  check(d > c, `hasted foe hits twice (${c} -> ${d})`);
+});
+await block(async () => {
+  // Slow: loses every other turn (even rounds), for heroes and foes.
+  const { p, e } = fresh(); startFight(); gameState.combat.round = 2;
+  Combat.applyStatusEffect(e, 'Slow', 4, {}, 'test');
+  pinRandom(0.5); const hp0 = p.hp; await enemyTurn(); unpinRandom();
+  check(p.hp === hp0, `slowed foe loses its even-round turn (hero ${hp0} -> ${p.hp})`);
+  const f = fresh(); startFight(); gameState.combat.round = 2;
+  Combat.applyStatusEffect(f.p, 'Frost', 3, {}, 'test');
+  pinRandom(0.5); const e0 = f.e.hp; await AH.handlePlayerChoice('Attack', 'Strike the goblin'); unpinRandom();
+  check(f.e.hp === e0, `Frost-slowed hero loses the even-round attack (goblin ${e0} -> ${f.e.hp})`);
+});
+await block(async () => {
+  // Confusion: the blow lands on yourself (solo) / the foe hits itself.
+  const { p, e } = fresh(); startFight();
+  Combat.applyStatusEffect(p, 'Confusion', 2, {}, 'test');
+  pinRandom(0.1); // < 0.5: confused this turn
+  const e0 = e.hp, p0 = p.hp; await AH.handlePlayerChoice('Attack', 'Strike the goblin'); unpinRandom();
+  check(e.hp === e0 && p.hp < p0, `confused hero hits themselves (goblin ${e0} -> ${e.hp}, hero ${p0} -> ${p.hp})`);
+  const g = fresh(); startFight();
+  Combat.applyStatusEffect(g.e, 'Confusion', 2, {}, 'test');
+  pinRandom(0.1); const h0 = g.p.hp, f0 = g.e.hp; await enemyTurn(); unpinRandom();
+  check(g.p.hp === h0 && g.e.hp < f0, `confused foe hurts itself (hero ${h0} -> ${g.p.hp}, foe ${f0} -> ${g.e.hp})`);
+});
+await block(async () => {
+  // Area spells hit every foe; a single-target spell hits one.
+  const { p } = fresh();
+  gameState.enemies.push({ id: 'enemy_test2', name: 'Goblin Archer', hp: 200, maxHp: 200, atk: 8, def: 4, speed: 1, statusEffects: [], abilities: ['Basic Attack'] });
+  const storm = { id: 'sp_storm', name: 'Fire Storm', level: 1, mpCost: 6, targeting: 'single', effects: { damage: 20 } };
+  p.spellcasting = { knownSpells: [storm], preparedSpells: [storm], maxSpellLevel: 1 }; p.mp = 30;
+  startFight(); pinRandom(0.5);
+  await AH.handlePlayerChoice('Spell', 'Cast Fire Storm'); unpinRandom();
+  const hurt = gameState.enemies.filter(e => e.hp < 200).length;
+  check(hurt === 2, `area spell hits every foe (${hurt} of 2 hurt: ${gameState.enemies.map(e => e.hp).join('/')})`);
+});
+await block(async () => {
+  // XP pot scales with the party like the foes do: every hero earns what a
+  // solo hero would (foe sized 25 HP solo / 35 HP for two: 15 XP each).
+  const Battle = await import('../battle.js');
+  fresh();
+  const solo = Battle.awardXp({ maxHp: 25 });
+  const a = createNewPlayer('A', 10), b = createNewPlayer('B', 10);
+  gameState.players = [a, b];
+  const duo = Battle.awardXp({ maxHp: 35 });
+  check(solo.xp === 15 && duo.xp === 15 && a.xp === 15 && b.xp === 15, `solo 25-HP foe ${solo.xp} XP; duo vs 35-HP foe ${a.xp}/${b.xp} XP each`);
+  b.isDowned = true; a.xp = 0;
+  Battle.awardXp({ maxHp: 35 });
+  check(a.xp === 30, `ally down: the standing hero takes the whole pot (${a.xp})`);
+  gameState.players = [createNewPlayer('C', 10), createNewPlayer('D', 10), createNewPlayer('E', 10)];
+  const boss = Battle.awardXp({ maxHp: 100, isBoss: true }); // boss sized for 3 = solo 60 HP -> 36*3 = 108
+  check(boss.xp === 108, `3-hero boss (100 HP): ${boss.xp} XP each, same as a solo boss`);
+});
+await block(async () => {
+  // Loot: one roll per standing hero, each to a different hero; coins split.
+  fresh();
+  const a = createNewPlayer('A', 10), b = createNewPlayer('B', 10), c = createNewPlayer('C', 10);
+  gameState.players = [a, b, c];
+  const e = gameState.enemies[0]; e.lootChance = 1; e.lootTier = 'Low'; e.maxHp = 60;
+  startFight(); e.hp = 0; e.isDefeated = true;
+  const c0 = [a, b, c].map(p => p.coins || 0);
+  pinRandom(0.5);
+  await Combat.handleEnemyDefeat(e.id); unpinRandom();
+  const got = [a, b, c].map(p => (p.inventory || []).length);
+  const coins = [a, b, c].map((p, i) => (p.coins || 0) - c0[i]);
+  check(got.every(n => n >= 1), `3 heroes, 100% drop: each hero gets a drop (${got.join('/')})`);
+  check(coins[0] > 0 && coins.every(x => x === coins[0]), `coins split evenly (${coins.join('/')})`);
+  fresh();
+  const s = gameState.enemies[0]; s.lootChance = 1; s.lootTier = 'Low';
+  const inv0 = gameState.players[0].inventory.length;
+  startFight(); s.hp = 0; s.isDefeated = true; pinRandom(0.5);
+  await Combat.handleEnemyDefeat(s.id); unpinRandom();
+  check(gameState.players[0].inventory.length - inv0 === 1, `solo: one drop (${gameState.players[0].inventory.length - inv0})`);
+});
+
 console.error = realError;
 out(`\nfetch attempts blocked: ${fetchCalls}; elapsed ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 out(failed ? `✗ ${failed} mechanics check(s) failed` : '✓ all mechanics checks passed');

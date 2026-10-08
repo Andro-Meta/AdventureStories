@@ -12,6 +12,7 @@ import * as Combat from './combat.js';
 // applyStatusEffect(); we alias it here so existing call sites work.
 const StatusEffects = { applyStatusEffect: (target, effect) => Combat.applyStatusEffect(target, effect?.name || effect, effect?.duration ?? 3, effect?.effectTickData || {}, 'spell') };
 import * as AdaptiveAbilities from './adaptiveAbilities.js';
+import { isAreaSpell } from './battle.js';
 
 /**
  * Cast a spell with full mechanics and effects
@@ -127,6 +128,12 @@ function calculateActualMpCost(caster, spell) {
  * @returns {object[]} Array of valid targets
  */
 function determineSpellTargets(spell, caster, specificTarget = null) {
+    if (isAreaSpell(spell)) {
+        const heals = spell.effects?.healing > 0 && !(spell.effects?.damage > 0);
+        return heals || spell.targeting === 'party'
+            ? gameState.players.filter(p => p && !p.isDowned)
+            : (gameState.enemies || []).filter(e => e && !e.isDefeated && e.hp > 0);
+    }
     const targets = [];
     
     if (specificTarget) {

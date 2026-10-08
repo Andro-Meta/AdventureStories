@@ -444,16 +444,6 @@ export function calculateDamage(attacker, defender, options = {}) {
         log(`Combo x${gameState.combat.comboCount}! Damage increased`);
     }
 
-    // Handle Confusion (attacker might hit wrong target)
-    const confusionEffect = attacker.statusEffects?.find(effect => effect.name === 'Confusion');
-    let confusedTarget = false;
-    if (confusionEffect && confusionEffect.effectTickData?.randomTarget) {
-        if (Math.random() < confusionEffect.effectTickData.randomTarget) {
-            confusedTarget = true;
-            log(`${attacker.name} is confused and might hit the wrong target!`);
-        }
-    }
-
     // Round the final damage
     damage = Math.round(Math.max(1, damage));
     
@@ -483,7 +473,6 @@ export function calculateDamage(attacker, defender, options = {}) {
         blocked: false,
         element: element,
         statusEffectsApplied,
-        confusedTarget,
         comboCount: gameState.combat.comboCount,
         message: null
     };
@@ -952,6 +941,28 @@ export function isPartyWiped() {
  * **REVISED:** Handles loot and coin distribution.
  * @param {string} enemyId - The ID of the defeated enemy.
  */
+/** One loot roll for a defeated foe (its drop chance, tier and boss/elite tables); null on a miss. */
+async function rollLootItem(enemy) {
+    const log = window.displayVisualError || console.log;
+    if (Math.random() > enemy.lootChance) return null;
+    try {
+        const dynamicItems = await import('./dynamicItems.js');
+        if (enemy.isBoss) return await dynamicItems.generateBossRewardItem(gameState.adventureTheme, enemy.lootTier, { name: enemy.name, bossType: enemy.bossType || 'boss', phase: enemy.currentPhase || 0 });
+        if (enemy.isElite) return await dynamicItems.generateEliteRewardItem(gameState.adventureTheme, enemy.lootTier, { name: enemy.name, eliteType: enemy.eliteType || 'elite' });
+        const roll = Math.random();
+        const itemType = roll < 0.25 ? 'Weapon' : roll < 0.5 ? 'Armor' : 'Consumable';
+        return await dynamicItems.generateDynamicItem(gameState.adventureTheme, enemy.lootTier, itemType, {
+            storyContext: `defeated_${enemy.name.toLowerCase().replace(/\s+/g, '_')}`,
+            playerNeeds: ['equipment_upgrade', 'consumables'],
+            recentEvents: ['defeated_regular_enemy'],
+            isLootDrop: true, luckUpChance: 0.12, luckDownChance: 0.03
+        });
+    } catch (e) {
+        log('Combat ERROR generating dynamic loot drop:', e);
+        try { return generateLootDrop(gameState.adventureTheme, 1, enemy.lootTier); } catch (_) { return null; }
+    }
+}
+
 export async function handleEnemyDefeat(enemyId) {
      const log = window.displayVisualError || console.log;
      const enemyIndex = gameState.enemies.findIndex(e => e?.id === enemyId);
@@ -979,7 +990,8 @@ export async function handleEnemyDefeat(enemyId) {
      try {
          const { awardXp } = await import('./battle.js');
          const { xp, ups } = awardXp(enemy);
-         showPopup(`${enemy.name} defeated! +${xp} XP`, 'success');
+         const standing = (gameState.players || []).filter(p => p && !p.isDowned).length;
+         showPopup(`${enemy.name} defeated! +${xp} XP${standing > 1 ? ' each' : ''}`, 'success');
          for (const p of gameState.players || []) if (p) recalculateCharacterStats(p);
          ups.forEach(u => showPopup(`⭐ ${u}`, 'legendary', 3500));
      } catch (e) {
@@ -988,98 +1000,18 @@ export async function handleEnemyDefeat(enemyId) {
 
      // --- Generate Loot Using Dynamic Item System ---
      log(` -> Generating dynamic loot (Chance: ${enemy.lootChance}, MaxTier: ${enemy.lootTier}, Type: ${enemy.isBoss ? 'Boss' : enemy.isElite ? 'Elite' : 'Regular'})`);
-     let lootItem = null;
-     try {
-         // Check loot drop chance first
-         if (Math.random() <= enemy.lootChance) {
-             // Import dynamic items system
-             const dynamicItems = await import('./dynamicItems.js');
-             
-             if (enemy.isBoss) {
-                 // Boss rewards with enhanced luck and tier potential
-                 lootItem = await dynamicItems.generateBossRewardItem(
-                     gameState.adventureTheme, 
-                     enemy.lootTier, 
-                     { 
-                         name: enemy.name, 
-                         bossType: enemy.bossType || 'boss',
-                         phase: enemy.currentPhase || 0
-                     }
-                 );
-                 log(` -> Generated boss reward: ${lootItem?.name || 'none'}`);
-             } else if (enemy.isElite) {
-                 // Elite rewards with moderate luck bonus
-                 lootItem = await dynamicItems.generateEliteRewardItem(
-                     gameState.adventureTheme, 
-                     enemy.lootTier, 
-                     { 
-                         name: enemy.name, 
-                         eliteType: enemy.eliteType || 'elite'
-                     }
-                 );
-                 log(` -> Generated elite reward: ${lootItem?.name || 'none'}`);
-             } else {
-                 // Regular enemy loot using dynamic system
-                 const context = {
-                     storyContext: `defeated_${enemy.name.toLowerCase().replace(/\s+/g, '_')}`,
-                     playerNeeds: ['equipment_upgrade', 'consumables'],
-                     recentEvents: [`defeated_regular_enemy`],
-                     isLootDrop: true,
-                     luckUpChance: 0.12,    // Slightly better than shop
-                     luckDownChance: 0.03   // Low downgrade chance
-                 };
-                 
-                 // Determine item type based on probability
-                 const typeRoll = Math.random();
-                 let itemType;
-                 if (typeRoll < 0.25) itemType = 'Weapon';
-                 else if (typeRoll < 0.50) itemType = 'Armor';
-                 else if (typeRoll < 0.85) itemType = 'Consumable';
-                 else itemType = 'Consumable'; // Default to consumable for misc
-                 
-                 lootItem = await dynamicItems.generateDynamicItem(
-                     gameState.adventureTheme, 
-                     enemy.lootTier, 
-                     itemType, 
-                     context
-                 );
-                 log(` -> Generated regular loot: ${lootItem?.name || 'none'}`);
-             }
-         } else {
-             log(` -> Loot chance failed (${Math.round(enemy.lootChance * 100)}%)`);
-         }
-     } catch (e) { 
-         log("Combat ERROR generating dynamic loot drop:", e);
-         // Fallback to static system if dynamic fails
-         try {
-             lootItem = generateLootDrop(gameState.adventureTheme, enemy.lootChance, enemy.lootTier);
-             log(` -> Fallback to static loot: ${lootItem?.name || 'none'}`);
-         } catch (fallbackError) {
-             log("Combat ERROR: Both dynamic and static loot generation failed:", fallbackError);
-         }
+     // One drop roll per standing hero, each to a different hero: loot
+     // scales with the party (solo: one roll, as before).
+     const looters = (gameState.players || []).filter(p => p && !p.isDowned);
+     for (const lootRecipient of looters) {
+         const lootItem = await rollLootItem(enemy);
+         if (!lootItem) continue;
+         if (!lootRecipient.inventory) lootRecipient.inventory = [];
+         lootRecipient.inventory.push(lootItem);
+         showPopup(`${lootRecipient.name} found: ${lootItem.name}!`, 'item');
+         log(` -> Loot ${lootItem.name} given to ${lootRecipient.name}`);
      }
-
-     if (lootItem) {
-         log(` -> Generated loot: ${lootItem.name}`);
-         let lootRecipient = gameState.players[gameState.currentPlayerIndex];
-         if (!lootRecipient || lootRecipient.isDowned) {
-             log(` -> Current player downed or invalid. Finding alternative recipient.`);
-            lootRecipient = gameState.players.find(p => p && !p.isDowned);
-         }
-
-         if (lootRecipient) {
-             if (!lootRecipient.inventory) lootRecipient.inventory = [];
-             lootRecipient.inventory.push(lootItem);
-             showPopup(`${lootRecipient.name} found: ${lootItem.name}!`, 'item');
-             log(` -> Loot ${lootItem.name} given to ${lootRecipient.name}`);
-             if (gameState.currentScreen === 'inventoryScreen') renderInventory();
-         } else {
-             log(`Combat Warning: Loot dropped (${lootItem.name}), but no conscious player found to pick it up!`);
-             showPopup(`Loot dropped (${lootItem.name}), but no one could pick it up!`, 'warning');
-         }
-     } else {
-         log(" -> No loot generated for this enemy.");
-     }
+     if (gameState.currentScreen === 'inventoryScreen') renderInventory();
 
      // --- Generate Spell Rewards for Spellcasters ---
      try {
@@ -1107,26 +1039,17 @@ export async function handleEnemyDefeat(enemyId) {
      }
 
      // --- Generate Coins ---
+     // The pot grows with the foe (foe HP scales with party size) and is
+     // split evenly between the heroes still standing.
      const baseCoin = Math.max(1, Math.round(enemy.maxHp / 5));
      const coinDrop = getRandomInt(Math.floor(baseCoin * 0.7), Math.ceil(baseCoin * 1.3));
-     log(` -> Calculated coin drop: ${coinDrop} (Base: ${baseCoin})`);
-
-     if (coinDrop > 0) {
-          let coinRecipient = gameState.players[gameState.currentPlayerIndex];
-          if (!coinRecipient || coinRecipient.isDowned) {
-             coinRecipient = gameState.players.find(p => p && !p.isDowned);
-          }
-          if (coinRecipient) {
-              coinRecipient.coins = (coinRecipient.coins || 0) + coinDrop;
-              showPopup(`${coinRecipient.name} gained ${coinDrop} coins!`, 'coins');
-              log(` -> ${coinDrop} coins given to ${coinRecipient.name}. Total: ${coinRecipient.coins}`);
-              renderPlayerCards();
-              updateContextHeaders();
-          } else {
-               log(`Combat Warning: Coins dropped (${coinDrop}), but no conscious player found!`);
-          }
-     } else {
-          log(" -> No coins generated for this enemy.");
+     if (coinDrop > 0 && looters.length) {
+         const share = Math.max(1, Math.ceil(coinDrop / looters.length));
+         looters.forEach(p => { p.coins = (p.coins || 0) + share; });
+         showPopup(looters.length > 1 ? `The party splits ${share * looters.length} coins (${share} each)!` : `${looters[0].name} gained ${share} coins!`, 'coins');
+         log(` -> ${coinDrop} coins split ${share} each across ${looters.length} hero(es)`);
+         renderPlayerCards();
+         updateContextHeaders();
      }
 
      renderEnemyCards();
@@ -1213,6 +1136,14 @@ export async function handleEnemyTurn(enemyId) {
         return;
     }
     
+    // Slow / Frost: every other turn is lost.
+    if (isSluggish(enemy)) {
+        showPopup(`${enemy.name} is too sluggish to act!`, 'info', 2000);
+        try { (await import('./ui.js')).appendCombatLog?.(`${enemy.name} is too slow to act this turn.`, 'info'); } catch (_) {}
+        await advanceCombatTurn();
+        return;
+    }
+
     // Wait a moment before enemy acts for better UX
     await new Promise(resolve => setTimeout(resolve, 1000));
 
@@ -1223,18 +1154,35 @@ export async function handleEnemyTurn(enemyId) {
         return;
     }
 
+    // Confusion: the blow lands on itself or a fellow foe.
+    if (confusedRoll(enemy)) {
+        const foes = (gameState.enemies || []).filter(e => e && !e.isDefeated && e.hp > 0);
+        const victim = foes[Math.floor(Math.random() * foes.length)] || enemy;
+        const dmg = Math.max(1, Math.round((enemy.atk || 5) * 0.6 - (victim.def || 0) * 0.3));
+        victim.hp = Math.max(0, victim.hp - dmg);
+        const line = victim === enemy ? `${enemy.name} is confused and hurts itself (−${dmg})!` : `${enemy.name} is confused and strikes ${victim.name} (−${dmg})!`;
+        showPopup(line, 'info', 2500);
+        try { (await import('./ui.js')).appendCombatLog?.(line, 'attack'); } catch (_) {}
+        if (victim.hp <= 0) { victim.isDefeated = true; await handleEnemyDefeat(victim.id); }
+        renderEnemyCards();
+        if (areAllEnemiesDefeated()) { gameState.inCombat = false; if (gameState.combat) gameState.combat.isActive = false; return; }
+        await advanceCombatTurn();
+        return;
+    }
+
     // Boss signature move every other round: hits every conscious hero.
     if (enemy.isBoss && (gameState.combat?.round || 1) % 2 === 0) {
         const move = enemy.abilities?.[0] || 'Crushing Blow';
         const hits = [];
         for (const hero of validTargets) {
-            const dmg = Math.max(3, Math.round(enemy.atk * 1.2 - (hero.def || 0) * 0.5));
+            const dmg = Math.max(1, Math.round(Math.max(3, enemy.atk * 1.2 - (hero.def || 0) * 0.5) * incomingDamageMultiplier(hero)));
             hero.hp = Math.max(0, hero.hp - dmg);
             hits.push(`${hero.name} -${dmg}`);
             if (hero.hp <= 0) { hero.isDowned = true; showPopup(`${hero.name} has been defeated!`, 'error'); }
         }
         showPopup(`\u{1F451} ${enemy.name} unleashes ${move}! (${hits.join(', ')})`, 'damage', 4000);
         try { (await import('./ui.js')).appendCombatLog?.(`${enemy.name} unleashes ${move}: ${hits.join(', ')}`, 'attack'); } catch (_) {}
+        await hasteFollowUp(enemy);
         renderPlayerCards();
         await advanceCombatTurn(); // ticks the enemy's status effects (once)
         return;
@@ -1248,6 +1196,7 @@ export async function handleEnemyTurn(enemyId) {
     
     // Execute the action
     await executeEnemyAction(enemy, action, target);
+    await hasteFollowUp(enemy);
 
     // Advance the turn (awaited: see boss branch above); it also ticks the
     // enemy's status effects, so they are not ticked here too.
@@ -1538,9 +1487,8 @@ async function executeEnemySpecialAbility(enemy, target, action, context) {
             // Storyteller-named moves ("Crushing Blow"): a heavy hit, 1.3x attack.
             const hero = Array.isArray(target) ? target[0] : target;
             if (!hero) { showPopup(abilityDescription, 'special'); break; }
-            const damage = Math.max(3, Math.round((enemy.atk || 5) * 1.3 - (hero.def || 0) * 0.5));
-            hitHero(hero, damage);
-            showPopup(`${abilityDescription}! ${hero.name} takes ${damage} damage!`, 'damage');
+            const dealt = hitHero(hero, Math.max(3, Math.round((enemy.atk || 5) * 1.3 - (hero.def || 0) * 0.5)));
+            showPopup(`${abilityDescription}! ${hero.name} takes ${dealt} damage!`, 'damage');
             renderPlayerCards();
         }
     }
@@ -1592,18 +1540,49 @@ function getContextualAbilityDescription(enemy, ability, context) {
 }
 
 // Specific ability execution functions
-/** Special-ability damage to one hero; a hero at 0 HP is downed. */
+// --- Speed and mind effects (Haste, Slow/Frost, Confusion) and Guard ---
+/** Sum of active speedMod (Haste +0.5, Slow/Frost -0.5). */
+export function speedModOf(c) {
+    return (c?.statusEffects || []).reduce((s, fx) => s + (fx?.duration > 0 ? Number(fx.effectTickData?.speedMod) || 0 : 0), 0);
+}
+/** Slowed characters lose every other turn (even rounds). */
+export function isSluggish(c) {
+    return speedModOf(c) < 0 && (gameState.combat?.round || 1) % 2 === 0;
+}
+/** Confused characters' blows go astray this often (catalog: randomTarget 0.5). */
+export function confusedRoll(c) {
+    const fx = (c?.statusEffects || []).find(e => e?.name === 'Confusion' && e.duration > 0);
+    return !!fx && Math.random() < (Number(fx.effectTickData?.randomTarget) || 0.5);
+}
+/** Incoming damage factor from Guard, Shield, Vulnerability... (damageMultiplier). */
+export function incomingDamageMultiplier(t) {
+    return (t?.statusEffects || []).reduce((m, fx) => m * (fx?.duration > 0 && Number(fx.effectTickData?.damageMultiplier) > 0 ? Number(fx.effectTickData.damageMultiplier) : 1), 1);
+}
+/** Hasted foes follow up with a quick half-power strike on a standing hero. */
+async function hasteFollowUp(enemy) {
+    if (speedModOf(enemy) <= 0 || enemy.isDefeated || enemy.hp <= 0) return;
+    const heroes = gameState.players.filter(p => p && !p.isDowned);
+    const hero = heroes[Math.floor(Math.random() * heroes.length)];
+    if (!hero) return;
+    const dealt = hitHero(hero, Math.max(1, Math.round((enemy.atk || 5) * 0.5 - (hero.def || 0) * 0.25)));
+    const line = `${enemy.name} is hasted and strikes again: ${hero.name} −${dealt}`;
+    showPopup(line, 'damage', 2500);
+    try { (await import('./ui.js')).appendCombatLog?.(line, 'attack'); } catch (_) {}
+}
+
+/** Special-ability damage to one hero (Guard/Shield apply); a hero at 0 HP is downed. Returns the damage dealt. */
 function hitHero(target, damage) {
+    damage = Math.max(1, Math.round(damage * incomingDamageMultiplier(target)));
     target.hp = Math.max(0, target.hp - damage);
     if (target.hp <= 0 && !target.isDowned) {
         target.isDowned = true;
         showPopup(`${target.name} has been defeated!`, 'error');
     }
+    return damage;
 }
 
 async function executeAbilityShadowBolt(enemy, target, context, description) {
-    const damage = Math.round(enemy.atk * 1.5);
-    hitHero(target, damage);
+    const damage = hitHero(target, Math.round(enemy.atk * 1.5));
     
     if (context.combatState.tacticalAdvantage === 'advantage') {
         // Apply additional effect when advantaged

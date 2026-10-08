@@ -439,6 +439,17 @@ export const STATUS_EFFECTS = {
         resistanceType: 'Time',
         canStack: false
     },
+    GUARDING: {
+        name: 'Guarding',
+        type: 'buff',
+        description: 'Defending: half damage until your next turn',
+        icon: '🛡️',
+        color: '#88aaff',
+        defaultDuration: 2,
+        defaultData: { damageMultiplier: 0.5 },
+        resistanceType: 'None',
+        canStack: false
+    },
     SHIELD: {
         name: 'Shield',
         type: 'buff',

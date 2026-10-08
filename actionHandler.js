@@ -211,8 +211,36 @@ export async function handlePlayerChoice(actionType, choiceText) {
                 // Silence: no spells or special moves (Power Strike is a plain blow, still fine).
                 const silenced = !Combat.canCharacterUseAbilities(currentPlayer);
                 if (silenced && (actionType === 'Spell' || (actionType === 'Special' && !/^power strike/i.test(String(choiceText || ''))))) actionType = 'Silenced';
+                // Slow / Frost: every other turn is lost. Confusion: a blow may land on yourself or an ally.
+                if (actionType !== 'Disabled' && Combat.isSluggish(currentPlayer)) actionType = 'Sluggish';
+                const offensive = ['Attack', 'Special', 'Spell'].includes(actionType);
+                if (offensive && Combat.confusedRoll(currentPlayer)) actionType = 'Confused';
 
                 switch (actionType) {
+                    case 'Sluggish':
+                        combatLog = `${currentPlayer.name} is too sluggish to act this turn.`;
+                        break;
+                    case 'Confused': {
+                        const allies = gameState.players.filter(p => p && !p.isDowned);
+                        const victim = allies[Math.floor(Math.random() * allies.length)] || currentPlayer;
+                        const dmg = Math.max(1, Math.round((currentPlayer.atk || 5) * 0.6 - (victim.def || 0) * 0.3));
+                        victim.hp = Math.max(0, victim.hp - dmg);
+                        if (victim.hp <= 0) victim.isDowned = true;
+                        combatLog = victim === currentPlayer
+                            ? `${currentPlayer.name} is confused and hits themselves (−${dmg}).`
+                            : `${currentPlayer.name} is confused and strikes ${victim.name} (−${dmg}).`;
+                        break;
+                    }
+                    case 'Defend': {
+                        // Guard until this hero's next turn (the status ticks at the end of
+                        // this turn and the next): half damage from every hit, plus a breather.
+                        Combat.applyStatusEffect(currentPlayer, 'Guarding', 2, {}, 'Defend');
+                        const before = currentPlayer.hp;
+                        currentPlayer.hp = Math.min(currentPlayer.maxHp, currentPlayer.hp + Math.max(2, Math.round((currentPlayer.maxHp || 100) * 0.05)));
+                        currentPlayer.mp = Math.min(currentPlayer.maxMp || 0, (currentPlayer.mp || 0) + 2);
+                        combatLog = `${currentPlayer.name} braces behind their guard (half damage until their next turn, +${currentPlayer.hp - before} HP).`;
+                        break;
+                    }
                     case 'Disabled':
                         combatLog = `${currentPlayer.name} is held by ${disabled.name} and loses the turn.`;
                         break;
@@ -375,6 +403,17 @@ export async function handlePlayerChoice(actionType, choiceText) {
 
                     default:
                         combatLog = `${currentPlayer.name} acts: ${choiceText}.`;
+                }
+
+                // Haste: a quick half-power follow-up strike after an attack, special or spell.
+                if (offensive && actionType !== 'Confused' && Combat.speedModOf(currentPlayer) > 0) {
+                    const foe = (gameState.enemies || []).find(e => e && !e.isDefeated && e.hp > 0);
+                    if (foe) {
+                        const dmg = Math.max(1, Math.round(((currentPlayer.atk || 5) - (foe.def || 0) * 0.5) * 0.5));
+                        foe.hp = Math.max(0, foe.hp - dmg);
+                        if (foe.hp <= 0) foe.isDefeated = true;
+                        combatLog += ` Hasted, ${currentPlayer.name} strikes again: ${foe.name} −${dmg}.`;
+                    }
                 }
 
                 // Loot + coins for anything the player's action just killed.
@@ -934,7 +973,7 @@ function validateAndMapActionType(actionType) {
     const log = window.displayVisualError || console.log;
     
     // Define valid action types
-    const validTypes = ['Good', 'Bad', 'Risky', 'Silly', 'Investigative', 'Attack', 'Special', 'Item', 'Run', 'Spell'];
+    const validTypes = ['Good', 'Bad', 'Risky', 'Silly', 'Investigative', 'Attack', 'Special', 'Item', 'Run', 'Spell', 'Defend'];
     
     // If already valid, return as-is
     if (validTypes.includes(actionType)) {

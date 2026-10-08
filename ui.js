@@ -948,6 +948,12 @@ export function renderChoices(choices, handler = null) {
         }
         gameState.currentChoices = choices;
     }
+    // Defend is a fixed battle command (like the classics): always offered,
+    // last, without costing the storyteller any words.
+    if (gameState.inCombat && !handler && Array.isArray(choices) && choices.length && !choices.some(c => c?.type === 'Defend')) {
+        choices = [...choices, { type: 'Defend', text: 'Raise your guard: half damage until your next turn, and catch your breath' }];
+        gameState.currentChoices = choices;
+    }
     log(`UI: Rendering choices. Data type: ${typeof choices}, Is Array: ${Array.isArray(choices)}, Handler Mode: ${!!handler}`);
     
     if (!elements.choicesContainer) {
@@ -1043,7 +1049,7 @@ export function renderChoices(choices, handler = null) {
         const plain = choice.text.replace(/\*\*|__|`/g, '');
         // In a fight the move type is shown: Attack/Special/Item/Run are
         // mechanics, not hidden story options.
-        const badge = { Attack: '⚔️ Attack', Special: '✨ Special', Item: '🧪 Item', Run: '🏃 Run' }[choice.type];
+        const badge = { Attack: '⚔️ Attack', Special: '✨ Special', Item: '🧪 Item', Run: '🏃 Run', Defend: '🛡️ Defend' }[choice.type];
         if (badge) {
             const tag = document.createElement('span');
             tag.className = 'choice-badge';
