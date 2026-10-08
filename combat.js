@@ -692,10 +692,15 @@ export function calculateDamage(attacker, defender, options = {}) {
     }
 
     // Base damage calculation
-    let damage = Math.max(1, attacker.atk - defender.def / 2);
+    // Enemies' flat ATK/DEF mods (e.g. Shadow Weakness DEF -2) apply here;
+    // players' are already in their atk/def.
+    const flat = (c, k) => c.id?.startsWith('player') ? 0 : (c.statusEffects || []).reduce((n, e) => n + (Number(e?.effectTickData?.[k]) || 0), 0);
+    let damage = Math.max(1, (attacker.atk + flat(attacker, 'atkMod')) - Math.max(0, defender.def + flat(defender, 'defMod')) / 2);
     
-    // Apply attacker status effect modifiers
-    if (attacker.statusEffects) {
+    // Attacker ATK multipliers (Berserk, Weakness): a player's atk already
+    // has them baked in by recalculateCharacterStats, so only enemies get
+    // them here (before, Weakness hit players twice: x0.25).
+    if (attacker.statusEffects && !attacker.id?.startsWith('player')) {
         attacker.statusEffects.forEach(effect => {
             if (effect.effectTickData) {
                 // Apply ATK multipliers (Berserk, Weakness, etc.)
@@ -1178,6 +1183,10 @@ export function recalculateCharacterStats(character) {
      log(`Combat: Recalculating stats for ${character.name} (ID: ${character.id})...`);
      let currentAtk, currentDef;
      const isPlayer = character.id?.startsWith('player');
+     // ponytail: enemies keep their raw atk/def; their multipliers apply at
+     // attack time (calculateDamage). Baking them in here compounded on every
+     // recalculation and never wore off. Flat mods on enemies are ignored.
+     if (!isPlayer) return;
      if (isPlayer) {
          currentAtk = character.baseAtk ?? Config.BASE_ATK;
          currentDef = character.baseDef ?? Config.BASE_DEF;
