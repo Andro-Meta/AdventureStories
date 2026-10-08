@@ -60,6 +60,9 @@ async function settle(timeoutMs = 120000) {
   const t0 = Date.now();
   await page.waitForTimeout(400);
   while (Date.now() - t0 < timeoutMs) {
+    // Level-up: the game asks which stat to raise; take the first open one (and count it).
+    const raised = await page.evaluate(() => { const t = document.querySelector('#battlePicker .bp-title')?.textContent || ''; if (!/raise a stat/.test(t)) return null; const o = document.querySelector('#battlePicker .bp-option:not([disabled])'); o?.click(); return o?.querySelector('.bp-label')?.textContent || null; });
+    if (raised) { globalThis.__statPicks = (globalThis.__statPicks || 0) + 1; console.log(`  level-up -> ${raised}`); await page.waitForTimeout(300); continue; }
     const ready = await gs(g => !g.isLoading && !g.combatRoundInProgress && document.querySelectorAll('#choicesContainer .choice-btn:not(.disabled):not([disabled])').length > 0);
     if (ready) return true;
     await page.waitForTimeout(700);
