@@ -254,6 +254,11 @@ function setupEventListeners(UI, setup, actionHandler, saveLoad) { // Added acti
 
     // The newest log lines, for a bug report (the old on-screen log panel
     // could never be opened).
+    // ⭐ +N stat on a hero card: spend level-up points.
+    document.addEventListener('click', (e) => {
+        const b = e.target.closest?.('.spend-points');
+        if (b) { e.stopPropagation(); UI.promptStatPoints(b.dataset.hero); }
+    });
     safeAddListener('copyDebugLogBtn', 'click', async () => {
         const text = (window.__advLog || []).slice(-400).join('\n');
         try { await navigator.clipboard.writeText(text); UI.showPopup('Debug log copied', 'success', 2000); }

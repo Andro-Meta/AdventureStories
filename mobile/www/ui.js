@@ -8,6 +8,7 @@ import * as Config from './config.js';
 import { loadPlayerAges, loadPlayerNames } from './inputCache.js';
 import * as Spells from './spells.js';
 import * as AdaptiveAbilities from './adaptiveAbilities.js';
+import * as Progression from './progression.js';
 // Import specific utils needed
 import { sanitizeText } from './utils.js';
 import { describeQuestStep, friendlyMilestone } from './questDefinitions.js';
@@ -797,7 +798,7 @@ function createCharacterCard(character, type, index, configRef) {
     card.innerHTML = `
         <div class="card-details hidden">
              ${isPlayer ? `<p>Status: <span class="${type}-status">${isDowned ? 'Downed' : 'Okay'}</span></p>` : ''}
-             ${isPlayer ? `<p>Level ${character.level || 1} · XP <span>${character.xp || 0}/${40 * (character.level || 1)}</span></p>` : ''}
+             ${isPlayer ? statsExplainer(character) : ''}
              <p>ATK: <span class="${type}-atk">${character.atk ?? '?'}</span> | DEF: <span class="${type}-def">${character.def ?? '?'}</span></p>
              ${isPlayer ? `<p>Weapon: <span class="${type}-weapon">${sanitizeText(weaponName)} ${weaponTier ? `(${sanitizeText(weaponTier)})` : ''}</span></p>` : ''}
              ${isPlayer ? `<p>Armor: <span class="${type}-armor">${sanitizeText(armorName)} ${armorTier ? `(${sanitizeText(armorTier)})` : ''}</span></p>` : ''}
@@ -820,10 +821,61 @@ function createCharacterCard(character, type, index, configRef) {
             </div>` : ''}
             <span class="expand-icon">▼</span>
         </div>
+         ${isPlayer ? heroStatsRow(character) : ''}
          ${isDowned ? `<div class="downed-indicator">DOWNED (<span class="downed-timer">${Math.max(0, downedTurnsMax - (character.downedTurns ?? 0))}</span> turns left)</div>` : ''}
          ${isDefeated ? `<div class="defeated-indicator">DEFEATED</div>` : ''}
     `;
     return card;
+}
+
+/** Always-visible row: the four stats, the XP bar, and a button for unspent level-up points. */
+function heroStatsRow(hero) {
+    Progression.ensureStats(hero);
+    const need = Progression.xpForLevel(hero.level);
+    const pct = Math.min(100, Math.round(100 * hero.xp / need));
+    const chips = Object.entries(Progression.STATS).map(([k, s]) => `<span class="stat-chip" title="${s.name}: ${s.does}">${s.icon}${hero.stats[k]}</span>`).join('')
+        + (Progression.luckOf(hero) ? `<span class="stat-chip" title="Lucky charm: helps luck rolls; crits from ${20 - Progression.luckOf(hero)}">🍀${Progression.luckOf(hero)}</span>` : '');
+    return `<div class="hero-stats">${chips}
+        <span class="xp-wrap" title="${hero.xp}/${need} XP to level ${hero.level + 1}"><span class="xp-bar"><span style="width:${pct}%"></span></span><small>${hero.xp}/${need} XP</small></span>
+        ${hero.statPoints > 0 ? `<button class="spend-points" data-hero="${sanitizeText(hero.id)}">⭐ +${hero.statPoints} stat</button>` : ''}</div>`;
+}
+
+/** In the card details: what each stat does, and how close it is to growing. */
+function statsExplainer(hero) {
+    Progression.ensureStats(hero);
+    const rows = Object.entries(Progression.STATS).map(([k, s]) =>
+        `<li>${s.icon} <b>${s.name} ${hero.stats[k]}</b>/${Progression.STAT_MAX}: ${s.does}. In fights: ${s.fight}.${hero.stats[k] < Progression.STAT_MAX ? ` <small>Practice ${hero.sparks[k] || 0}/${Progression.SPARKS_PER_POINT}</small>` : ' <small>Mastered</small>'}</li>`).join('');
+    return `<div class="stats-explainer"><p><b>Level ${hero.level}</b> · ${hero.xp}/${Progression.xpForLevel(hero.level)} XP</p>
+        <ul>${rows}</ul>
+        <p class="stats-how"><small>Every choice is a roll: a 20-sided die plus the stat the action uses (the icon on the button), and the % is your chance. Each point in a stat adds +5% to every choice that uses it. 🍀 choices are pure luck: a lucky charm in your bag helps those and makes a 19 count as a critical success too.${Progression.luckOf(hero) ? ` You carry luck +${Progression.luckOf(hero)}.` : ''} Every roll gives XP; each level lets you raise a stat; ${Progression.SPARKS_PER_POINT} successes with a stat raise it as well.</small></p></div>`;
+}
+
+let statPromptOpen = false;
+/** Level-up: let each hero with unspent points pick the stat to raise (battle picker sheet). */
+export async function promptStatPoints(heroId = null) {
+    if (statPromptOpen || gameState.inCombat) return;
+    statPromptOpen = true;
+    try {
+        const { pickBattleOption } = await import('./battle.js');
+        for (const hero of (gameState.players || []).filter(p => p && (!heroId || p.id === heroId))) {
+            Progression.ensureStats(hero);
+            while (hero.statPoints > 0) {
+                const opts = Object.entries(Progression.STATS).map(([k, s]) => ({
+                    label: `${s.icon} ${s.name} ${hero.stats[k]} → ${Math.min(Progression.STAT_MAX, hero.stats[k] + 1)}`,
+                    detail: `${s.does}; in fights ${s.fight}`, key: k, disabled: hero.stats[k] >= Progression.STAT_MAX
+                }));
+                const pick = await pickBattleOption(`⭐ ${hero.name} reached level ${hero.level}: raise a stat (${hero.statPoints} to spend)`, opts);
+                if (!pick) break; // later: the ⭐ button on the card
+                Progression.spendStatPoint(hero, pick.key);
+                showPopup(`${Progression.STATS[pick.key].icon} ${hero.name}'s ${Progression.STATS[pick.key].name} is now ${hero.stats[pick.key]}!`, 'success', 2500);
+                try { (await import('./combat.js')).recalculateCharacterStats(hero); } catch (_) {}
+            }
+        }
+    } finally {
+        statPromptOpen = false;
+        renderPlayerCards();
+        if (gameState.currentChoices?.length && !gameState.isLoading) renderChoices(gameState.currentChoices);
+    }
 }
 
 /** Attaches click listeners to collapsible card headers. */
@@ -957,6 +1009,7 @@ export function renderChoices(choices, handler = null) {
     if (gameState.inCombat && !handler && Array.isArray(choices) && choices.length) {
         choices = [...choices, { type: 'Defend', text: 'Raise your guard: half damage until your next turn, and catch your breath' }];
     }
+    if (!handler && !gameState.inCombat && (gameState.players || []).some(p => p?.statPoints > 0)) setTimeout(() => promptStatPoints(), 700);
     log(`UI: Rendering choices. Data type: ${typeof choices}, Is Array: ${Array.isArray(choices)}, Handler Mode: ${!!handler}`);
     
     if (!elements.choicesContainer) {
@@ -1052,6 +1105,17 @@ export function renderChoices(choices, handler = null) {
         // Markdown from the model (**Ghost Step**) shows as raw asterisks.
         const plain = choice.text.replace(/\*\*|__|`/g, '');
         button.dataset.text = plain; // the click handler sends this, not the badge + text
+        // The check this choice makes: stat icon and the chance to succeed.
+        const check = !gameState.inCombat && !handler && Progression.CHECKS[choice.type];
+        if (check) {
+            const hero = gameState.players?.[gameState.currentPlayerIndex] || gameState.players?.[0];
+            const stat = choice.stat && choice.stat !== 'luck' && Progression.STATS[choice.stat] ? choice.stat : (choice.stat === 'luck' ? null : check.stat);
+            const pct = Math.round(Progression.chanceFor(choice.type, hero, choice.stat) * 100);
+            const icon = stat ? Progression.STATS[stat].icon : '🍀';
+            const danger = choice.type === 'Risky' || choice.type === 'Bad' ? ' ⚠' : '';
+            button.dataset.odds = `${icon} ${pct}%${danger}`;
+            button.title = `${stat ? Progression.STATS[stat].name : 'Luck'} check, ${pct}% to succeed${danger ? ': failing can hurt' : ''}`;
+        }
         // In a fight the move type is shown: Attack/Special/Item/Run are
         // mechanics, not hidden story options.
         const badge = { Attack: '⚔️ Attack', Special: '✨ Special', Item: '🧪 Item', Run: '🏃 Run', Defend: '🛡️ Defend' }[choice.type];
@@ -1247,6 +1311,26 @@ export function renderShop() {
     if (!elements.shopDisplay) return;
     log("UI: Rendering shop.");
     elements.shopDisplay.innerHTML = '';
+    const hero = gameState.players?.[gameState.currentPlayerIndex];
+    if (hero) {
+        const price = Progression.innPrice(hero);
+        const rested = hero.hp >= hero.maxHp && (hero.mp ?? 0) >= (hero.maxMp ?? 0) && !(hero.statusEffects || []).some(e => e?.name === 'Flustered');
+        const inn = document.createElement('div');
+        inn.className = 'item-card inn-card';
+        inn.innerHTML = `<h4>🛏️ Rest at the inn</h4><p>Full HP and MP, and shake off being Flustered.</p><p class="item-cost">${price} 💰</p>`;
+        const btn = document.createElement('button');
+        btn.textContent = gameState.inCombat ? 'Not during a fight' : rested ? 'Already rested' : (hero.coins || 0) < price ? `Need ${price} coins` : `Rest (${price} coins)`;
+        btn.disabled = gameState.inCombat || rested || (hero.coins || 0) < price;
+        btn.addEventListener('click', () => {
+            if (gameState.inCombat || (hero.coins || 0) < price) return;
+            hero.coins -= price; hero.hp = hero.maxHp; hero.mp = hero.maxMp ?? hero.mp;
+            hero.statusEffects = (hero.statusEffects || []).filter(e => e?.name !== 'Flustered');
+            showPopup(`${hero.name} rests at the inn: fully restored (-${price} coins).`, 'healing', 3000);
+            renderPlayerCards(); updateContextHeaders(); renderShop();
+        });
+        inn.appendChild(btn);
+        elements.shopDisplay.appendChild(inn);
+    }
     if (!gameState.shopItems || gameState.shopItems.length === 0) {
         elements.shopDisplay.innerHTML = '<p class="info-message">The shop is currently empty.</p>';
         return;

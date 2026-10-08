@@ -2128,3 +2128,14 @@ body.in-battle #enemyContainer { display: none; }
 /* The main action on a screen (Solo Adventure, Continue Anyway, Save). */
 button.primary { background: var(--accent-color, #6c5ce7); color: #fff; border-color: transparent; }
 .choice-btn.disabled, .choice-btn:disabled { opacity: 0.6; cursor: default; }
+/* Stats, XP and odds (progression.js) */
+.hero-stats { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 12px 10px; font-size: 0.95rem; }
+.stat-chip { background: rgba(255,255,255,0.07); border-radius: 10px; padding: 2px 8px; font-weight: 700; }
+.xp-wrap { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+.xp-bar { width: 70px; height: 7px; background: rgba(255,255,255,0.12); border-radius: 4px; overflow: hidden; display: inline-block; }
+.xp-bar > span { display: block; height: 100%; background: linear-gradient(90deg, #f6c453, #ffdd88); }
+.spend-points { padding: 4px 10px; margin: 0; font-size: 0.85rem; background: var(--legendary-color-text, #c9a227); color: #111; }
+.choice-btn[data-odds]::after { content: attr(data-odds); float: right; margin-left: 8px; font-size: 0.85rem; font-weight: 700; opacity: 0.85; white-space: nowrap; }
+.stats-explainer ul { list-style: none; padding-left: 0; margin: 4px 0; }
+.stats-explainer li { margin: 3px 0; }
+.inn-card h4 { margin: 0 0 4px; }

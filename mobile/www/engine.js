@@ -21,6 +21,7 @@ import { gameState, recordStoryBeat, recordWorldStateChange } from './state.js';
 import * as Combat from './combat.js';
 import * as Config from './config.js';
 import { levelUp } from './battle.js';
+import { gainXp } from './progression.js';
 
 /**
  * Phase 1.2: Look up a status effect from Config.STATUS_EFFECTS by name
@@ -226,6 +227,25 @@ const PATHS = [
         }
     },
 
+    // ---- Player stats Brave/Clever/Sneaky/Kind, 0-5 (god mode; progression.js) ----
+    {
+        regex: /^\/players\/(\d+)\/stats\/(brave|clever|sneaky|kind)$/,
+        ops: ['replace'],
+        validate: (m, value, gs) => {
+            if (!gs.players?.[Number(m[1])]) return `players[${m[1]}] does not exist`;
+            if (typeof value !== 'number' || !Number.isFinite(value)) return 'stat must be a number 0-5';
+            if (!gs.isGoalComplete) return 'stats grow by play (levels and practice), not narration';
+            return null;
+        },
+        apply: (m, value, gs) => {
+            const p = gs.players[Number(m[1])];
+            p.stats = p.stats || {};
+            p.stats[m[2]] = Math.max(0, Math.min(5, Math.round(value)));
+            try { Combat.recalculateCharacterStats(p); } catch (_) {}
+            return `${p.name}.${m[2]} = ${p.stats[m[2]]}`;
+        }
+    },
+
     // ---- Player core stats (god-mode primarily; narrator may also adjust) ----
     {
         regex: /^\/players\/(\d+)\/(maxHp|maxMp|atk|def|level)$/,
@@ -251,7 +271,9 @@ const PATHS = [
             if (field === 'def') player.baseDef = (player.baseDef ?? Config.BASE_DEF) + (value - (player.def || 0));
             // A higher level (god mode, story) brings the normal per-level gains.
             if (field === 'level' && value > (player.level || 1)) {
-                levelUp(player, value - (player.level || 1));
+                const gained = value - (player.level || 1);
+                levelUp(player, gained);
+                player.statPoints = (player.statPoints || 0) + gained; // each level: a stat to raise
                 try { Combat.recalculateCharacterStats(player); } catch (_) {}
                 return `${player.name}.level = ${player.level}`;
             }
@@ -736,6 +758,22 @@ const PATHS = [
                 try { done.apply('/isGoalComplete'.match(done.regex), true, gs); }
                 catch (e) { (window.displayVisualError || console.log)(`final_blow completion failed: ${e.message}`); }
             }
+            // Main-quest beats reward the party (not jail beats, not god mode).
+            if (!/^jail[ _]/i.test(canonicalName) && !gs.isGoalComplete) {
+                const heroes = (gs.players || []).filter(p => p && !p.isDowned);
+                const coins = 15 + Math.floor(Math.random() * 11); // 15-25 each
+                const lines = [];
+                for (const p of heroes) {
+                    p.coins = (p.coins || 0) + coins;
+                    const ups = gainXp(p, 50, levelUp);
+                    if (ups) lines.push(`⭐ ${p.name} reached level ${p.level}! Choose a stat to raise.`);
+                }
+                if (heroes.length) import('./ui.js').then(UI => {
+                    UI.showPopup(`📜 Story milestone! +50 XP and +${coins} coins${heroes.length > 1 ? ' each' : ''}`, 'success', 3500);
+                    lines.forEach(l => UI.showPopup(l, 'legendary', 4000));
+                    UI.renderPlayerCards?.();
+                }).catch(() => {});
+            }
             return `milestone: ${canonicalName}${canonicalName !== original ? ` (normalized from "${original}")` : ''}`;
         }
     },
@@ -1059,6 +1097,7 @@ export function describeAllowedPaths() {
         '/players/0/atk       (replace, number) - attack stat',
         '/players/0/def       (replace, number) - defense stat',
         '/players/0/level     (replace, number)',
+        '/players/0/stats/brave|clever|sneaky|kind (replace, 0-5; god mode only)',
         '/players/0/inventory/- (add, {name, type, tier, effect, stats})',
         '/players/0/inventory/<id> (remove)',
         '/players/0/equipment/weapon|armor (replace, item name or id, or null)',

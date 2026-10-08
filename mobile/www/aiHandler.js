@@ -89,7 +89,7 @@ export function buildChoiceInstructions(types, inCombat, avoid = []) {
         : '';
     return `CHOICES: exactly ${types.length}, one of each type:
 ${list}
-Each choice: under 160 characters, starts with a verb, names something specific from the narration, and never states its type (no "safely", "risky", "silly").${inCombat ? ` Attack must name the enemy it targets.${combatKitLine()}` : ' Make the five genuinely different from each other. If your ops START a fight, write four fight choices instead, types Attack, Special, Item, Run.'}${noRepeat}`;
+Each choice: under 160 characters, starts with a verb, names something specific from the narration, and never states its type (no "safely", "risky", "silly").${inCombat ? '' : ' Give each a "stat": the skill the action really uses: brave (force, daring, facing danger), clever (searching, figuring out, knowing), sneaky (stealth, tricks, slipping past), kind (helping, talking, calming), luck (pure chance or silliness). Kicking a dog is brave, slipping past it sneaky.'}${inCombat ? ` Attack must name the enemy it targets.${combatKitLine()}` : ' Make the five genuinely different from each other. If your ops START a fight, write four fight choices instead, types Attack, Special, Item, Run.'}${noRepeat}`;
 }
 
 const STOP_WORDS = new Set('the a an and or to of on in at for with from into onto your their his her its it this that them they now then just again before after while back up down out over all any some more most very only use try'.split(' '));
@@ -149,7 +149,7 @@ ${prompt}`;
     const userPrompt = `${scene}
 
 Reply with ONE JSON object with all three keys, and nothing else:
-{"narration":"...","ops":[],"choices":[${types.map(t => `{"type":"${t}","text":"..."}`).join(',')}]}
+{"narration":"...","ops":[],"choices":[${types.map(t => inCombat ? `{"type":"${t}","text":"..."}` : `{"type":"${t}","text":"...","stat":"..."}`).join(',')}]}
 
 NARRATION: ${words} words (at least ${wc.min}; replies under that are too thin), in 2 short paragraphs, third person, naming the hero who acted. Show what happens because of the action, then end on a moment that invites the next decision. No choices or bracket tokens inside the narration.
 
@@ -333,7 +333,7 @@ export async function requestChoicesOnly(narrative, inCombat, forHero = null, av
     const enemies = inCombat ? `\nEnemies: ${(gameState.enemies || []).filter(e => !e.isDefeated).map(e => e.name).join(', ')}` : '';
     const payload = await API.getAIResponseJSON([
         { role: 'system', content: `You write the player choices for a ${getThemeName()} text adventure. Reply with one JSON object only.` },
-        { role: 'user', content: `SCENE:\n${narrative}${enemies}\n\n${forHero ? `Write the choices for ${forHero}, who acts next.\n` : ''}${buildChoiceInstructions(types, inCombat, avoid)}\n\nReply exactly as {"choices":[${types.map(t => `{"type":"${t}","text":"..."}`).join(',')}]}` }
+        { role: 'user', content: `SCENE:\n${narrative}${enemies}\n\n${forHero ? `Write the choices for ${forHero}, who acts next.\n` : ''}${buildChoiceInstructions(types, inCombat, avoid)}\n\nReply exactly as {"choices":[${types.map(t => inCombat ? `{"type":"${t}","text":"..."}` : `{"type":"${t}","text":"...","stat":"..."}`).join(',')}]}` }
     ], getChoiceSchema(inCombat), { jsonSchemaName: inCombat ? 'combat_choices' : 'exploration_choices', max_tokens: 600, temperature: 0.7 });
     return validateChoicesPayload(payload, inCombat);
 }
