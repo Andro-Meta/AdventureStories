@@ -98,6 +98,7 @@ check(gameState.enemies[0]?.isBoss === true, 'climax foe becomes the boss automa
 check(!Engine.validateOp({ op: 'add', path: '/questProgress/milestones/-', value: { name: 'final_blow' } }).ok, 'final_blow is refused while the boss still stands');
 check(!Engine.validateOp({ op: 'replace', path: '/isGoalComplete', value: true }).ok, 'isGoalComplete is refused while the boss still stands');
 gameState.enemies[0].isDefeated = true; gameState.enemies[0].hp = 0;
+gameState.questProgress.bossDefeated = true; // what Combat.handleEnemyDefeat records on the kill
 check(Engine.validateOp({ op: 'add', path: '/questProgress/milestones/-', value: { name: 'final_blow' } }).ok, 'final_blow is accepted once the boss is down');
 
 // A named villain: the reveal stores the name, the prompt carries it, and

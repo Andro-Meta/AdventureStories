@@ -1050,6 +1050,53 @@ await block(async () => {
   check(e.hp === e0, `no hasted follow-up after a spell that fizzled (foe ${e0} -> ${e.hp})`);
 });
 
+// =====================================================================
+section('Batch 9: story/engine review findings');
+await block(async () => {
+  // One reply: spawn the villain, mark it defeated, final_blow -> quest won with no fight.
+  fresh(); gameState.enemies = [];
+  gameState.questProgress = { villain: 'Lord Vex', milestones: ['call_to_adventure', 'stakes_clear', 'antagonist_revealed', 'final_confrontation'].map(name => ({ name })) };
+  Engine.applyDiff([
+    { op: 'add', path: '/enemies/-', value: { name: 'Lord Vex', hp: 60, isBoss: true } },
+    { op: 'replace', path: '/enemies/0/isDefeated', value: true },
+    { op: 'add', path: '/questProgress/milestones/-', value: { name: 'final_blow' } }
+  ]);
+  check(!gameState.isGoalComplete && !gameState.enemies[0].isDefeated, `narrated boss defeat is refused (won ${gameState.isGoalComplete}, boss defeated ${gameState.enemies[0].isDefeated})`);
+});
+await block(async () => {
+  // Retire god mode at turn 40: the new quest started in a finished Act 3 with the old villain.
+  const Q = await import('../questDefinitions.js');
+  fresh(); gameState.turn = 40; gameState.isGoalComplete = true;
+  gameState.questProgress = { villain: 'Lord Vex', act3StartTurn: 31, bossDefeated: true, milestones: [{ name: 'final_blow' }] };
+  gameState.enemies = [{ id: 'e_old', name: 'Lord Vex', hp: 0, maxHp: 60, isBoss: true, isDefeated: true, statusEffects: [] }];
+  Engine.applyDiff(AH.extractGodModeDiffOps('I retire my godhood'));
+  const hint = Q.buildQuestStageHint(gameState);
+  check(/Act 1/.test(hint) && !/Lord Vex/.test(hint) && !gameState.questProgress.bossDefeated, `new quest after retiring at turn 40 starts in Act 1 with no old villain (${(hint.match(/MAIN QUEST STAGE — ([^:]+)/) || [])[1]})`);
+  const re = Engine.applyDiff([{ op: 'add', path: '/enemies/-', value: { name: 'Lord Vex', hp: 30 } }]);
+  check(re.length === 1, 'the old villain name can return in the new quest');
+});
+await block(async () => {
+  // Act 3 confronted with no boss: the deadline demanded final_blow forever (always refused).
+  const Q = await import('../questDefinitions.js');
+  fresh(); gameState.enemies = []; gameState.turn = 40;
+  gameState.questProgress = { villain: 'Lord Vex', act3StartTurn: 35, milestones: ['call_to_adventure', 'stakes_clear', 'antagonist_revealed', 'final_confrontation'].map(name => ({ name })) };
+  const hint = Q.buildQuestStageHint(gameState);
+  check(/isBoss/.test(hint) && /Lord Vex/.test(hint.split('DEADLINE')[1] || '') && !/add the "final_blow"/.test(hint), `stalled climax asks for the boss fight (${(hint.match(/DEADLINE:[^\n]*/) || ['no deadline'])[0].slice(0, 90)})`);
+});
+await block(async () => {
+  // God-mode summoned boss was always 60 HP.
+  fresh(); gameState.isGoalComplete = true; gameState.enemies = [];
+  Engine.applyDiff([{ op: 'add', path: '/enemies/-', value: { name: 'Void Dragon', hp: 600, maxHp: 600, atk: 50, isBoss: true } }]);
+  check(gameState.enemies[0]?.maxHp === 600, `god-mode boss keeps its size (${gameState.enemies[0]?.maxHp} HP)`);
+});
+await block(async () => {
+  // Wild West / jungle / haunted... got generic theme filler.
+  const AIH = await import('../aiHandler.js');
+  fresh(); gameState.adventureTheme = 'wild_west';
+  const sys = AIH.generateSystemPrompt();
+  check(/Frontier towns/.test(sys) && !/Theme appropriate/.test(sys), 'wild_west prompt gets its own theme notes');
+});
+
 console.error = realError;
 out(`\nfetch attempts blocked: ${fetchCalls}; elapsed ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 out(failed ? `✗ ${failed} mechanics check(s) failed` : '✓ all mechanics checks passed');

@@ -504,7 +504,7 @@ const PATHS = [
             if (typeof value.hp !== 'number' || value.hp <= 0) return 'enemy.hp must be a positive number';
             const same = (gs.enemies || []).filter(e => String(e.name).trim().toLowerCase() === value.name.trim().toLowerCase());
             if (same.some(e => !e.isDefeated)) return `"${value.name}" is already in the fight`;
-            if (same.some(e => e.isBoss)) return `"${value.name}" was already defeated`;
+            if (same.some(e => e.isBoss) && !gs.isGoalComplete) return `"${value.name}" was already defeated`; // god mode may summon a rematch
             return null;
         },
         apply: (_m, value, gs) => {
@@ -542,7 +542,10 @@ const PATHS = [
                 enemy.isBoss = true;
                 // Fixed size, not "at least": the narrator's 75-HP magistrate took a
                 // solo hero 13 hits while hitting back for 10-20 (unwinnable).
-                enemy.hp = enemy.maxHp = 40 + 20 * party;
+                // God mode keeps the size it asked for (a summoned Void Dragon was 60 HP).
+                enemy.hp = enemy.maxHp = gs.isGoalComplete
+                    ? Math.min(99999, Math.max(20, Math.round(Number(value.maxHp || value.hp)) || 300))
+                    : 40 + 20 * party;
                 enemy.atk = Math.max(enemy.atk, 9);
                 enemy.def = Math.max(enemy.def, 4);
                 enemy.lootTier = 'High';
@@ -600,6 +603,9 @@ const PATHS = [
             const idx = Number(m[1]);
             if (!gs.enemies?.[idx]) return `enemies[${idx}] does not exist`;
             if (gs.inCombat) return 'enemy HP and defeat are handled by the combat system during fights';
+            // A boss falls only in battle (a reply could spawn the villain and mark it
+            // defeated in one go, winning the quest without a fight).
+            if (gs.enemies[idx].isBoss) return 'a boss is defeated in battle, not by narration';
             if (m[2] === 'hp') {
                 if (typeof value !== 'number' || !Number.isFinite(value)) return 'hp must be a finite number';
             } else if (m[2] === 'isDefeated') {
@@ -826,7 +832,14 @@ const PATHS = [
                 gs.allowCustomActions = false;
                 gs.questRewardsGranted = false; // a new main quest can pay out again
                 // New quest: old beats would block call_to_adventure/final_blow as duplicates.
-                if (gs.questProgress) { gs.questProgress.milestones = []; gs.questProgress.completionPercentage = 0; gs.questProgress.bossDefeated = false; }
+                if (gs.questProgress) {
+                    // Acts count from here; the old villain, Act 3 clock, threads and
+                    // fallen foes belong to the finished quest.
+                    Object.assign(gs.questProgress, { milestones: [], completionPercentage: 0, bossDefeated: false, questStartTurn: gs.turn || 0 });
+                    delete gs.questProgress.villain; delete gs.questProgress.act3StartTurn;
+                }
+                gs.storyThreads = [];
+                gs.enemies = (gs.enemies || []).filter(e => e && !e.isDefeated && e.hp > 0);
                 if (gs.godModeManager) {
                     try {
                         if (typeof gs.godModeManager.deactivateGodMode === 'function') {
@@ -933,9 +946,8 @@ export function questPercent(gs) {
  * one must have fallen this quest (a story 'win' never fought the villain).
  */
 function bossBeaten(gs) {
-    const foes = gs?.enemies || [];
-    if (foes.some(e => e.isBoss && !e.isDefeated && e.hp > 0)) return false;
-    return !!gs?.questProgress?.bossDefeated || foes.some(e => e.isBoss && (e.isDefeated || e.hp <= 0));
+    if ((gs?.enemies || []).some(e => e.isBoss && !e.isDefeated && e.hp > 0)) return false;
+    return !!gs?.questProgress?.bossDefeated; // set by Combat.handleEnemyDefeat
 }
 
 /** Path segment -> item ref ("Healing%20Potion" / "Healing_Potion" -> "Healing Potion" too). */

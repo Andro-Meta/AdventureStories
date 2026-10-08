@@ -75,13 +75,11 @@ export const MAIN_QUEST_ARC = [
 This is Act 3 of the main quest. The player is at the climax.
 - STORY CIRCLE 6-8 (Take, Return, Change): before the victory the heroes pay a real price (a loss, a broken treasure, a hard choice, an ally hurt). Then they win, and the closing beats show how they have changed.
 - Pay off every OPEN THREAD before the final_blow: each setup gets its moment.
-- Stage a climactic encounter — usually combat, sometimes a moral choice or sacrifice.
+- The climax is a FIGHT with the main villain (the boss). The quest is won only by defeating the boss in battle; the game records the win when the boss falls.
 - Use these EXACT milestone names verbatim, in order:
-   1. "final_confrontation" — when the player faces the antagonist directly.
-   2. "final_blow"          — when the threat is defeated/resolved. CRITICAL: if you emitted "final_confrontation" two or more turns ago without yet emitting "final_blow", you MUST emit "final_blow" THIS TURN. The story cannot loop in the climax — close it.
+   1. "final_confrontation" — when the player faces the antagonist directly; in the same turn add the villain with /enemies/- ("isBoss": true) and replace /inCombat true.
+   2. "final_blow"          — only after the boss has been defeated in the fight (the game adds it itself on the kill).
 - PACING: emit AT MOST ONE milestone per turn. The climactic act deserves multiple beats.
-- After the climax, the player WINS the quest. Emit (the game completes the quest from it):
-  • {"op":"add","path":"/questProgress/milestones/-","value":{"name":"final_blow","description":"The threat is ended."}}
 - Winning UNLOCKS GOD MODE — the player gains the power
   to type any free-form action and have the world respond. Foreshadow this with awe in the
   closing prose ("the world bends to your will now").
@@ -99,7 +97,7 @@ This is Act 3 of the main quest. The player is at the climax.
 export function determineCurrentAct(gameState) {
     const milestoneNames = (gameState.questProgress?.milestones || [])
         .map(m => (m.name || '').toLowerCase());
-    const turn = gameState.turn || 1;
+    const turn = (gameState.turn || 1) - (gameState.questProgress?.questStartTurn || 0);
 
     // If goal complete, the main quest is over — return null so the system
     // prompt can shift to god-mode framing instead of advancing the quest.
@@ -152,15 +150,19 @@ The party is imprisoned. They cannot leave the jail until they: (1) assess the s
 function act3Deadline(gameState, act) {
     if (act?.id !== 'act3') return '';
     const qp = gameState.questProgress || (gameState.questProgress = {});
-    if (!qp.act3StartTurn) qp.act3StartTurn = gameState.turn || 1;
+    if (!qp.act3StartTurn) qp.act3StartTurn = gameState.turn || 1; // cleared when a new quest starts
     const rounds = (gameState.turn || 1) - qp.act3StartTurn;
     const names = (qp.milestones || []).map(m => String(m.name || '').toLowerCase());
     const confronted = names.some(n => n.includes('final_confrontation') || n.includes('final confrontation'));
     // The engine refuses final_blow while the boss stands; mid-fight the game
     // ends the quest itself on the kill, so don't demand an impossible op.
     const bossUp = (gameState.enemies || []).some(e => e.isBoss && !e.isDefeated && e.hp > 0);
-    if (confronted && rounds >= 2 && bossUp) return '';
-    if (confronted && rounds >= 2) return `\nDEADLINE: the final confrontation is under way. Resolve it THIS turn and add the "final_blow" milestone.`;
+    if (bossUp) return '';
+    const villain = qp.villain ? `"${qp.villain}"` : 'the main villain';
+    // Confronted but no boss to beat: final_blow is refused until one falls,
+    // so ask for the fight (it used to demand final_blow forever).
+    if (confronted && rounds >= 2 && !qp.bossDefeated) return `\nDEADLINE: the final confrontation has no fight yet. THIS turn add ${villain} with /enemies/- ("isBoss": true) and replace /inCombat true.`;
+    if (confronted && rounds >= 2) return `\nDEADLINE: the boss has fallen. Close the story THIS turn and add the "final_blow" milestone.`;
     if (rounds >= 6) return `\nDEADLINE: the story has been in Act 3 for ${rounds} rounds. Bring the final confrontation THIS turn (add "final_confrontation"; if it is a fight, spawn the main threat with /enemies/- and "isBoss": true).`;
     return '';
 }
@@ -209,45 +211,12 @@ export function buildQuestStageHint(gameState) {
         return buildJailEscapeHint();
     }
     if (gameState.isGoalComplete) {
-        return `\n\n=== GOD MODE (post-main-quest authorial authority) ===
-
-OVERRIDES: This block supersedes any earlier "QUEST PROGRESS GUIDANCE" or "MAIN QUEST
-STAGE" rules. The main quest is finished. The player has earned full authorial power
-over the world. Every input they submit is a DECLARATION about the world that you
-must honor and PERSIST via diff ops.
-
-PRIMARY RULE: Whenever the player declares a tangible change to the world or to
-themselves, you MUST emit a corresponding diff op. Mere narration is NOT enough —
-if the diff doesn't fire, the change vanishes next turn and the player's god-mode
-power feels broken.
-
-DECLARATION → REQUIRED DIFF MAPPING (memorize these):
-• "I have <N> gold/coins/money" → /players/0/coins replace (cap 99999 for "infinite")
-• "I have/wear/wield <ITEM>" → /players/0/inventory/- add (with reasonable stats)
-• "I learn/cast/know <SKILL/SPELL>" → /players/0/specialMoves/- add
-• "I summon/befriend/bond with <CREATURE_NAME>" → /entityMemory/npcs/<NAME> add (+ optionally /players/0/specialMoves/- if it's a combat ally)
-• "I create/visit/transport-to <PLACE>" → /currentLocation replace + /entityMemory/locations/<NAME> add
-• "I face/fight/summon <NEW BOSS>" → /enemies/- add + /inCombat replace true + /entityMemory/npcs/<NAME> add
-• "I declare a new quest: <GOAL>" → /adventureGoal replace + /questProgress/completionPercentage replace 0 (do NOT touch /isGoalComplete — keep it true so god mode persists)
-• "My <STAT> is now <N>" / "I gain <N> attack/defense/HP" → /players/0/<atk|def|maxHp|level> replace
-• "I'm now level <N>" → /players/0/level replace
-
-WHEN PLAYER IS VAGUE — apply these defaults in the diff value:
-• Item with no stats specified → tier "Special", reasonable {atk:N} or {def:N} for the implied power, evocative effect string
-• Skill with no mechanics → cooldown:3, mpCost:10, plain mechanics object
-• NPC with no traits → relationship "neutral" or "bonded" (read from text), short description from your prose
-• Boss with no stats → hp:300-800, atk:30-60, def:20-40 scaled to drama
-• "A lot of <RESOURCE>" → 10000. "Infinite" → 99999.
-
-REFUSAL: Only refuse if the input violates the active age-tier policy. In that case
-write a DIEGETIC refusal — the world resists in-character, no fourth-wall break, no
-diff ops for the forbidden change. Otherwise: HONOR EVERY INPUT. The player earned this.
-
-DO NOT in god mode:
-- Emit milestones for ongoing main-quest progression (the main quest is done)
-- Reset /isGoalComplete to false (god mode would deactivate)
-- Decline to add an item/skill/NPC just because it sounds powerful or strange — that's the point`
-            .replace(/\/players\/0\//g, `/players/${gameState.currentPlayerIndex || 0}/`); // acting player, not always player 1
+        // Authority and refusal rules only: the op mapping is in the turn's
+        // instructions (aiHandler buildDiffInstructions); sending both cost
+        // ~700 tokens a wish and disagreed on "I gain N" (the game adds N).
+        return `\n\n=== GOD MODE ===
+The main quest is won and the player has authorial power: each input is a declaration about the world. Honour it and persist every tangible change with ops (items, skills, places, people, foes, stats), or it vanishes next turn.
+Only refuse what breaks the age-tier content policy, and then in-character (the world resists), with no ops for it. Do not add main-quest milestones or touch /isGoalComplete.`;
     }
     const act = determineCurrentAct(gameState);
     if (!act) return '';
@@ -258,7 +227,7 @@ DO NOT in god mode:
         ? `\nACTION: no fight for ${sinceFight} rounds. Unless the hero is resting somewhere safe, start one this turn: add a foe native to the story with /enemies/- and replace /inCombat true.`
         : '';
     return `\n\nMAIN QUEST STAGE — ${act.name}:${villain ? `\nMAIN VILLAIN: ${villain} (the final boss; keep them present in the story)` : ''}${fightNudge}
-${gameState.adventureGoal ? act.narratorHint.replace(/^- By turn 4-6, you MUST set \/adventureGoal.*\n/m, '') : act.narratorHint}
+${gameState.adventureGoal && gameState.adventureGoal !== 'Not set yet.' ? act.narratorHint.replace(/^- By turn 4-6, you MUST set \/adventureGoal.*\n/m, '') : act.narratorHint}
 
 When you reach a milestone listed above, emit a /questProgress/milestones/- diff op so the
 quest progresses. Adding the final_blow milestone completes the main quest and unlocks the

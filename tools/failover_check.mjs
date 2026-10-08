@@ -72,5 +72,31 @@ const t = Date.UTC(2026, 9, 8, 6, 0); // 06:00 UTC = 23:00 PDT on Oct 7
 check(nextDailyReset(C.CLOUD_PROVIDERS.gemma_google, t) === Date.UTC(2026, 9, 8, 7, 0), 'Google quota resets at the next Pacific midnight');
 check(nextDailyReset(C.CLOUD_PROVIDERS.openrouter_free, t) === Date.UTC(2026, 9, 9, 0, 0), 'OpenRouter quota resets at the next UTC midnight');
 
+// A rejected / stale Google key (401) fails over instead of ending the turn.
+{
+  const { localAI: fresh } = await import('../localAI.js?fresh=401');
+  calls.length = 0;
+  googleReply = () => ({ status: 401, body: { error: { message: 'API key not valid' } } });
+  let o = null; try { o = await fresh.makeRequest([{ role: 'user', content: 'hi' }]); } catch (e) { o = 'THREW ' + e.message.slice(0, 60); }
+  check(String(o).includes('openrouter'), `Google key rejected (401): the next provider answers (${String(o).slice(0, 40)})`);
+}
+
+// Headers arrive, the body never does: the timeout must still fire and fail over.
+{
+  const { localAI: fresh } = await import('../localAI.js?fresh=hang');
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, opts) => {
+    const host = new URL(url).hostname;
+    if (!host.includes('google')) return realFetch(url, opts);
+    return { ok: true, status: 200, statusText: '200', headers: { get: () => null },
+      json: () => new Promise((_, rej) => opts.signal.addEventListener('abort', () => { const e = new Error('aborted'); e.name = 'AbortError'; rej(e); })),
+      text: async () => '' };
+  };
+  const t0 = Date.now();
+  let o = null; try { o = await Promise.race([fresh.makeRequest([{ role: 'user', content: 'hi' }]), new Promise(r => setTimeout(() => r('HUNG'), 45000))]); } catch (e) { o = 'THREW ' + e.message.slice(0, 60); }
+  globalThis.fetch = realFetch;
+  check(String(o).includes('openrouter'), `Google body never arrives: failed over in ${((Date.now() - t0) / 1000).toFixed(0)} s (${String(o).slice(0, 30)})`);
+}
+
 console.log(failed ? `✗ ${failed} FAILOVER CHECK(S) FAILED` : '✓ failover checks pass');
 process.exit(failed ? 1 : 0);

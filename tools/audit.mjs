@@ -109,10 +109,12 @@ const godHint = Quest.buildQuestStageHint(baseGS({ isGoalComplete: true }));
 if (!godHint.includes('GOD MODE')) fail('Post-victory state did not produce GOD MODE hint');
 else ok('isGoalComplete → GOD MODE hint');
 
-if (!godHint.includes('OVERRIDES:') || !godHint.includes('DECLARATION → REQUIRED DIFF MAPPING')) {
-  fail('GOD MODE hint missing OVERRIDES or DIFF MAPPING sections');
+// The op mapping lives in the turn instructions (buildDiffInstructions); the
+// system block only carries authority, persistence and refusal rules.
+if (!/persist every tangible change/.test(godHint) || !/refuse/.test(godHint) || godHint.length > 900) {
+  fail(`GOD MODE hint should be the short authority/persist/refusal block (${godHint.length} chars)`);
 } else {
-  ok('GOD MODE hint contains override and diff-mapping sections');
+  ok(`GOD MODE hint: authority, persistence and refusal rules (${godHint.length} chars)`);
 }
 
 console.log('\n=== SCHEMAS ===');

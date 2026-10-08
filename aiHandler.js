@@ -70,7 +70,7 @@ YOURS TO EMIT when the story makes them happen:
 - Status effects with narrative weight (Poison, Burn, Stun, Fear, Regen, Shield...): add ${P}/statusEffects/- {name, duration}.
 - Setups (Chekhov's gun): sparingly (about one every few turns), when the story makes a point of a clue, object, promise or mystery, add /storyThreads/- {text}. When one pays off, replace /storyThreads/<n>/resolved true. Never plant something you won't use.
 - Quest beats: add /questProgress/milestones/- using the EXACT names from the MAIN QUEST STAGE block (the game computes the progress bar from them). Favors or rumors: add /questProgress/sideQuests/- {name, description, reward}.
-${gameState.adventureGoal ? '' : '- Set /adventureGoal once early (turn 4-6).\n'}- Main quest truly finished: add the "final_blow" milestone (the game then completes the quest).
+${gameState.adventureGoal && gameState.adventureGoal !== 'Not set yet.' ? '' : '- Set /adventureGoal once early (turn 4-6).\n'}- The main quest ends when the boss is defeated in battle (the game records it); never declare the win in narration alone.
 If the narration says the hero picked something up, met someone named, arrived somewhere named, or a fight began, the matching op MUST be in "ops". An empty list is only for a turn where nothing in the world changed.
 Format examples only (never use these names or details in the story):
 {"op":"add","path":"/entityMemory/locations/The Crystal Hall","value":{"name":"The Crystal Hall","description":"a vaulted chamber of humming crystals"}}
@@ -511,9 +511,7 @@ CONTENT POLICY (${tier}): ${policy}${injuryLine} If players ask for something of
     // (The old QUEST PACE line read questProgressManager.currentPhase, which
     // never left "beginning"; the MAIN QUEST STAGE block carries the real act.)
 
-    parts.push(`THEME: ${gameState.adventureTheme}${gameState.customThemeDescription ? ` (${gameState.customThemeDescription})` : ''}. ${getThemeSpecificGuidance(gameState.adventureTheme)}
-Atmosphere: ${getThemeAtmosphere(gameState.adventureTheme)}
-Typical interactions: ${getThemeInteractions(gameState.adventureTheme)}
+    parts.push(`THEME: ${gameState.adventureTheme}${gameState.customThemeDescription ? ` (${gameState.customThemeDescription})` : ''}. ${themeNotes(gameState.adventureTheme)}
 Use names, people, places and props native to this theme (no village elders in cyberpunk, no libraries in dinosaur times). Avoid over-used names: Sunken Library, Heart of Shadow/Darkness, Shadow Blight, Whispering Woods/Cove, anything 'Salty', the Ancient Evil, the Chosen One.${usedNamesLine()}`);
 
     if (gameState.storyHook && (gameState.turn || 0) <= 3) {
@@ -669,9 +667,10 @@ ${recentWindow}` }
         log(`ArcMemory: stored summary at turn ${gameState.turn} (${result.summary.length} chars; +${result.newNpcs.length} NPCs, +${result.newLocations.length} locs, +${result.newItems.length} items).`);
         gameState.arcMemory.nextSummaryAtTurn = gameState.turn + Config.SUMMARY_EVERY_N_TURNS;
     } catch (err) {
-        // Retry on the next turn instead of waiting another full interval.
-        gameState.arcMemory.nextSummaryAtTurn = gameState.turn + 1;
-        log(`ArcMemory: refresh failed (${err.message}); retrying next turn.`);
+        // Retry in 2 turns (every turn used up free daily requests while a
+        // provider was down).
+        gameState.arcMemory.nextSummaryAtTurn = gameState.turn + 2;
+        log(`ArcMemory: refresh failed (${err.message}); retrying in 2 turns.`);
     }
 }
 
@@ -848,86 +847,25 @@ This opening may run up to half again the READING LEVEL length. Third person, li
  * @returns {Player | Enemy | null} The found character or null.
  */
 
-/**
- * Gets theme-specific guidance for storytelling
- * @param {string} theme - The current adventure theme
- * @returns {string} Theme-specific guidance text
- */
-function getThemeSpecificGuidance(theme) {
-    switch(theme?.toLowerCase()) {
-        case 'fantasy':
-            return "Focus on magic, mythical creatures, and epic quests. Include elements of traditional fantasy like magical artifacts, ancient prophecies, and mystical powers.";
-        case 'space':
-            return "Emphasize advanced technology, alien encounters, and space exploration. Include elements like spacecraft, distant planets, and futuristic gadgets.";
-        case 'pirate':
-            return "Focus on seafaring adventures, treasure hunting, and naval combat. Include elements like ships, islands, sea monsters, and buried treasure.";
-        case 'steampunk':
-            return "Blend Victorian aesthetics with steam-powered technology. Include brass and copper machinery, clockwork devices, and steam-powered inventions.";
-        case 'cyberpunk':
-            return "Focus on high tech and low life themes. Include advanced computers, cybernetic enhancements, megacorporations, and digital worlds.";
-        case 'western':
-            return "Emphasize frontier life and wild west themes. Include elements like dusty towns, outlaws, sheriffs, and frontier justice.";
-        case 'underwater':
-            return "Focus on deep-sea exploration and aquatic adventures. Include sea creatures, underwater cities, and oceanic mysteries.";
-        case 'post-apocalyptic':
-            return "Emphasize survival in a ruined world. Include scavenging, dangerous wastelands, and remnants of the old world.";
-        default:
-            return "Focus on creating an engaging and consistent narrative that fits the chosen theme.";
-    }
+// One line per theme: what it's about, its senses, how people act and fight.
+// Keyed by the menu's theme ids (a switch on 'western'/'post-apocalyptic' left
+// 7 of 13 themes with generic filler). Custom themes use their description.
+const THEME_NOTES = {
+    fantasy: 'Magic, mythical creatures and quests; jewel tones and magical glows, chimes and rustling leaves; noble courts and guilds; swords, spells and beasts.',
+    space: 'Starships, alien worlds and gadgets; starlight and engine hum, recycled air; alien diplomacy and crew dynamics; energy weapons and boarding fights.',
+    pirate: 'Ships, islands, sea monsters and buried treasure; waves, creaking timber, salt and rum; crew loyalty and port deals; cutlasses and boarding actions.',
+    steampunk: 'Victorian brass-and-steam inventions; clockwork ticks and hissing vents, oil and coal; inventor guilds and aristocrats; steam weapons and gadgets.',
+    cyberpunk: 'High tech, low life: implants, megacorps, the net; neon in dark alleys, ozone and street food; corporate intrigue and gangs; hacking and cyber-enhanced fights.',
+    wild_west: 'Frontier towns, outlaws, sheriffs and frontier justice; dust, leather, sunset desert; town politics and outlaw gangs; gunfights and horseback chases.',
+    underwater: 'Deep-sea cities and oceanic mysteries; bioluminescence, currents and bubbles; colonies and sea creatures; harpoons and pressure dangers.',
+    post_apoc: 'Survival in a ruined world: scavenging, wastelands, relics of the old world; rust, wind through ruins; survivor camps and traders; makeshift weapons.',
+    jungle: 'Lost temples, rivers and wildlife; humid green shade, birdcalls and drums; tribes, explorers and poachers; traps, beasts and vines.',
+    future_utopia: 'A bright, clean future with a hidden flaw; glass towers, soft hum of drones; councils, AIs and dissidents; stun tech and clever escapes, rarely blood.',
+    dinosaur: 'A prehistoric world of dinosaurs, volcanoes and tribes; ferns, tar pits, thunderous roars; herds, hunters and nests; spears, stampedes and survival.',
+    arctic: 'Ice fields, blizzards and frozen secrets; white glare, cracking ice, biting cold; outposts, sled teams and expedition rivals; cold, beasts and avalanches.',
+    haunted: 'Ghosts, curses and creaking manors; candlelight, cold spots, whispers; mediums, mourners and restless spirits; banishing rites and spooky chases (keep it age-appropriate).'
+};
+function themeNotes(theme) {
+    return THEME_NOTES[String(theme || '').toLowerCase()] || '';
 }
 
-/**
- * Gets theme-specific atmosphere descriptions
- * @param {string} theme - The current adventure theme
- * @returns {string} Theme atmosphere description
- */
-function getThemeAtmosphere(theme) {
-    switch(theme?.toLowerCase()) {
-        case 'fantasy':
-            return "ATMOSPHERE:\n- Mood: Mystical and wondrous\n- Colors: Rich jewel tones, magical glows\n- Sounds: Mystical chimes, rustling leaves\n- Aromas: Fresh herbs, ancient tomes";
-        case 'space':
-            return "ATMOSPHERE:\n- Mood: Vast and mysterious\n- Colors: Deep blacks, starlight, nebula colors\n- Sounds: Engine hums, airlock seals\n- Aromas: Recycled air, metal";
-        case 'pirate':
-            return "ATMOSPHERE:\n- Mood: Adventurous and dangerous\n- Colors: Ocean blues, weathered woods\n- Sounds: Waves, creaking ships\n- Aromas: Sea salt, rum";
-        case 'steampunk':
-            return "ATMOSPHERE:\n- Mood: Industrial and innovative\n- Colors: Brass, copper, steam\n- Sounds: Clockwork, steam releases\n- Aromas: Oil, metal, coal";
-        case 'cyberpunk':
-            return "ATMOSPHERE:\n- Mood: Gritty and high-tech\n- Colors: Neon lights, dark alleys\n- Sounds: Electronic beats, city noise\n- Aromas: Ozone, street food";
-        case 'western':
-            return "ATMOSPHERE:\n- Mood: Rugged and lawless\n- Colors: Desert browns, sunset oranges\n- Sounds: Wind, horse hooves\n- Aromas: Dust, leather";
-        case 'underwater':
-            return "ATMOSPHERE:\n- Mood: Mysterious and serene\n- Colors: Ocean blues, bioluminescence\n- Sounds: Water currents, bubbles\n- Aromas: Salt water, marine life";
-        case 'post-apocalyptic':
-            return "ATMOSPHERE:\n- Mood: Desolate and desperate\n- Colors: Rust, decay, dust\n- Sounds: Wind through ruins, distant dangers\n- Aromas: Dust, decay";
-        default:
-            return "ATMOSPHERE:\n- Mood: Match theme atmosphere\n- Colors: Theme appropriate\n- Sounds: Contextual ambiance\n- Aromas: Setting-specific scents";
-    }
-}
-
-/**
- * Gets theme-specific interaction guidance
- * @param {string} theme - The current adventure theme
- * @returns {string} Theme interaction guidance
- */
-function getThemeInteractions(theme) {
-    switch(theme?.toLowerCase()) {
-        case 'fantasy':
-            return "INTERACTIONS:\n- Skills: Magic, swordsmanship, lore\n- Social: Noble courts, magical guilds\n- Environment: Enchanted forests, ancient ruins\n- Combat: Magic spells, mythical creatures";
-        case 'space':
-            return "INTERACTIONS:\n- Skills: Piloting, tech use, xenobiology\n- Social: Alien diplomacy, crew dynamics\n- Environment: Zero gravity, hostile planets\n- Combat: Energy weapons, space battles";
-        case 'pirate':
-            return "INTERACTIONS:\n- Skills: Navigation, sword fighting, negotiation\n- Social: Crew loyalty, port dealings\n- Environment: Ships, tropical islands\n- Combat: Naval battles, boarding actions";
-        case 'steampunk':
-            return "INTERACTIONS:\n- Skills: Engineering, invention, mechanics\n- Social: Inventor guilds, aristocracy\n- Environment: Industrial cities, workshops\n- Combat: Steam-powered weapons, gadgets";
-        case 'cyberpunk':
-            return "INTERACTIONS:\n- Skills: Hacking, tech implants, street smarts\n- Social: Corporate intrigue, street gangs\n- Environment: Megacities, virtual reality\n- Combat: Cyber-enhanced combat, hacking";
-        case 'western':
-            return "INTERACTIONS:\n- Skills: Shooting, riding, survival\n- Social: Town politics, outlaw gangs\n- Environment: Desert, frontier towns\n- Combat: Gunfights, horseback combat";
-        case 'underwater':
-            return "INTERACTIONS:\n- Skills: Swimming, pressure adaptation, marine knowledge\n- Social: Underwater colonies, sea creatures\n- Environment: Ocean depths, coral cities\n- Combat: Underwater weapons, sea creatures";
-        case 'post-apocalyptic':
-            return "INTERACTIONS:\n- Skills: Survival, scavenging, adaptation\n- Social: Survivor groups, wasteland traders\n- Environment: Ruins, radioactive zones\n- Combat: Makeshift weapons, survival gear";
-        default:
-            return "INTERACTIONS:\n- Skills: Theme-appropriate abilities\n- Social: Context-specific relations\n- Environment: Theme-specific challenges\n- Combat: Setting-appropriate conflict";
-    }
-}

@@ -603,8 +603,9 @@ export async function loadGame(slotName) {
         } else {
             log("SaveLoad: No currentChoices in save (legacy format or empty); regenerating from narrative.");
             try {
-                const { makeAICallForSystemAction } = await import('./aiHandler.js');
-                await makeAICallForSystemAction('Resume the adventure: regenerate the next set of player choices based on the current narrative and game state. Do not advance the turn.', true);
+                // Choices only: a full system turn rewrote the story and applied ops on load.
+                const { requestChoicesOnly } = await import('./aiHandler.js');
+                UI.renderChoices(await requestChoicesOnly(gameState.currentNarrative || '', !!gameState.inCombat));
             } catch (regenErr) {
                 log(`SaveLoad: choice regeneration failed (${regenErr.message}); rendering empty list.`);
                 UI.renderChoices([]);

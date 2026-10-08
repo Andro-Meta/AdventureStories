@@ -1188,22 +1188,8 @@ export function extractGodModeDiffOps(text) {
         n = Math.min(99999, Math.max(0, n));
         if (goldVerb === 'add') {
             // Engine's coins handler is replace-only, so compute the sum here
-            // and emit a replace with the capped total. Read current coins
-            // from the live game state (top-import not available here; the
-            // file's existing imports include gameState).
-            try {
-                const { gameState } = require('./state.js');
-                const current = getCurrentPlayer()?.coins || 0;
-                n = Math.min(99999, current + n);
-            } catch (_) {
-                // gameState not synchronously importable in browser ESM —
-                // fall back to relying on the surrounding actionHandler scope
-                // which has gameState via static import.
-                if (typeof gameState !== 'undefined') {
-                    const current = getCurrentPlayer()?.coins || 0;
-                    n = Math.min(99999, current + n);
-                }
-            }
+            // and emit a replace with the capped total.
+            n = Math.min(99999, (getCurrentPlayer()?.coins || 0) + n);
         }
         ops.push({ op: 'replace', path: '/players/0/coins', value: n });
     }
@@ -1315,7 +1301,7 @@ export function extractGodModeDiffOps(text) {
         if (wieldVerb) {
             const slot = type === 'Weapon' ? 'weapon' : (type === 'Armor' ? 'armor' : null);
             if (slot && typeof gameState !== 'undefined') {
-                const player = gameState.players?.[0];
+                const player = getCurrentPlayer(); // the acting hero (was always hero 1)
                 const currentId = player?.equipment?.[slot] || null;
                 let allowEquip = !currentId;   // empty slot → always equip
                 if (currentId && player?.inventory) {
@@ -1325,7 +1311,7 @@ export function extractGodModeDiffOps(text) {
                     if (newStat >= curStat) allowEquip = true;
                 }
                 if (allowEquip) {
-                    ops.push({ op: 'replace', path: `/players/0/equipment/${slot}`, value: itemId });
+                    ops.push({ op: 'replace', path: `/players/${gameState.currentPlayerIndex || 0}/equipment/${slot}`, value: itemId });
                 }
             } else if (slot) {
                 // Fallback path when gameState isn't accessible: equip anyway
