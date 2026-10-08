@@ -94,11 +94,15 @@ for (let t = 0; t < TURNS; t++) {
   used.add(type);
   const after = await gs(g => ({ combat: g.inCombat, foe: (g.enemies || []).filter(e => !e.isDefeated).map(e => `${e.name} ${e.hp}/${e.maxHp}`).join(', '), hp: g.players[0].hp, recap: document.getElementById('turnRecap')?.textContent || '', heroes: g.players.length }));
   console.log(`turn ${t + 1} ${type}: ${(ms / 1000).toFixed(1)} s | HP ${s.hp}->${after.hp}${after.combat ? ' | FIGHT ' + after.foe : ''} | ${after.recap}`);
+  // Five choices should be five approaches (brave, clever, sneaky, kind, luck).
+  const mix = await gs(g => g.inCombat ? null : g.currentChoices.map(c => c.stat || '-'));
+  if (mix) { const gaps = ['brave', 'clever', 'sneaky', 'kind', 'luck'].filter(x => !mix.includes(x)).length; globalThis.__mix = globalThis.__mix || { sets: 0, balanced: 0 }; __mix.sets++; if (!gaps) __mix.balanced++; console.log(`  approaches: ${mix.join(', ')}${gaps ? `  (${gaps} missing)` : '  ✓'}`); }
   if (ms < 0) note(`turn ${t + 1} (${type}) never finished`);
   if (after.heroes !== 1) note(`solo game has ${after.heroes} heroes`);
   if (s.combat !== after.combat || t < 2 || (after.combat && t % 3 === 0)) shot(`turn${t + 1}_${type}${after.combat ? '_fight' : ''}`);
   (await errsSince(m)).forEach(e => note(`turn ${t + 1} error: ${e}`));
 }
+if (globalThis.__mix) console.log(`approach balance: ${__mix.balanced}/${__mix.sets} exploration sets had all five approaches`);
 console.log(`choice types used: ${[...used].join(', ')}`);
 
 // ---- Bag ----

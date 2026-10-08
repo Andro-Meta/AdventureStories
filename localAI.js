@@ -4,17 +4,51 @@
 // browser with the player's own key. Local and on-device models were removed.
 
 import * as Config from './config.js';
+import * as Router from './aiRouter.js';
 
 /** Tell the loading overlay what a slow request is doing (ui.js listens). */
 function announceAIStatus(message) {
     try { globalThis.dispatchEvent?.(new CustomEvent('adv:ai-status', { detail: message })); } catch (_) { /* no DOM */ }
 }
 
-// Providers that just failed with a quota / rate / outage error, skipped
-// until the time stored here (ms). In memory only: a reload tries them again.
-const benchedUntil = new Map();
-const BENCH_MS = { rate: 5 * 60 * 1000, outage: 2 * 60 * 1000 };
-const benchKey = (p) => p.keySlot || (p.baseUrl + p.model);
+/**
+ * What a failed reply means and how long that provider should rest. From the
+ * documented codes (read 2026-10-08): Google AI Studio "API errors" page,
+ * Groq "Rate limits" headers, OpenRouter "Errors" page.
+ *   kind: used_up | rate | busy | server | timeout | bad_key | model_gone | too_big | refused | bad_request
+ * Every kind moves the request to the next provider; `until` = rest until (ms).
+ */
+export function classifyFailure(status, body = '', headers = null, provider = null, now = Date.now()) {
+    const h = (n) => headers?.get?.(n) ?? null;
+    const retryAfter = (Number(h('retry-after')) || 0) * 1000;
+    const groqLeft = h('x-ratelimit-remaining-requests');          // Groq: requests left TODAY
+    const dailyReset = () => (groqLeft === '0' && Router.parseDuration(h('x-ratelimit-reset-requests')))
+        ? now + Router.parseDuration(h('x-ratelimit-reset-requests'))
+        : provider ? nextDailyReset(provider, now) : now + 3600e3;
+    const rest = (ms) => now + Math.min(Math.max(ms, 5e3), 15 * 60e3);
+    const r = (kind, why, until) => ({ kind, why, until });
+    // 402: OpenRouter "insufficient credits" / Google "prepay credits depleted".
+    if (status === 402) return r('used_up', 'no free credits left', dailyReset());
+    if (status === 429) {
+        // Google: quota_exceeded = daily; rate_limit_exceeded / too_many_requests = per minute.
+        // Groq: 0 requests left today. OpenRouter: "free-models-per-day".
+        if (groqLeft === '0' || /quota_exceeded|per[- ]?day|daily|PerDay|\bRPD\b|free-models-per-day/i.test(body)) return r('used_up', "today's free requests used up", dailyReset());
+        return r('rate', 'too many requests this minute', rest(retryAfter || Router.parseDuration(h('x-ratelimit-reset-tokens')) || 60e3));
+    }
+    // Google answers a bad key with 400 API_KEY_INVALID or 403; others with 401.
+    if (status === 401 || ((status === 400 || status === 403) && /api[ _-]?key|API_KEY_INVALID|PERMISSION_DENIED|unauthenticated/i.test(body))) {
+        return r('bad_key', 'key rejected: paste a fresh one', now + 24 * 3600e3);
+    }
+    if (status === 403) return r('refused', 'refused (permissions or moderation)', rest(10 * 60e3));
+    if (status === 404) return r('model_gone', 'model not found', now + 3600e3);
+    if (status === 413 || (status === 400 && /context|too long|too large|maximum.*tokens/i.test(body))) return r('too_big', 'story too long for this model', 0);
+    if (status === 503 || status === 529) return r('busy', 'overloaded', rest(retryAfter || 2 * 60e3));
+    if (status === 408 || status === 499 || status === 504) return r('timeout', 'timed out', rest(60e3));
+    if (status >= 500) return r('server', `server error ${status}`, rest(60e3));
+    if (status === 400) return r('bad_request', 'request refused (400)', 0);
+    return r('server', `HTTP ${status}`, rest(60e3));
+}
+export const benchKey = (p) => p.keySlot || (p.baseUrl + p.model);
 
 /** Next quota reset: midnight Pacific (Google) or midnight UTC (OpenRouter). */
 export function nextDailyReset(provider, now = Date.now()) {
@@ -61,6 +95,7 @@ export class LocalAIClient {
             const name = Config.cloudKeyStorageName(provider);
             if (key) window.localStorage.setItem(name, key);
             else window.localStorage.removeItem(name);
+            Router.clear(benchKey(provider)); // new key: forget the old key's rests and limits
         } catch (_) { /* localStorage unavailable — runtime-only key */ }
         this.apiKey = Config.getCloudApiKey() || key || null;
     }
@@ -78,47 +113,84 @@ export class LocalAIClient {
     }
 
     /**
-     * Try each provider in the chain that has a key and isn't benched. A quota,
-     * rate-limit or outage error benches that provider and the same request
-     * goes to the next one, so the game carries on mid-turn.
+     * Ask the providers in aiRouter's order (sticky on the one that's
+     * working). If the first is slower than its usual time, the next one gets
+     * the same request too and the first good answer wins (the other is
+     * cancelled). A quota / rate-limit / outage error rests that provider and
+     * the request moves on, mid-turn.
      */
     async makeRequest(messages, options = {}) {
-        const chain = Config.providerChain().map(p => ({ p, key: Config.keyForProvider(p) })).filter(x => x.key);
+        const chain = Config.providerChain().map(p => ({ p, key: Config.keyForProvider(p), id: benchKey(p) })).filter(x => x.key);
         if (!chain.length) {
             const e = new Error('No AI key saved yet. Open "AI Settings" on the main menu and paste your free key.');
             e.httpStatus = 0; // configuration problem: not worth a retry
             throw e;
         }
-        const now = Date.now();
-        const ready = chain.filter(x => !(benchedUntil.get(benchKey(x.p)) > now));
-        const order = ready.length ? ready : chain; // all benched: try anyway rather than stop
-        let lastError;
-        for (let i = 0; i < order.length; i++) {
-            const { p, key } = order[i];
-            const hasNext = i < order.length - 1;
-            try {
-                const out = await this.executeRequest(this.buildRequest(p, messages, options), p, key, 0, hasNext);
-                if (this.activeName !== p.name) {
-                    if (this.activeName) announceAIStatus(`Storyteller switched to ${p.name}.`);
-                    this.activeName = p.name;
-                }
-                return out;
-            } catch (error) {
-                lastError = error;
-                const s = error.httpStatus;
-                const quota = error.dailyQuota || s === 402;
-                const rate = s === 429 || s === 403 || s === 503;
-                const outage = error.exhausted || error.network || s >= 500;
-                // A rejected or stale key (400/401) or a dropped free model (404):
-                // another saved key or provider may still work.
-                const rejected = s === 400 || s === 401 || s === 404;
-                if (!hasNext || !(quota || rate || outage || rejected)) throw error;
-                benchedUntil.set(benchKey(p), quota ? nextDailyReset(p, now) : now + (rate ? BENCH_MS.rate : BENCH_MS.outage));
-                console.log(`AI: ${p.name} unavailable (${String(error.message).slice(0, 120)}); trying ${order[i + 1].p.name}`);
-                announceAIStatus(`${p.name} is busy; switching storyteller...`);
-            }
+        const byId = new Map(chain.map(x => [x.id, x]));
+        const order = Router.rank(chain.map(x => x.id)).map(id => byId.get(id));
+        const { p, out } = await this.hedgedRace(order, messages, options);
+        if (this.activeName !== p.name) {
+            if (this.activeName) announceAIStatus(`Storyteller switched to ${p.name}.`);
+            this.activeName = p.name;
         }
-        throw lastError;
+        return out;
+    }
+
+    hedgedRace(order, messages, options) {
+        const cancel = new AbortController();
+        const started = [];
+        let next = 0, running = 0, done = false, lastError;
+        return new Promise((resolve, reject) => {
+            const finish = (fn) => { done = true; cancel.abort(); fn(); };
+            const launch = () => {
+                if (done || next >= order.length) return false;
+                const i = next++;
+                const { p, key, id } = order[i];
+                const hasNext = next < order.length;
+                const t0 = Date.now();
+                const attempt = { id, t0, live: true };
+                started.push(attempt);
+                running++;
+                let successorUp = false;
+                const hedge = hasNext && setTimeout(() => {
+                    if (done || successorUp) return;
+                    successorUp = true;
+                    announceAIStatus(`${p.name} is slow; asking a backup too...`);
+                    launch();
+                }, Router.hedgeDelay(id));
+                let req;
+                try { req = this.buildRequest(p, messages, options); } catch (e) { req = Promise.reject(e); }
+                Promise.resolve(req).then(r => this.executeRequest(r, p, key, 0, hasNext, cancel.signal)).then(out => {
+                    clearTimeout(hedge); running--; attempt.live = false;
+                    if (done) return;
+                    const ms = Date.now() - t0;
+                    Router.record(id, { ok: true, ms });
+                    // Still-running providers lost the race: they're at least this slow.
+                    for (const o of started) if (o.live) Router.recordSlow(o.id, Date.now() - o.t0);
+                    if (i > 0 && started[0].live) Router.noteHedgeWin(id);
+                    finish(() => resolve({ p, out }));
+                }, error => {
+                    clearTimeout(hedge); running--; attempt.live = false;
+                    if (done) return;
+                    lastError = error;
+                    const now = Date.now();
+                    // Every documented HTTP failure means another provider may work;
+                    // a dropped or timed-out connection too.
+                    const f = error.failure || (error.network || error.exhausted ? { kind: 'timeout', why: 'no answer (network or timeout)', until: now + 60e3 } : null);
+                    const movable = !!f;
+                    Router.record(id, { ok: false, ms: now - t0, now, benchUntil: f?.until || 0, why: f?.why });
+                    if (movable && !successorUp && next < order.length) {
+                        successorUp = true;
+                        console.log(`AI: ${p.name} unavailable (${String(error.message).slice(0, 120)}); trying ${order[next].p.name}`);
+                        announceAIStatus(`${p.name} is busy; switching storyteller...`);
+                        launch();
+                    }
+                    if (running === 0) finish(() => reject(lastError));
+                });
+                return true;
+            };
+            launch();
+        });
     }
 
     buildRequest(provider, messages, options) {
@@ -152,12 +224,14 @@ export class LocalAIClient {
         return requestData;
     }
 
-    async executeRequest(requestData, provider, apiKey, retries = 0, hasNext = false) {
+    async executeRequest(requestData, provider, apiKey, retries = 0, hasNext = false, signal = null) {
         const { TIMEOUT_MS, MAX_RETRIES, RETRY_DELAY_MS } = Config.AI_REQUEST_CONFIG;
         const started = Date.now();
         const aiLog = (msg) => (globalThis.displayVisualError || console.log)(`AI ${provider.name.split(' — ')[0]} ${provider.model}: ${msg} (${Date.now() - started} ms)`);
         try {
             const controller = new AbortController();
+            // The race was won elsewhere: stop this request too.
+            if (signal) { if (signal.aborted) controller.abort(); else signal.addEventListener('abort', () => controller.abort(), { once: true }); }
             // A provider with a backup behind it gets less time: a stuck call
             // (live: Gemma hung 45 s, then two 500s) shouldn't hold up the turn.
             // 10 s: phone run 10-08, Gemini p95 8.3 s but 4 of 20 calls stalled
@@ -173,6 +247,7 @@ export class LocalAIClient {
             });
             // The timer runs until the body is read: free models can send headers
             // early and then sit queued, which hung the turn with no failover.
+            Router.noteHeaders(benchKey(provider), response.headers);
 
             if (!response.ok) {
                 let body = '';
@@ -181,17 +256,18 @@ export class LocalAIClient {
                 // A model that refuses JSON mode: retry once without it.
                 if (response.status === 400 && requestData.response_format && /response_format|json|mime/i.test(body)) {
                     const { response_format, ...plain } = requestData;
-                    return this.executeRequest(plain, provider, apiKey, retries, hasNext);
+                    return this.executeRequest(plain, provider, apiKey, retries, hasNext, signal);
                 }
                 const err = new Error(`HTTP ${response.status}: ${response.statusText}${body ? ' — ' + body : ''}`);
                 err.httpStatus = response.status;
-                err.retryable = response.status >= 500 || response.status === 429;
+                err.failure = classifyFailure(response.status, body, response.headers, provider);
+                err.retryable = ['rate', 'busy', 'server', 'timeout'].includes(err.failure.kind);
                 err.retryAfterMs = Number(response.headers.get('retry-after')) * 1000 || 0;
-                if (response.status === 429 && /per[- ]?day|daily|PerDay/i.test(body)) {
-                    err.retryable = false; // daily quota, not a burst limit
+                Router.noteHeaders(benchKey(provider), response.headers);
+                if (err.failure.kind === 'used_up') {
                     err.dailyQuota = true;
                     err.message = `Today's free requests on ${provider.name} are used up. Try again after the daily reset, or add another free key in AI Settings.`;
-                } else if (response.status === 401) {
+                } else if (err.failure.kind === 'bad_key') {
                     err.message = `The ${provider.name} key was rejected. Open AI Settings and paste a fresh key.`;
                 }
                 throw err;
@@ -209,6 +285,7 @@ export class LocalAIClient {
             }
             return msg.content ?? '';
         } catch (error) {
+            if (signal?.aborted) throw error; // cancelled: another provider answered
             const isNetworkError = error.name === 'AbortError' || error.name === 'TypeError'
                 || (error.message || '').toLowerCase().includes('failed to fetch');
             if (isNetworkError) error.network = true;
@@ -226,11 +303,13 @@ export class LocalAIClient {
                 const why = error.httpStatus === 429 ? 'The storyteller is busy' : 'Connection hiccup';
                 announceAIStatus(`${why}. Trying again in ${Math.round(wait / 1000)} s (attempt ${retries + 2} of ${MAX_RETRIES + 1})...`);
                 await new Promise(resolve => setTimeout(resolve, wait));
-                return this.executeRequest(requestData, provider, apiKey, retries + 1, hasNext);
+                if (signal?.aborted) throw error;
+                return this.executeRequest(requestData, provider, apiKey, retries + 1, hasNext, signal);
             }
             if (shouldRetry) {
                 const e = new Error(`The storyteller didn't respond after ${MAX_RETRIES + 1} tries (${error.message}). Your choices are still there; try again in a moment.`);
                 e.httpStatus = error.httpStatus ?? 0;
+                e.failure = error.failure;
                 e.exhausted = true;
                 throw e;
             }
