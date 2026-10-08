@@ -17,8 +17,14 @@ import { fileURLToPath } from 'node:url';
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const PORT = Number(process.env.PLAY_PORT || 8322);
 const env = fs.readFileSync(path.join(ROOT, '.env'), 'utf8');
-const KEY = (env.match(/^OPENROUTER_API_KEY=["']?([^"'\r\n]*)/m) || [])[1]?.trim();
-if (!KEY) { console.error('OPENROUTER_API_KEY is empty in .env (run tools/set_key.ps1)'); process.exit(1); }
+const envKey = (name) => (env.match(new RegExp(`^${name}=["']?([^"'\\r\\n]*)`, 'm')) || [])[1]?.trim() || '';
+// Slot -> [upstream host, key]. The page only ever holds "server:<slot>".
+const KEYS = {
+  openrouter: ['openrouter.ai', envKey('OPENROUTER_API_KEY')],
+  google1: ['generativelanguage.googleapis.com', envKey('GOOGLE_AI_KEY')],
+  google2: ['generativelanguage.googleapis.com', envKey('GOOGLE_AI_KEY_2')],
+};
+if (!Object.values(KEYS).some(([, k]) => k)) { console.error('No keys in .env (run tools/set_key.ps1 / tools/set_google_key.ps1)'); process.exit(1); }
 
 const LOGDIR = path.join(ROOT, 'test-results');
 fs.mkdirSync(LOGDIR, { recursive: true });
@@ -32,8 +38,10 @@ const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/ja
 
 // Injected first in <head>: a placeholder key so the game skips the key
 // screen, and OpenRouter calls rerouted to this server (same origin).
-const SHIM = `<script>(function(){try{localStorage.setItem('adv.apiKey.openrouter.ai','key-is-on-the-server');localStorage.removeItem('adv.cloudProvider');}catch(e){}
-var f=window.fetch;window.fetch=function(u,o){return f(typeof u==='string'?u.replace(/^https:\\/\\/openrouter\\.ai\\//,'/openrouter.ai/'):u,o);};})();</script>`;
+const STORAGE = { openrouter: 'adv.apiKey.openrouter.ai', google1: 'adv.apiKey.generativelanguage.googleapis.com', google2: 'adv.apiKey.generativelanguage.googleapis.com#2' };
+const slotsJs = JSON.stringify(Object.fromEntries(Object.entries(STORAGE).map(([slot, name]) => [name, KEYS[slot][1] ? `server:${slot}` : null])));
+const SHIM = `<script>(function(){try{var s=${slotsJs};for(var n in s){if(s[n])localStorage.setItem(n,s[n]);else localStorage.removeItem(n);}localStorage.removeItem('adv.cloudProvider');}catch(e){}
+var f=window.fetch;window.fetch=function(u,o){return f(typeof u==='string'?u.replace(/^https:\\/\\/(openrouter\\.ai|generativelanguage\\.googleapis\\.com)\\//,'/$1/'):u,o);};})();</script>`;
 
 const totals = { calls: 0, failed: 0, in: 0, out: 0 };
 
@@ -42,12 +50,22 @@ async function forward(req, res) {
   if (origin && origin !== `http://127.0.0.1:${PORT}` && origin !== `http://localhost:${PORT}`) { res.writeHead(403); return res.end(); }
   const chunks = []; for await (const c of req) chunks.push(c);
   const body = Buffer.concat(chunks).toString();
+  // The page sends "Bearer server:<slot>"; swap in that slot's real key,
+  // only for the slot's own host.
+  const host = req.url.split('/')[1];
+  const slot = String(req.headers.authorization || '').replace(/^Bearer server:/, '');
+  const [slotHost, key] = KEYS[slot] || [];
+  if (!key || slotHost !== host) { res.writeHead(403); return res.end('{"error":{"message":"no key for that provider in .env"}}'); }
+  // Never spend OpenRouter credits: free models only (the game checks too).
+  if (host === 'openrouter.ai') {
+    try { const j = JSON.parse(body); if (![j.model, ...(j.models || [])].every(m => String(m).endsWith(':free'))) { res.writeHead(403); return res.end('{"error":{"message":"paid OpenRouter model refused"}}'); } } catch {}
+  }
   const t0 = Date.now();
   let status = 502, text = '';
   try {
-    const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    const r = await fetch(`https://${host}${req.url.slice(host.length + 1)}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${KEY}`, 'X-Title': 'Adventure Stories' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}`, 'X-Title': 'Adventure Stories' },
       body,
     });
     status = r.status; text = await r.text();
@@ -57,7 +75,7 @@ async function forward(req, res) {
   const n = ++totals.calls;
   if (status !== 200) totals.failed++;
   totals.in += usage.prompt_tokens || 0; totals.out += usage.completion_tokens || 0;
-  const line = `${new Date().toISOString()} #${n} ${status} ${Date.now() - t0}ms ${model} in=${usage.prompt_tokens ?? '?'} out=${usage.completion_tokens ?? '?'} | total calls=${n} failed=${totals.failed} in=${totals.in} out=${totals.out}`;
+  const line = `${new Date().toISOString()} #${n} ${slot} ${status} ${Date.now() - t0}ms ${model} in=${usage.prompt_tokens ?? '?'} out=${usage.completion_tokens ?? '?'} | total calls=${n} failed=${totals.failed} in=${totals.in} out=${totals.out}`;
   console.log(line);
   fs.appendFileSync(LOG, line + '\n');
   if (process.env.PLAY_DUMP) fs.writeFileSync(path.join(LOGDIR, `play_call_${String(n).padStart(3, '0')}.json`), JSON.stringify({ request: JSON.parse(body || '{}'), status, response: text }, null, 2));
@@ -79,7 +97,7 @@ function serveFile(req, res) {
 }
 
 http.createServer((req, res) => {
-  if (req.method === 'POST' && req.url === '/openrouter.ai/api/v1/chat/completions') return forward(req, res);
+  if (req.method === 'POST' && (req.url === '/openrouter.ai/api/v1/chat/completions' || req.url === '/generativelanguage.googleapis.com/v1beta/openai/chat/completions')) return forward(req, res);
   if (req.method === 'GET' || req.method === 'HEAD') return serveFile(req, res);
   res.writeHead(405); res.end();
-}).listen(PORT, '127.0.0.1', () => console.log(`Adventure Stories with your OpenRouter key: http://127.0.0.1:${PORT}  (Ctrl+C to stop)`));
+}).listen(PORT, '127.0.0.1', () => console.log(`Adventure Stories with your keys (${Object.entries(KEYS).filter(([, [, k]]) => k).map(([s]) => s).join(', ')}): http://127.0.0.1:${PORT}  (Ctrl+C to stop)`));
