@@ -100,5 +100,21 @@ check(!Engine.validateOp({ op: 'replace', path: '/isGoalComplete', value: true }
 gameState.enemies[0].isDefeated = true; gameState.enemies[0].hp = 0;
 check(Engine.validateOp({ op: 'add', path: '/questProgress/milestones/-', value: { name: 'final_blow' } }).ok, 'final_blow is accepted once the boss is down');
 
+// A named villain: the reveal stores the name, the prompt carries it, and
+// only that villain becomes the boss (live: minion "Scout Kelri" did).
+gameState.enemies = []; gameState.inCombat = false; gameState.combat = null;
+gameState.isGoalComplete = false;
+gameState.questProgress.milestones = [];
+gameState.questProgress.villain = undefined;
+Engine.applyDiff([{ op: 'add', path: '/questProgress/milestones/-', value: { name: 'antagonist_revealed', description: 'the admiral', villain: 'Admiral Grimtide' } }], { strict: false });
+check(gameState.questProgress.villain === 'Admiral Grimtide', 'antagonist_revealed stores the villain name');
+check(Q.buildQuestStageHint(gameState).includes('Admiral Grimtide'), 'quest hint names the villain');
+// No final_confrontation: the live narrator skipped it and the villain fell at 30 HP.
+Engine.applyDiff([{ op: 'add', path: '/enemies/-', value: { name: 'Deckhand Brute', hp: 20 } }], { strict: false });
+check(!gameState.enemies[0]?.isBoss, 'a minion at the climax is not made the boss when the villain is known');
+Engine.applyDiff([{ op: 'add', path: '/enemies/-', value: { name: 'The Admiral Grimtide', hp: 30 } }], { strict: false });
+check(gameState.enemies[1]?.isBoss === true, 'the named villain becomes the boss');
+check(typeof AI.writeEpilogue === 'function', 'epilogue writer exists');
+
 console.log(failed ? `✗ ${failed} PROMPT CHECK FAILURE(S)` : '✓ prompt checks pass');
 process.exit(failed ? 1 : 0);

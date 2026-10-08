@@ -734,7 +734,13 @@ Result: ${gameState.narrativeContext.lastOutcome?.success ? 'it works out' : 'it
         gameState.combatRoundInProgress = false;
         if (recapBefore) {
             // The win reward is granted asynchronously; include it in this recap.
-            if (gameState._rewardsPromise) { try { await gameState._rewardsPromise; } catch (_) {} delete gameState._rewardsPromise; }
+            if (gameState._rewardsPromise) {
+                try { await gameState._rewardsPromise; } catch (_) {}
+                delete gameState._rewardsPromise;
+                // Quest just won: write the ending before god mode opens.
+                try { UI.showLoading(true, 'Writing the epilogue...'); await (await import('./aiHandler.js')).writeEpilogue(); }
+                catch (e) { log(`Epilogue skipped: ${e.message}`); }
+            }
             try { UI.showTurnRecap(formatTurnRecap(recapBefore, snapshotParty(), recapActor)); } catch (_) {}
             try { (await import('./saveLoad.js')).autosave(); } catch (e) { log(`Autosave failed: ${e.message}`); }
         }

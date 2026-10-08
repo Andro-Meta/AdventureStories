@@ -495,8 +495,14 @@ const PATHS = [
             // narrator forgets "isBoss" (live: it did, and the climax was a
             // 35-HP spirit).
             const msNames = (gs.questProgress?.milestones || []).map(m => m.name);
-            const climaxFoe = msNames.includes('final_confrontation') && !msNames.includes('final_blow')
-                && !(gs.enemies || []).some(e => e.isBoss);
+            const villain = gs.questProgress?.villain;
+            const bare = (n) => String(n || '').toLowerCase().replace(/^the\s+/, '').trim();
+            const sameName = (a, b) => !!bare(a) && !!bare(b) && (bare(a).includes(bare(b)) || bare(b).includes(bare(a)));
+            // Known villain: they are the boss whenever they fight (live: the
+            // narrator skipped final_confrontation and Brinebeard fell at 30 HP),
+            // and a minion at the climax stays a minion.
+            const climaxFoe = !msNames.includes('final_blow') && !(gs.enemies || []).some(e => e.isBoss)
+                && (villain ? sameName(value.name, villain) : msNames.includes('final_confrontation'));
             if (value.isBoss || climaxFoe) {
                 const party = Math.max(1, (gs.players || []).length);
                 enemy.isBoss = true;
@@ -655,6 +661,9 @@ const PATHS = [
                 completed: true
             };
             gs.questProgress.milestones.push(milestone);
+            if (canonicalName === 'antagonist_revealed' && typeof value.villain === 'string' && value.villain.trim()) {
+                gs.questProgress.villain = value.villain.trim().slice(0, 60); // the final boss, by name
+            }
             try { recordStoryBeat('milestone', canonicalName, 0.7); } catch (_) {}
             // Phase 2: jail mini-quest hook. Pass the canonical name — the
             // jailSystem.tryApplyJailMilestone now matches "jail_assessed"
