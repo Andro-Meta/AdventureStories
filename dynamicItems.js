@@ -69,7 +69,7 @@ export class DynamicItemRegistry {
             const recentTime = this.recentRequests.get(contextKey);
             if (Date.now() - recentTime < 5000) { // 5 second cooldown
                 log(`DynamicItems: Recent request for ${contextKey}, using fallback`);
-                return this.generateFallbackItem(tier, type, context);
+                return this.generateFallbackItem(actualTier, type, context);
             }
         }
 

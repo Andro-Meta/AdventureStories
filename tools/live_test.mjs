@@ -66,14 +66,24 @@ async function settle(timeoutMs = 120000) {
   }
   return false;
 }
-async function clickType(type) {
-  return page.evaluate((type) => {
+async function clickType(type, prefer = null) {
+  const label = await page.evaluate((type) => {
     const btns = [...document.querySelectorAll('#choicesContainer .choice-btn')].filter(b => !b.disabled && !b.classList.contains('disabled'));
     const b = btns.find(x => x.dataset.actionType === type) || btns[0];
     if (!b) return null;
     b.click();
     return `${b.dataset.actionType}: ${b.textContent.trim().slice(0, 70)}`;
   }, type);
+  // Battle picker (Special / Item / target): choose like a player would.
+  await page.waitForTimeout(300);
+  const picked = await page.evaluate((prefer) => {
+    const sheet = document.getElementById('battlePicker'); if (!sheet) return null;
+    const opts = [...sheet.querySelectorAll('.bp-option:not([disabled])')];
+    const o = (prefer && opts.find(x => x.textContent.includes(prefer))) || opts.find(x => !/power strike/i.test(x.textContent)) || opts[0];
+    o?.click();
+    return o?.querySelector('.bp-label')?.textContent || null;
+  }, prefer);
+  return picked ? `${label} -> ${picked}` : label;
 }
 const op = (ops) => page.evaluate(async (ops) => (await import('/engine.js')).applyDiff(ops, { strict: false }), ops);
 
@@ -199,8 +209,10 @@ if (FULL) {
     let type = 'Attack';
     if (s.hp < s.max * 0.6 && s.potions > 0) type = 'Item';
     else if (s.ready && rounds % 2 === 0) type = 'Special';
+    else if (!seen.defend && rounds === 1) type = 'Defend';
     const before = s;
-    const picked = await clickType(type);
+    const picked = await clickType(type, type === 'Item' ? 'Healing Potion' : null);
+    if (type === 'Defend') seen.defend = await gs(g => g.players.some(p => p.statusEffects?.some(x => x.name === 'Guarding')) || /braces behind their guard/.test(document.getElementById('combatLogStrip')?.innerText || ''));
     await settle();
     const after = await gs(g => { const p = g.players[0]; const b = g.enemies.find(e => e.isBoss);
       return { hp: p.hp, potions: p.inventory.find(i => i.name === 'Healing Potion')?.quantity || 0, bossHp: b?.hp, bossBurn: g.enemies.some(e => e.statusEffects?.some(x => x.name === 'Burn')),
@@ -214,6 +226,7 @@ if (FULL) {
   const fin = await gs(g => ({ won: !!g.isGoalComplete, boss: g.enemies.find(e => e.isBoss), poisonLeft: g.players[0].statusEffects.some(x => x.name === 'Poison'), downed: g.players.every(p => p.isDowned || p.hp <= 0) }));
   check(seen.potion > 0, `potion drunk in the fight (${seen.potion}x, stack went down by one each time)`);
   check(seen.special > 0, `Special used (${seen.special}x)`);
+  check(seen.defend, 'Defend raised a guard in the live fight');
   check(seen.burn, 'Special put Burn on its target');
   check(seen.signature, 'boss used its signature move');
   check(!fin.poisonLeft, 'Poison wore off');

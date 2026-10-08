@@ -958,8 +958,10 @@ await block(async () => {
   const e = gameState.enemies[0]; e.lootChance = 1; e.lootTier = 'Low'; e.maxHp = 60;
   startFight(); e.hp = 0; e.isDefeated = true;
   const c0 = [a, b, c].map(p => p.coins || 0);
-  pinRandom(0.5);
+  pinRandom(0.5); gameLog.length = 0;
   await Combat.handleEnemyDefeat(e.id); unpinRandom();
+  const lootErr = gameLog.find(l => /ERROR generating dynamic loot|is not defined/.test(l));
+  check(!lootErr, `3 loot rolls in a row raise no errors (${lootErr ? lootErr.slice(0, 90) : 'clean'})`);
   const got = [a, b, c].map(p => (p.inventory || []).length);
   const coins = [a, b, c].map((p, i) => (p.coins || 0) - c0[i]);
   check(got.every(n => n >= 1), `3 heroes, 100% drop: each hero gets a drop (${got.join('/')})`);
