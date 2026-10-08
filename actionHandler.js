@@ -391,7 +391,7 @@ Mechanical outcome: ${combatLog}
 Active enemies: ${enemiesAfter.map(e => `${e.name} (HP ${e.hp}/${e.maxHp})`).join(', ') || 'None — combat ended.'}
 Combat status: ${gameState.inCombat ? 'Ongoing' : 'Ended'}
 
-Narrate this combat round in vivid second-person voice. Then provide ${gameState.inCombat ? '4 combat choices (Attack/Special/Item/Run)' : '5 exploration choices (Good/Bad/Risky/Silly/Investigative)'} as JSON.`;
+Fight round ${gameState.combat?.round || 1}. Narrate this round so the fight CHANGES: the foe adapts or tries something new, the ground or weather shifts, a hazard, an object or a bystander gets involved. Never describe the same blow or the same reaction as an earlier round. Then provide ${gameState.inCombat ? '4 combat choices (Attack/Special/Item/Run)' : '5 exploration choices (Good/Bad/Risky/Silly/Investigative)'} as JSON.`;
 
                 cbStep(11, 'showLoading + AI call');
                 UI.showLoading(true, 'Combat unfolding...');
