@@ -203,10 +203,7 @@ export function saveGameToLocalStorage(slotName) {
                 registry.playerFeedback = Object.fromEntries(registry.playerFeedback);
             }
         }
-        // Ensure reputation system contextualized factions are not saved (they're regenerated)
-        if (stateToSave.reputationSystem && stateToSave.reputationSystem.contextualizedFactions) {
-            stateToSave.reputationSystem.contextualizedFactions = null;
-        }
+        delete stateToSave.reputationSystem; // factions were removed (old saves may carry them)
         
         const saveData = {
             saveFormatVersion: 2, // Updated for reputation system and new features

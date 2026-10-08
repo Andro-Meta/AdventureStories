@@ -3,9 +3,7 @@
 
 // --- Module Imports ---
 import * as Config from './config.js'; // Needs config for initial values
-import { generateId } from './utils.js'; // Needs ID generation
-import { ChoiceOutcomeConfig } from './config.js';
-// Note: getCurrentPlayer moved to avoid circular dependency
+import { generateId } from './utils.js';// Note: getCurrentPlayer moved to avoid circular dependency
 
 /**
  * Represents the overall state of the game.
@@ -36,36 +34,6 @@ export const gameState = {
     isGoalComplete: false,
     allowCustomActions: false, // Enabled after goal completion
     turn: 1,
-
-    // --- Reputation Economy System ---
-    reputationSystem: {
-        factions: {
-            authority: 0,      // -100 to +100 (Nobles, Empire, Navy, etc.)
-            warriors: 0,       // -100 to +100 (Knights, Mercenaries, Buccaneers, etc.)
-            naturalists: 0,    // -100 to +100 (Druids, Terraformers, Islanders, etc.)
-            shadows: 0,        // -100 to +100 (Rogues, Smugglers, Netrunners, etc.)
-            scholars: 0,       // -100 to +100 (Mages, Scientists, Navigators, etc.)
-            common: 0          // -100 to +100 (Villagers, Colonists, Settlers, etc.)
-        },
-        reputationHistory: [], // Track major changes for AI context
-        factionConflicts: {
-            authorityVsShadows: 0,      // Penalty when both are high
-            warriorsVsNaturalists: 0,   // Combat vs nature conflict
-            scholarsVsCommon: 0         // Academic vs practical conflict
-        },
-        worldStateChanges: [], // Track how reputation changed the world
-        availableServices: [], // Services unlocked by reputation
-        priceModifiers: {      // Current price modifiers by faction
-            authority: 1.0,    // Luxury markets
-            warriors: 1.0,     // Weapon markets  
-            naturalists: 1.0,  // Healing markets
-            shadows: 1.0,      // Black markets
-            scholars: 1.0,     // Magical markets
-            common: 1.0        // Basic services
-        },
-        lastReputationUpdate: 0, // Turn when reputation was last modified
-        contextualizedFactions: null // Cached theme-adapted faction data
-    },
 
     // --- Hierarchical Memory (Tier 3) ---
     // Rolling list of LLM-generated summaries of past adventure arcs, oldest
@@ -564,46 +532,11 @@ export function determineContext(player) {
         context.characterState.push('poor');
     }
 
-    // Calculate outcome modifiers based on context
-    context.modifiers = calculateContextModifiers(context);
+
 
     return context;
 }
 
-/**
- * Calculates outcome modifiers based on context
- * @param {Object} context - The current context
- * @returns {Object} Calculated modifiers
- */
-export function calculateContextModifiers(context) {
-    const modifiers = {
-        physical: {},
-        resource: {},
-        narrative: {}
-    };
-
-    // Apply situation modifiers
-    const situationMods = ChoiceOutcomeConfig.contextModifiers.situations[context.situation];
-    if (situationMods) {
-        Object.assign(modifiers, situationMods);
-    }
-
-    // Apply environment modifiers
-    const envMods = ChoiceOutcomeConfig.contextModifiers.environment[context.environment];
-    if (envMods) {
-        Object.assign(modifiers, envMods);
-    }
-
-    // Apply character state modifiers
-    context.characterState.forEach(state => {
-        const stateMods = ChoiceOutcomeConfig.contextModifiers.characterState[state];
-        if (stateMods) {
-            Object.assign(modifiers, stateMods);
-        }
-    });
-
-    return modifiers;
-}
 
 /**
  * Resets the game state to its initial values for a new game.
@@ -686,17 +619,7 @@ export function resetGameState() {
         // Hierarchical memory (Tier 3) — referenced by aiHandler/memoryRetriever.
         arcMemory: { summaries: [], lastSummarizedTurn: 0, nextSummaryAtTurn: 5 }, // same as initial state; was missing, so the first summary call fired on turn 2
         entityMemory: { npcs: {}, locations: {}, items: {} },
-        // Reputation + jail — referenced by reputationContextualizer + jailSystem.
-        // Full shape: the short reset version lacked factionConflicts, and the
-        // conflict code threw once authority > 60 (turn aborted).
-        reputationSystem: {
-            factions: { authority:0, warriors:0, naturalists:0, shadows:0, scholars:0, common:0 },
-            reputationHistory: [],
-            factionConflicts: { authorityVsShadows: 0, warriorsVsNaturalists: 0, scholarsVsCommon: 0 },
-            worldStateChanges: [], availableServices: [],
-            priceModifiers: { authority: 1, warriors: 1, naturalists: 1, shadows: 1, scholars: 1, common: 1 },
-            lastReputationUpdate: 0, contextualizedFactions: null
-        },
+        // Jail state (jailSystem.js).
         imprisoned: false,
         jail: null,
         jailEscape: null,
@@ -876,19 +799,7 @@ export async function initializeGameState() {
     if (!gameState.storyBeats) gameState.storyBeats = [];
     if (!gameState.worldStateHistory) gameState.worldStateHistory = [];
     
-    // Initialize reputation system contextualized factions
-    if (gameState.reputationSystem && !gameState.reputationSystem.contextualizedFactions) {
-        try {
-            const { getContextualizedFactions, calculatePriceModifiers } = await import('./reputationContextualizer.js');
-            gameState.reputationSystem.contextualizedFactions = getContextualizedFactions();
-            gameState.reputationSystem.priceModifiers = calculatePriceModifiers(gameState.reputationSystem.factions);
-            log("State: Reputation system contextualized factions initialized for theme:", gameState.adventureTheme);
-        } catch (error) {
-            log("State: Warning - Could not initialize reputation system contextualized factions:", error.message);
-        }
-    }
-    
-    log("State: Game state initialization complete with intelligent compression tracking and reputation system.");
+    log("State: Game state initialization complete with intelligent compression tracking.");
 }
 
 /**

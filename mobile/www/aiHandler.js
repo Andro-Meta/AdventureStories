@@ -63,7 +63,7 @@ Example: {"op":"add","path":"${P}/inventory/-","value":{"name":"Singing Sword","
     }
     return `${rules}
 
-ALREADY HANDLED BY THE GAME (do not emit): anything listed under "Already applied by the game" in the action, and small reputation shifts. Show those results in the story. Emit HP or coin ops only for an extra, specific event you add ("a second arrow grazes her").
+ALREADY HANDLED BY THE GAME (do not emit): anything listed under "Already applied by the game" in the action. Show those results in the story. Emit HP or coin ops only for an extra, specific event you add ("a second arrow grazes her").
 YOURS TO EMIT when the story makes them happen:
 - A named new place the players enter: replace /currentLocation AND add /entityMemory/locations/<Name>.
 - New named NPCs or notable items: add /entityMemory/npcs/<Name> or /entityMemory/items/<Name>; items the hero picks up: add ${P}/inventory/-.
@@ -571,11 +571,7 @@ Use names, people, places and props native to this theme (no village elders in c
     }
     parts.push(scene);
 
-    // Faction standing: only factions that have moved, one line each.
-    const reps = Object.entries(gameState.reputationSystem?.factions || {}).filter(([, v]) => Math.abs(v) >= 5);
-    if (reps.length) {
-        parts.push(`FACTION STANDING (shapes how their people treat the heroes): ${reps.map(([f, v]) => `${f} ${v}`).join(', ')}. When a choice clearly helps or hurts a faction, replace /reputationSystem/factions/<name> (about ±5).`);
-    }
+
 
     // Relevant long-term memory and the main-quest stage (milestone names live there).
     const memoryQuery = (gameState.currentNarrative || '') + ' ' + (gameState.currentLocation?.name || '');
