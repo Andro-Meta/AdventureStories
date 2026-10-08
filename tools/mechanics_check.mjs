@@ -263,7 +263,7 @@ await block(async () => {
   const mp0 = p.mp, hp0 = e.hp;
   await AH.handlePlayerChoice('Special', 'Use Flame Strike');
   const dealt = hp0 - e.hp;
-  check(p.mp === mp0 - 10, `Special: MP ${mp0} -> ${p.mp} (cost 10)`);
+  check(p.mp === mp0 - 10 + 2, `Special: MP ${mp0} -> ${p.mp} (cost 10, +2 round regen)`);
   check(dealt > atkDmg, `Special deals more than a basic attack: basic ${atkDmg}, Flame Strike ${dealt} (move says directDamage 30, combat says 1.5x)`);
   check(e.statusEffects.some(s => s.name === 'Burn'), `Special applies its Burn (enemy effects: ${e.statusEffects.map(s => s.name).join(',') || 'none'})`);
   const cds = [move.currentCooldown];
@@ -615,6 +615,15 @@ await block(async () => {
   const ops = AH.extractGodModeDiffOps('I gain 50 attack');
   const v = ops.find(o => o.path === '/players/0/atk')?.value;
   check(v === 110, `"I gain 50 attack" at ATK 60 -> ${v} (expect 110)`);
+});
+await block(async () => {
+  // RESOURCE_REGEN_COMBAT existed but nothing applied it in a fight: MP stayed at 0.
+  const { p } = fresh();
+  p.mp = 0; p.maxMp = 20;
+  startFight(); pinRandom(0.5);
+  await AH.handlePlayerChoice('Attack', 'Strike the goblin');
+  unpinRandom();
+  check(p.mp > 0, `MP regenerates each combat round (MP 0 -> ${p.mp} after one exchange)`);
 });
 await block(async () => {
   // A stunned boss still landed its every-other-round signature hit.

@@ -626,6 +626,11 @@ function processRoundEffects() {
         ...gameState.enemies.filter(e => !e.isDefeated)
     ];
 
+    // MP trickles back each round (turnManager's regen only runs out of combat).
+    for (const p of gameState.players) {
+        if (p && !p.isDowned && (p.mp ?? 0) < (p.maxMp ?? 0)) p.mp = Math.min(p.maxMp, (p.mp || 0) + Config.RESOURCE_REGEN_COMBAT);
+    }
+
     allCombatants.forEach(char => {
         if (char.statusEffects) {
             char.statusEffects.forEach(status => {
