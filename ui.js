@@ -672,7 +672,10 @@ export function updateGameHeader() {
 
     // Update custom action visibility based on game state
     if (elements.customActionContainer) {
-        elements.customActionContainer.classList.toggle('hidden', !gameState.isGoalComplete);
+        // Never shown: the golden god-mode box in the choices card is the one
+        // input (players saw two). This input only carries its text to
+        // handleCustomAction.
+        elements.customActionContainer.classList.add('hidden');
     }
 
     // Update quest progress

@@ -590,7 +590,7 @@ export async function handleCommand(commandString) {
                             handleGoalCompletionRewards();
                             log("handleGoalCompletionRewards finished.");
                             // Explicitly show custom action container
-                            if (UI.elements.customActionContainer) UI.elements.customActionContainer.classList.remove('hidden');
+                            // (the god-mode box in the choices card is the only custom input)
                         } else { log("Goal:Complete received, already complete."); }
                     } else if (goalState === 'update' && parts.length >= 3) {
                         const newGoal = parts.slice(2).join(':').trim();
