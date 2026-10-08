@@ -8,16 +8,16 @@ import { dirname, resolve } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // Loader-using suites (need preload.mjs to strip ?cb= from imports).
-const LOADER_SUITES = ['audit', 'engine_audit', 'godmode_audit', 'llm_contract', 'first_turn_check', 'prompt_check', 'loot_check', 'mechanics_check', 'failover_check'];
+const LOADER_SUITES = ['audit', 'engine_audit', 'godmode_audit', 'llm_contract', 'first_turn_check', 'prompt_check', 'loot_check', 'mechanics_check', 'failover_check', 'runtime_load_check'];
 // Pure static-analysis suites (read source as text — no module loading).
-const PLAIN_SUITES  = ['ui_audit'];
+const PLAIN_SUITES  = ['ui_audit', 'dead_code --check'];
 
 let failed = 0;
 async function run(suite, useLoader) {
   console.log(`\n\x1b[1m┌─── ${suite} ───\x1b[0m`);
   const args = useLoader
     ? ['--experimental-loader', pathToFileURL(resolve(__dirname, 'preload.mjs')).href, resolve(__dirname, `${suite}.mjs`)]
-    : [resolve(__dirname, `${suite}.mjs`)];
+    : [resolve(__dirname, `${suite.split(' ')[0]}.mjs`), ...suite.split(' ').slice(1)];
   const code = await new Promise((res) => {
     const p = spawn(process.execPath, args, { stdio: 'inherit' });
     p.on('exit', res);

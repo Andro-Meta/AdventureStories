@@ -1,18 +1,8 @@
 // api_new.js — thin API layer over localAI.js (the online storyteller client).
 
-import { getLocalAIResponse, getLocalAIJSONResponse } from './localAI.js';
+import { getLocalAIJSONResponse } from './localAI.js';
 import * as Config from './config.js';
 
-/** Plain-text AI request; resolves with the reply text. */
-export async function getAIResponse(messages, options = {}) {
-    const log = window.displayVisualError || console.log;
-    try {
-        return await getLocalAIResponse(messages, options);
-    } catch (error) {
-        log(`AI request failed: ${error.message}`);
-        throw error;
-    }
-}
 
 /** JSON AI request; resolves with the parsed object. */
 export async function getAIResponseJSON(messages, schema, options = {}) {

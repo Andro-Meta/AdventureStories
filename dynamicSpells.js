@@ -3,8 +3,6 @@
 // Matches the sophistication of dynamicItems.js with spell-specific intelligence
 
 import { gameState, buildGameContextBlock } from './state.js';
-import * as Config from './config.js';
-import { generateId } from './utils.js';
 import * as Spells from './spells.js';
 import * as AdaptiveAbilities from './adaptiveAbilities.js';
 import * as ThemeIntelligence from './themeIntelligence.js';

@@ -3,6 +3,9 @@
 // WebView. Mimics what the browser does when index.html sources main.js.
 
 import './dom_polyfill.mjs';
+// main.js calls the global addEventListener (window = globalThis in a page).
+globalThis.addEventListener ||= () => {};
+globalThis.removeEventListener ||= () => {};
 
 const errors = [];
 process.on('unhandledRejection', (r, p) => {
@@ -16,27 +19,18 @@ const ok = [];
 const fail = [];
 
 // Load every module the WebView would, in import order from index.html → main.js.
-const modules = [
-  '../state.js', '../config.js', '../utils.js', '../schemas.js',
-  '../engine.js', '../storyHooks.js', '../questDefinitions.js',
-  '../godMode.js', '../questProgress.js', '../saveLoad.js',
-  '../aiHandler.js', '../actionHandler.js', '../gameLoop.js',
-  '../turnManager.js', '../combat.js', '../resolution.js',
-  '../ui.js', '../localAI.js', 
-  '../jailSystem.js', '../spells.js', '../spellUI.js',
-  '../spellCasting.js', '../items.js', '../storyHooks.js',
-  '../memoryRetriever.js', '../adaptiveAbilities.js',
-  '../ageAppropriateReading.js', '../reputationContextualizer.js', '../contextManager.js', '../dynamicItems.js',
-  '../dynamicLocations.js', '../dynamicSpells.js',
-  '../themeIntelligence.js', '../loadingManager.js', '../loadingTips.js',
-  '../inputCache.js', '../locations.js',
-  '../api_new.js', '../initializationManager.js', '../setup.js',
-  '../main.js'  // last — the entry point
-];
+// Every shipped module in the folder (a hand-kept list went stale when dead
+// modules were deleted), main.js last as the page loads it.
+import fsMod from 'node:fs';
+const SKIP = new Set(['main.js', 'sw.js', 'mobile-bootstrap.js', 'playwright.config.js']);
+const modules = fsMod.readdirSync(new URL('..', import.meta.url)).filter(f => f.endsWith('.js') && !SKIP.has(f)).map(f => `../${f}`).concat('../main.js');
 
 for (const m of modules) {
   try {
-    await import(m);
+    // main.js boots the whole game at import (DOMContentLoaded path); in Node
+    // that waits on page work forever. A module that evaluated without
+    // throwing within 8 s counts as loaded.
+    await Promise.race([import(m), new Promise(r => setTimeout(r, 8000))]);
     ok.push(m);
   } catch (e) {
     fail.push({ m, err: e?.message, stack: (e?.stack || '').split('\n').slice(0, 5).join('\n') });
@@ -47,6 +41,7 @@ console.log(`\n=== RUNTIME LOAD CHECK ===`);
 console.log(`OK: ${ok.length} / ${modules.length}`);
 if (fail.length === 0 && errors.length === 0) {
   console.log('\x1b[32m✓ Every module loaded cleanly.\x1b[0m');
+  process.exit(0);
 } else {
   console.log(`\x1b[31m✗ ${fail.length} failed import(s) + ${errors.length} runtime error(s):\x1b[0m`);
   for (const f of fail) {

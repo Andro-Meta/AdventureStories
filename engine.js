@@ -17,7 +17,7 @@
 // grammar is OUR grammar — keyed to our gameState tree, single-player
 // indices baked in for now (multi-player is a Phase 3 concern).
 
-import { gameState, recordPlayerChoice, recordStoryBeat, recordWorldStateChange } from './state.js';
+import { gameState, recordStoryBeat, recordWorldStateChange } from './state.js';
 import * as Combat from './combat.js';
 import * as Config from './config.js';
 import { levelUp } from './battle.js';

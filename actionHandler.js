@@ -7,7 +7,7 @@ import * as Config from './config.js';
 import * as UI from './ui.js';
 import * as Combat from './combat.js';
 import * as Items from './items.js';
-import * as API from './api_new.js'; // May not be needed if all calls go through aiHandler
+ // May not be needed if all calls go through aiHandler
 import { generateId, getRandomElement, getRandomInt, clamp } from './utils.js';
 // Import aiHandler functions statically
 import { makeAICallForSystemAction } from './aiHandler.js';
@@ -16,9 +16,9 @@ import { advanceTurn } from './turnManager.js';
 // Import game loop
 import { processPlayerAction as gameLoopProcessAction } from './gameLoop.js';
 // Import reputation system
-import { calculateChoiceReputationEffects, calculatePriceModifiers, getContextualizedFactions, getTrustDifficultyModifiers } from './reputationContextualizer.js';
+import { calculatePriceModifiers, getTrustDifficultyModifiers } from './reputationContextualizer.js';
 // Import intelligent compression helpers
-import { recordPlayerChoice, recordStoryBeat, recordRelationshipChange, recordWorldStateChange } from './state.js';
+import { recordPlayerChoice, recordStoryBeat } from './state.js';
 
 
 /**
@@ -930,62 +930,6 @@ function calculateChoiceSignificance(actionType, outcomeSet) {
     return Math.min(significance, 1.0);
 }
 
-/**
- * Calculates modified outcomes based on context
- * @param {Object} baseOutcome - The base outcome configuration
- * @param {Object} context - The current context
- * @returns {Object} Modified outcome configuration
- */
-function calculateModifiedOutcomes(baseOutcome, context) {
-    const modified = JSON.parse(JSON.stringify(baseOutcome)); // Deep copy
-
-    // Apply success chance modifiers
-    if (context.modifiers?.successChanceMultiplier) {
-        modified.successChance *= context.modifiers.successChanceMultiplier;
-    }
-
-    // Apply physical modifiers
-    if (context.modifiers?.physical) {
-        if (context.modifiers.physical.hpChangeMultiplier) {
-            if (modified.outcomes.physical?.hpChange) {
-                modified.outcomes.physical.hpChange = modified.outcomes.physical.hpChange.map(
-                    val => Math.round(val * context.modifiers.physical.hpChangeMultiplier)
-                );
-            }
-        }
-    }
-
-    // Apply resource modifiers
-    if (context.modifiers?.resource) {
-        if (context.modifiers.resource.coinChangeMultiplier) {
-            if (modified.outcomes.resource?.coinChange) {
-                modified.outcomes.resource.coinChange = modified.outcomes.resource.coinChange.map(
-                    val => Math.round(val * context.modifiers.resource.coinChangeMultiplier)
-                );
-            }
-        }
-    }
-
-    // Apply narrative modifiers
-    if (context.modifiers?.narrative) {
-        if (context.modifiers.narrative.reputationMultiplier) {
-            if (modified.outcomes.narrative?.reputationChange) {
-                modified.outcomes.narrative.reputationChange = modified.outcomes.narrative.reputationChange.map(
-                    val => Math.round(val * context.modifiers.narrative.reputationMultiplier)
-                );
-            }
-        }
-        if (context.modifiers.narrative.relationshipMultiplier) {
-            if (modified.outcomes.narrative?.relationshipChange) {
-                modified.outcomes.narrative.relationshipChange = modified.outcomes.narrative.relationshipChange.map(
-                    val => Math.round(val * context.modifiers.narrative.relationshipMultiplier)
-                );
-            }
-        }
-    }
-
-    return modified;
-}
 
 /**
  * Validates and maps action types to ensure compatibility

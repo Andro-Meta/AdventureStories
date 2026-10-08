@@ -5,14 +5,13 @@
 import { playHpEffects, resetFx } from './fx.js';
 import { gameState } from './state.js';
 import * as Config from './config.js';
-import { loadPlayerAges, loadPlayerNames, loadAdventureTheme } from './inputCache.js';
+import { loadPlayerAges, loadPlayerNames } from './inputCache.js';
 import * as Spells from './spells.js';
-import * as SpellUI from './spellUI.js';
 // Import specific utils needed
-import { sanitizeText, shuffleArray } from './utils.js';
+import { sanitizeText } from './utils.js';
 import { describeQuestStep, friendlyMilestone } from './questDefinitions.js';
 // Import functions from other new modules
-import { getCurrentPlayer, canCurrentPlayerAct } from './state.js';
+import { getCurrentPlayer } from './state.js';
 // Import themedItemData directly if it's exported from items.js
 import { themedItemData } from './items.js';
 // Import reputation price calculation
@@ -448,212 +447,6 @@ export function updateGameUI() {
     // Story text is updated separately by updateStoryText
 }
 
-/**
- * Generate Story Memory UI with plot thread tracker
- * @returns {string} HTML for story memory display
- */
-function generateStoryMemoryUI() {
-    if (!gameState.storyContinuityAgent) {
-        return '<div class="story-memory"><p><em>Story memory initializing...</em></p></div>';
-    }
-    
-    try {
-        // Get story data from the continuity agent
-        const storyData = gameState.storyContinuityAgent.getStoryMemory();
-        
-        if (!storyData || Object.keys(storyData).length === 0) {
-            return '<div class="story-memory"><p><em>No story threads yet...</em></p></div>';
-        }
-        
-        // Generate plot threads display
-        const plotThreadsHTML = generatePlotThreadsUI(storyData.plotThreads || {});
-        
-        // Generate key events display
-        const keyEventsHTML = generateKeyEventsUI(storyData.keyEvents || []);
-        
-        // Generate character relationships display
-        const relationshipsHTML = generateRelationshipsUI(storyData.relationships || {});
-        
-        return `
-            <div class="story-memory">
-                <div class="story-memory-header">
-                    <h4>📚 Story Memory</h4>
-                    <span class="story-memory-count">${Object.keys(storyData.plotThreads || {}).length} Threads</span>
-                </div>
-                <div class="story-memory-content">
-                    ${plotThreadsHTML}
-                    ${keyEventsHTML}
-                    ${relationshipsHTML}
-                </div>
-            </div>
-        `;
-    } catch (error) {
-        console.log(`Story memory UI error: ${error.message}`);
-        return '<div class="story-memory"><p><em>Story data loading...</em></p></div>';
-    }
-}
-
-/**
- * Generate plot threads UI
- * @param {object} plotThreads - Plot threads data
- * @returns {string} HTML for plot threads
- */
-function generatePlotThreadsUI(plotThreads) {
-    if (!plotThreads || Object.keys(plotThreads).length === 0) {
-        return '<div class="plot-threads"><p><em>No active plot threads...</em></p></div>';
-    }
-    
-    const threadsHTML = Object.entries(plotThreads)
-        .slice(0, 3) // Show top 3 most recent/important threads
-        .map(([threadId, thread]) => {
-            const statusClass = thread.status === 'active' ? 'thread-active' : 
-                               thread.status === 'resolved' ? 'thread-resolved' : 'thread-dormant';
-            const statusIcon = thread.status === 'active' ? '🔥' : 
-                              thread.status === 'resolved' ? '✅' : '💤';
-            
-            return `
-                <div class="plot-thread ${statusClass}">
-                    <div class="thread-header">
-                        <span class="thread-icon">${statusIcon}</span>
-                        <span class="thread-title">${sanitizeText(thread.title || 'Unknown Thread')}</span>
-                    </div>
-                    <div class="thread-description">
-                        ${sanitizeText((thread.description || '').slice(0, 100))}${thread.description?.length > 100 ? '...' : ''}
-                    </div>
-                </div>
-            `;
-        }).join('');
-    
-    return `
-        <div class="plot-threads">
-            <h5>🧵 Active Threads</h5>
-            ${threadsHTML}
-        </div>
-    `;
-}
-
-/**
- * Generate key events UI
- * @param {array} keyEvents - Key events data
- * @returns {string} HTML for key events
- */
-function generateKeyEventsUI(keyEvents) {
-    if (!keyEvents || keyEvents.length === 0) {
-        return '';
-    }
-    
-    const eventsHTML = keyEvents
-        .slice(-3) // Show last 3 key events
-        .map(event => {
-            const significance = event.significance || 0.5;
-            const significanceClass = significance > 0.8 ? 'event-major' : 
-                                    significance > 0.5 ? 'event-moderate' : 'event-minor';
-            const significanceIcon = significance > 0.8 ? '⭐' : 
-                                   significance > 0.5 ? '🔸' : '🔹';
-            
-            return `
-                <div class="key-event ${significanceClass}">
-                    <span class="event-icon">${significanceIcon}</span>
-                    <span class="event-text">${sanitizeText((event.description || '').slice(0, 80))}${event.description?.length > 80 ? '...' : ''}</span>
-                </div>
-            `;
-        }).join('');
-    
-    return `
-        <div class="key-events">
-            <h5>📖 Recent Events</h5>
-            ${eventsHTML}
-        </div>
-    `;
-}
-
-/**
- * Generate relationships UI
- * @param {object} relationships - Relationships data
- * @returns {string} HTML for relationships
- */
-function generateRelationshipsUI(relationships) {
-    if (!relationships || Object.keys(relationships).length === 0) {
-        return '';
-    }
-    
-    const relationshipsHTML = Object.entries(relationships)
-        .slice(0, 2) // Show top 2 most significant relationships
-        .map(([npcId, relationship]) => {
-            const trust = relationship.trust || 0;
-            const trustClass = trust > 0.6 ? 'relationship-positive' : 
-                              trust < 0.4 ? 'relationship-negative' : 'relationship-neutral';
-            const trustIcon = trust > 0.6 ? '💚' : trust < 0.4 ? '💔' : '💛';
-            
-            return `
-                <div class="relationship ${trustClass}">
-                    <span class="relationship-icon">${trustIcon}</span>
-                    <span class="relationship-name">${sanitizeText(relationship.name || npcId)}</span>
-                    <span class="relationship-status">${Math.round(trust * 100)}%</span>
-                </div>
-            `;
-        }).join('');
-    
-    if (relationshipsHTML) {
-        return `
-            <div class="relationships">
-                <h5>👥 Key Relationships</h5>
-                ${relationshipsHTML}
-            </div>
-        `;
-    }
-    
-    return '';
-}
-
-/**
- * Generate AI System Status UI
- * @returns {string} HTML for AI system status display
- */
-function generateAISystemStatusUI() {
-    if (!gameState) return '';
-    
-    const systems = [
-        { name: 'Dynamic Items', agent: gameState.dynamicItemRegistry, icon: '🎒', status: 'active' },
-        { name: 'Dynamic Spells', agent: gameState.dynamicSpellRegistry, icon: '✨', status: 'active' },
-        { name: 'Dynamic Enemies', agent: gameState.dynamicEnemyRegistry, icon: '👹', status: 'active' },
-        { name: 'Dynamic Locations', agent: gameState.dynamicLocationRegistry, icon: '🗺️', status: 'active' },
-        { name: 'Story Continuity', agent: gameState.storyContinuityAgent, icon: '📚', status: 'active' },
-        { name: 'Character Development', agent: gameState.characterDevelopmentAgent, icon: '🎭', status: 'active' },
-        { name: 'World Evolution', agent: gameState.worldEvolutionAgent, icon: '🌍', status: 'active' },
-        { name: 'Difficulty Adaptation', agent: gameState.difficultyAdaptationAgent, icon: '⚖️', status: 'active' },
-        { name: 'Context Optimization', agent: gameState.localAIContextOptimizer, icon: '🧠', status: 'active' }
-    ];
-    
-    const activeCount = systems.filter(s => s.agent).length;
-    const totalCount = systems.length;
-    
-    const systemsHTML = systems.map(system => {
-        const isActive = system.agent !== null && system.agent !== undefined;
-        const statusClass = isActive ? 'ai-system-active' : 'ai-system-inactive';
-        const statusIcon = isActive ? '✅' : '❌';
-        
-        return `
-            <div class="ai-system-item ${statusClass}">
-                <span class="ai-system-icon">${system.icon}</span>
-                <span class="ai-system-name">${sanitizeText(system.name)}</span>
-                <span class="ai-system-status">${statusIcon}</span>
-            </div>
-        `;
-    }).join('');
-    
-    return `
-        <div class="ai-system-status">
-            <div class="ai-system-header">
-                <h4>🤖 AI Systems Status</h4>
-                <span class="ai-system-count">${activeCount}/${totalCount} Active</span>
-            </div>
-            <div class="ai-systems-grid">
-                ${systemsHTML}
-            </div>
-        </div>
-    `;
-}
 
 /** Updates the game header (title, goal, turn, custom action visibility). */
 export function updateGameHeader() {
@@ -1807,19 +1600,6 @@ export function showStatus(element, message) {
     }
 }
 
-/**
- * Shows a success message in the specified element.
- * @param {HTMLElement} element - The element to show the success in.
- * @param {string} message - The success message to display.
- */
-export function showSuccess(element, message) {
-    if (element) {
-        element.textContent = message;
-        element.style.display = 'block';
-        element.classList.remove('error');
-        element.classList.add('success');
-    }
-}
 
 /**
  * Shows or hides the loading indicator with an optional message.

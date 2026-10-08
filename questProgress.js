@@ -58,56 +58,6 @@ export class QuestProgressManager {
         this.updateProgressUI();
     }
 
-    /**
-     * Add a milestone to the quest progress
-     */
-    addMilestone(milestoneType, customName = null, customDescription = null) {
-        const log = window.displayVisualError || console.log;
-        
-        const template = this.milestoneTemplates[milestoneType];
-        if (!template) {
-            log(`QuestProgress: Unknown milestone type: ${milestoneType}`);
-            return false;
-        }
-
-        const milestone = {
-            id: `milestone_${Date.now()}`,
-            type: milestoneType,
-            name: customName || template.name,
-            description: customDescription || template.description,
-            weight: template.weight,
-            completedTurn: gameState.turn,
-            timestamp: Date.now()
-        };
-
-        gameState.questProgress.milestones.push(milestone);
-        
-        // Update completion percentage
-        const newPercentage = this.calculateCompletionPercentage();
-        const oldPercentage = gameState.questProgress.completionPercentage;
-        gameState.questProgress.completionPercentage = newPercentage;
-        
-        // Check for phase advancement
-        this.updateCurrentPhase();
-        
-        // Add to progress history
-        gameState.questProgress.progressHistory.push({
-            turn: gameState.turn,
-            phase: gameState.questProgress.currentPhase,
-            percentage: newPercentage,
-            event: `Milestone: ${milestone.name}`,
-            timestamp: Date.now()
-        });
-
-        // Show progress feedback to player
-        const progressGain = newPercentage - oldPercentage;
-        UI.showPopup(`Milestone Achieved: ${milestone.name} (+${progressGain}% progress)`, 'success', 4000);
-        
-        log(`QuestProgress: Added milestone '${milestone.name}' - Progress: ${oldPercentage}% -> ${newPercentage}%`);
-        
-        this.updateProgressUI();
-        return true;
-    }
 
     /**
      * Add or update current objectives
@@ -130,109 +80,6 @@ export class QuestProgressManager {
         this.updateProgressUI();
     }
 
-    /**
-     * Complete an objective
-     */
-    completeObjective(objectiveText) {
-        const log = window.displayVisualError || console.log;
-        
-        const index = gameState.questProgress.currentObjectives.indexOf(objectiveText);
-        if (index !== -1) {
-            gameState.questProgress.currentObjectives.splice(index, 1);
-            
-            // Add to key events
-            gameState.questProgress.keyEvents.push({
-                turn: gameState.turn,
-                event: `Objective completed: ${objectiveText}`,
-                timestamp: Date.now()
-            });
-            
-            UI.showPopup(`Objective Complete: ${objectiveText}`, 'success', 3000);
-            log(`QuestProgress: Completed objective: ${objectiveText}`);
-            
-            this.updateProgressUI();
-            return true;
-        }
-        
-        return false;
-    }
-
-    /**
-     * Add a side quest
-     */
-    addSideQuest(name, description, reward = null) {
-        const sideQuest = {
-            id: `side_${Date.now()}`,
-            name,
-            description,
-            reward,
-            status: 'active', // active, completed, failed
-            startTurn: gameState.turn,
-            timestamp: Date.now()
-        };
-        
-        gameState.questProgress.sideQuests.push(sideQuest);
-        UI.showPopup(`New Side Quest: ${name}`, 'info', 3000);
-        
-        this.updateProgressUI();
-        return sideQuest.id;
-    }
-
-    /**
-     * Complete a side quest
-     */
-    completeSideQuest(questId) {
-        const quest = gameState.questProgress.sideQuests.find(q => q.id === questId);
-        if (quest) {
-            quest.status = 'completed';
-            quest.completedTurn = gameState.turn;
-            
-            UI.showPopup(`Side Quest Complete: ${quest.name}`, 'legendary', 4000);
-            this.updateProgressUI();
-            return true;
-        }
-        return false;
-    }
-
-    /**
-     * Add discovered secret/lore
-     */
-    addSecret(secretText, category = 'general') {
-        const secret = {
-            id: `secret_${Date.now()}`,
-            text: secretText,
-            category,
-            discoveredTurn: gameState.turn,
-            timestamp: Date.now()
-        };
-        
-        gameState.questProgress.discoveredSecrets.push(secret);
-        UI.showPopup(`Secret Discovered: ${secretText}`, 'rare', 4000);
-        
-        this.updateProgressUI();
-        return secret.id;
-    }
-
-    /**
-     * Calculate completion percentage based on milestones and progress
-     */
-    calculateCompletionPercentage() {
-        // No progress until the AI has set a real goal — prevents the bar from
-        // ticking up while "Not set yet." is displayed.
-        const hasGoal = gameState.adventureGoal && gameState.adventureGoal !== 'Not set yet.';
-        if (!hasGoal) return 0;
-
-        const totalWeight = gameState.questProgress.milestones.reduce((sum, m) => sum + m.weight, 0);
-
-        // Base percentage from milestones (capped at 85%)
-        let percentage = Math.min(85, totalWeight);
-
-        // Slow turn-based background progress — max +15% over the whole game
-        const turnBonus = Math.min(15, Math.floor(gameState.turn / 5));
-        percentage += turnBonus;
-
-        return Math.min(100, Math.max(0, percentage));
-    }
 
     /**
      * Update current phase based on completion percentage
@@ -279,21 +126,6 @@ export class QuestProgressManager {
         return names[phase] || phase;
     }
 
-    /**
-     * Get progress summary for AI context
-     */
-    getProgressSummary() {
-        const progress = gameState.questProgress;
-        return {
-            phase: progress.currentPhase,
-            percentage: progress.completionPercentage,
-            recentMilestones: progress.milestones.slice(-3),
-            activeObjectives: progress.currentObjectives,
-            activeSideQuests: progress.sideQuests.filter(q => q.status === 'active'),
-            secretCount: progress.discoveredSecrets.length,
-            keyEventCount: progress.keyEvents.length
-        };
-    }
 
     /**
      * Update the progress UI elements
@@ -324,36 +156,6 @@ export class QuestProgressManager {
         return metCriteria >= 2;
     }
 
-    /**
-     * Generate AI guidance based on current progress
-     */
-    generateAIGuidance() {
-        const progress = gameState.questProgress;
-        const guidance = {
-            suggestedMilestones: [],
-            storyDirection: '',
-            urgency: 'normal'
-        };
-        
-        // Suggest milestones based on current phase and progress
-        if (progress.currentPhase === 'beginning' && progress.milestones.length < 2) {
-            guidance.suggestedMilestones.push('first_encounter', 'location_discovered');
-            guidance.storyDirection = 'Focus on world-building and initial challenges';
-        } else if (progress.currentPhase === 'exploration' && progress.completionPercentage < 50) {
-            guidance.suggestedMilestones.push('character_met', 'secret_revealed', 'obstacle_overcome');
-            guidance.storyDirection = 'Develop characters and reveal plot elements';
-        } else if (progress.currentPhase === 'climax') {
-            guidance.suggestedMilestones.push('plot_twist', 'final_confrontation');
-            guidance.storyDirection = 'Build toward the climactic resolution';
-            guidance.urgency = 'high';
-        } else if (progress.currentPhase === 'resolution') {
-            guidance.suggestedMilestones.push('goal_achieved');
-            guidance.storyDirection = 'Conclude the adventure and resolve plot threads';
-            guidance.urgency = 'critical';
-        }
-        
-        return guidance;
-    }
 }
 
 // Create global instance

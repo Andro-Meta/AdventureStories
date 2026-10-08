@@ -2,7 +2,7 @@
 // Manages game turns, processing effects, checking conditions, and selecting the next player.
 
 // --- Static Imports ---
-import { gameState, getCurrentPlayer, syncTurnStates, canCurrentPlayerAct, repairPlayerIndex } from './state.js';
+import { gameState, getCurrentPlayer, syncTurnStates, repairPlayerIndex } from './state.js';
 import * as Config from './config.js';
 import * as UI from './ui.js';
 import * as Combat from './combat.js';

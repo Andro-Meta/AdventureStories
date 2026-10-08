@@ -2,7 +2,7 @@
 // Spell Casting Mechanics and Execution System
 // Phase 3: Magic System Implementation
 
-import { gameState, getCurrentPlayer } from './state.js';
+import { gameState } from './state.js';
 import * as Spells from './spells.js';
 import * as UI from './ui.js';
 import * as Combat from './combat.js';

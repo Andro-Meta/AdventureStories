@@ -177,7 +177,7 @@ const requiredFns = [
   { fn: 'showPopup',              why: 'feedback popups' },
   { fn: 'unlockGodMode',          why: 'god mode unlock celebration' },
   { fn: 'activateGodMode',        why: 'god mode activation' },
-  { fn: 'processCustomChoice',    why: 'god mode custom action' }
+  { fn: 'handleCustomAction',     why: 'god mode custom action' }
 ];
 for (const r of requiredFns) {
   if (jsBundle.includes(r.fn)) ok(`${r.fn} present (${r.why})`);

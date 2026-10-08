@@ -46,11 +46,15 @@ for (const theme of REQUIRED_THEMES) {
 }
 ok(`${REQUIRED_THEMES.length} themes × ${REQUIRED_ARCHETYPES.length} archetypes = ${hookCount} prompt fragments render`);
 
-// Verify FORBIDDEN_TROPES is non-empty
-if (!Array.isArray(Hooks.FORBIDDEN_TROPES) || Hooks.FORBIDDEN_TROPES.length < 3) {
-  fail('FORBIDDEN_TROPES list is too short (<3 entries)');
-} else {
-  ok(`${Hooks.FORBIDDEN_TROPES.length} forbidden tropes registered`);
+// The storyteller is told which over-used names to avoid (the line lives in
+// aiHandler's system prompt; storyHooks' old FORBIDDEN_TROPES list was unused).
+{
+  const fsMod = await import('node:fs');
+  const ai = fsMod.readFileSync(new URL('../aiHandler.js', import.meta.url), 'utf8');
+  const line = ai.match(/Avoid over-used names: ([^`]*?)\./);
+  const n = line ? line[1].split(',').length : 0;
+  if (n < 3) fail(`system prompt avoid-list too short (${n} names)`);
+  else ok(`system prompt names ${n} over-used names to avoid`);
 }
 
 console.log('\n=== QUEST DEFINITIONS ===');

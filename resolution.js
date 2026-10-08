@@ -7,7 +7,7 @@ import * as Config from './config.js';
 import * as UI from './ui.js';
 import * as Combat from './combat.js';
 import * as Items from './items.js'; // Needed for goal completion rewards
-import { generateId, getRandomElement } from './utils.js'; // Added getRandomElement
+import { generateId } from './utils.js';
 // Import functions from aiHandler statically
 import { makeAICallForSystemAction } from './aiHandler.js';
 // Import determineContext function

@@ -248,9 +248,6 @@ function formatMessages(messages) {
 
 export const localAI = new LocalAIClient();
 
-export async function getLocalAIResponse(messages, options = {}) {
-    return localAI.makeRequest(messages, options);
-}
 
 /** JSON request; returns the parsed object (throws if no JSON can be found). */
 export async function getLocalAIJSONResponse(messages, schema, options = {}) {
