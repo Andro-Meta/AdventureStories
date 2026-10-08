@@ -90,7 +90,17 @@ export function buildChoiceInstructions(types, inCombat) {
     const list = types.map(t => `- ${t}: ${CHOICE_TYPE_MEANINGS[t]}`).join('\n');
     return `CHOICES: exactly ${types.length}, one of each type:
 ${list}
-Each choice: under 160 characters, starts with a verb, names something specific from the narration, and never states its type (no "safely", "risky", "silly").${inCombat ? ' Attack must name the enemy it targets.' : ' Make the five genuinely different from each other.'}`;
+Each choice: under 160 characters, starts with a verb, names something specific from the narration, and never states its type (no "safely", "risky", "silly").${inCombat ? ` Attack must name the enemy it targets.${combatKitLine()}` : ' Make the five genuinely different from each other.'}`;
+}
+
+// Item and Special choices must name what the acting hero really has: the
+// game uses that item or move (live: "hold up the blue silk scrap" drank a potion).
+function combatKitLine() {
+    const p = gameState.players?.[gameState.nextActorIndex ?? gameState.currentPlayerIndex ?? 0];
+    if (!p) return '';
+    const items = (p.inventory || []).filter(i => i?.type === 'Consumable' && (i.quantity == null || i.quantity > 0)).map(i => i.name);
+    const moves = (p.specialMoves || []).filter(m => !(m.currentCooldown > 0)).map(m => m.name);
+    return ` Item must use one of ${p.name}'s items: ${items.length ? [...new Set(items)].join(', ') : 'none (write it as searching their pack)'}. Special must use ${moves.length ? `one of: ${moves.join(', ')}` : 'a bold signature move'}.`;
 }
 
 /**
@@ -154,6 +164,12 @@ ${buildDiffInstructions(pIdx)}`;
             .trim();
         const appliedDiff = applyDiff(validated.diff.ops || [], { strict: false });
         log(`narrative diff: applied ${appliedDiff.length}/${(validated.diff.ops || []).length} ops`);
+        // The opening names the starting place; if the narrator skipped the
+        // /currentLocation op, use the first place it recorded.
+        if (gameState.currentLocation?.name === 'Not named yet') {
+            const first = Object.values(gameState.entityMemory?.locations || {})[0];
+            if (first?.name) gameState.currentLocation = { ...gameState.currentLocation, name: first.name, description: first.description || '', isFallback: false };
+        }
 
         gameState.currentNarrative = cleanNarrative;
         try {

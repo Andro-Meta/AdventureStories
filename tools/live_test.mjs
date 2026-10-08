@@ -224,6 +224,7 @@ if (FULL) {
 await page.waitForTimeout(1500);
 for (let i = 0; i < 60; i++) { if (await gs(g => !g.isLoading)) break; await page.waitForTimeout(1000); }
 const win = await gs(g => ({ epi: (g.epilogue || '').length, coins: g.players.map(p => p.coins), legendary: g.players.every(p => p.inventory.some(i => i.questReward)), god: !!g.isGoalComplete, log: g.storyLog.length, lastHasEpi: (g.storyLog.at(-1) || '').includes('Epilogue') }));
+fs.writeFileSync(`${ROOT}test-results/story_${args.includes('--tag') ? args[args.indexOf('--tag') + 1] : 'boss'}.json`, JSON.stringify(await gs(g => ({ villain: g.questProgress?.villain, threads: g.storyThreads, log: g.storyLog })), null, 2));
 check(win.epi > 100, `epilogue written (${win.epi} chars)`);
 check(win.legendary && win.coins.every(c => c >= 1000), `rewards: 1000+ coins (${win.coins.join('/')}) and a legendary item each`);
 check(win.lastHasEpi, `story book holds ${win.log} scenes ending with the epilogue`);

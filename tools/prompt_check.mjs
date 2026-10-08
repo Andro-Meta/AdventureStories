@@ -138,5 +138,12 @@ check(Engine.describeAllowedPaths().includes('/storyThreads/-'), 'narrator is to
 check(Q.MAIN_QUEST_ARC.every(a => /STORY CIRCLE/.test(a.narratorHint)), 'every act carries its Story Circle beats');
 check(/OPEN THREAD/.test(Q.MAIN_QUEST_ARC[2].narratorHint), 'Act 3 demands open threads be paid off');
 
+// Combat Item/Special choices name the acting hero's real kit.
+gameState.currentPlayerIndex = 0; gameState.nextActorIndex = 0;
+gameState.players[0].inventory = [{ name: 'Kelp Tonic', type: 'Consumable', quantity: 1 }];
+gameState.players[0].specialMoves = [{ name: 'Gale Kick' }];
+{ const ci = AI.buildChoiceInstructions(['Attack', 'Special', 'Item', 'Run'], true);
+  check(ci.includes('Kelp Tonic') && ci.includes('Gale Kick'), "combat choices must name the hero's real items and moves"); }
+
 console.log(failed ? `✗ ${failed} PROMPT CHECK FAILURE(S)` : '✓ prompt checks pass');
 process.exit(failed ? 1 : 0);
