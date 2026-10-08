@@ -276,7 +276,11 @@ export function parseJSONFromModelOutput(raw) {
     const first = stripped.indexOf('{');
     const last = stripped.lastIndexOf('}');
     if (first !== -1 && last > first) {
-        try { return JSON.parse(stripped.slice(first, last + 1)); } catch (e) {
+        const body = stripped.slice(first, last + 1);
+        try { return JSON.parse(body); } catch (e) {
+            // Trailing commas are the usual slip (live: "Expected double-quoted
+            // property name" cost a whole extra turn call). Repair, don't re-ask.
+            try { return JSON.parse(body.replace(/,(\s*[}\]])/g, '$1')); } catch (_) { /* fall through */ }
             throw new Error(`Could not parse JSON from model output: ${e.message}`);
         }
     }

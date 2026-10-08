@@ -41,19 +41,41 @@ export const CLOUD_PROVIDERS = {
     // provider that is out of quota, rate-limited or down is skipped for a
     // while and the same request goes to the next one, mid-turn.
     auto: {
-        name: 'Auto — Gemma 4 31B (Google), then Nemotron (OpenRouter) · all free ★ recommended',
-        // Only two models, by Michael's choice: Gemma 4 31B (AI Studio, up to
-        // two keys from separate accounts) then Nemotron 3 Super (OpenRouter free).
-        chain: ['gemma_google', 'gemma_google_2', 'nemotron_openrouter'],
+        name: 'Auto — Gemini Flash-Lite (Google), then Nemotron (OpenRouter) · all free ★ recommended',
+        // Was Gemma 4 31B first (Michael's pick). Measured on his phone
+        // 2026-10-08: Gemma on Google always "thinks" first (cannot be turned
+        // off there), 27-82 s per reply, 500/503 on half the calls. Flash-Lite
+        // on the same free key: 1.5-1.9 s, valid JSON. Up to two Google keys
+        // (separate accounts), then Nemotron 3 Super free on OpenRouter.
+        chain: ['flashlite_google', 'flashlite_google_2', 'nemotron_openrouter'],
         baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
-        model: 'gemma-4-31b-it',
+        model: 'gemini-flash-lite-latest',
         signupUrl: 'https://aistudio.google.com/apikey',
         contextWindow: 262144,
         rateLimit: 'Google free tier, then OpenRouter 1000/day free',
         notes: 'Uses whichever free keys you save: Google first, OpenRouter when Google runs out. Never spends OpenRouter credits.'
     },
+    flashlite_google: {
+        name: 'Google AI Studio — Gemini Flash-Lite (Free)',
+        baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+        model: 'gemini-flash-lite-latest',
+        signupUrl: 'https://aistudio.google.com/apikey',
+        contextWindow: 1000000,
+        rateLimit: 'Free tier — daily cap shown in AI Studio (resets midnight Pacific)',
+        notes: 'Fastest free option measured (~1.5-2 s per turn).'
+    },
+    flashlite_google_2: {
+        name: 'Google AI Studio — Gemini Flash-Lite (2nd key)',
+        keySlot: 'generativelanguage.googleapis.com#2',
+        baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+        model: 'gemini-flash-lite-latest',
+        signupUrl: 'https://aistudio.google.com/apikey',
+        contextWindow: 1000000,
+        rateLimit: 'Free tier — daily cap shown in AI Studio (resets midnight Pacific)',
+        notes: 'Optional key from a second Google account.'
+    },
     gemma_google: {
-        name: 'Google AI Studio — Gemma 4 31B (Free)',
+        name: 'Google AI Studio — Gemma 4 31B (Free, slow: thinks 30-80 s)',
         baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
         model: 'gemma-4-31b-it',
         signupUrl: 'https://aistudio.google.com/apikey',
