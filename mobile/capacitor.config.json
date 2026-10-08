@@ -5,9 +5,7 @@
   "bundledWebRuntime": false,
   "android": {
     "minWebViewVersion": 60,
-    "webContentsDebuggingEnabled": false,
     "allowMixedContent": false,
-    "captureInput": true,
     "buildOptions": {
       "keystorePath": "release.keystore",
       "keystoreAlias": "adventure-stories",

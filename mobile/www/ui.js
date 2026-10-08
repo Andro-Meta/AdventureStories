@@ -1177,7 +1177,8 @@ export function renderChoices(choices, handler = null) {
             
             // Allow Enter to submit (with Shift+Enter for new lines)
             textarea.addEventListener('keydown', async (e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
+                // Swipe/glide keyboards compose words; never act mid-composition.
+                if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
                     e.preventDefault();
                     const customChoice = textarea.value.trim();
                     if (customChoice) {
