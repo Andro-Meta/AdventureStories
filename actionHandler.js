@@ -1483,6 +1483,13 @@ export async function useInventoryItem(itemId) {
      const item = player.inventory[itemIndex];
      log(`Found item: ${item.name} (${item.type})`);
 
+     // In a fight, drinking from the pack is the battle Item action: it costs
+     // the turn and the enemies answer (before, heals here were free).
+     if (gameState.inCombat && item.type === 'Consumable' && !item.stats?.revive) {
+         UI.showScreen('gameScreen');
+         return handlePlayerChoice('Item', `Use ${item.name}`);
+     }
+
      let consumed = false;
      let requiresAICall = false;
      let actionLog = "";
@@ -1490,19 +1497,20 @@ export async function useInventoryItem(itemId) {
 
      if (item.type === 'Consumable') {
         // Heal Effect (with trust-based penalties)
-        if (item.stats?.heal && typeof item.stats.heal === 'number' && item.stats.heal > 0) {
+        const baseHeal = (Number(item.stats?.heal) || 0) + Math.round((player.maxHp || 100) * (Number(item.stats?.healPercent) || 0));
+        if (baseHeal > 0) {
             consumed = true;
             const oldHp = player.hp;
             
             // Apply trust-based healing penalty
-            let healAmount = item.stats.heal;
+            let healAmount = baseHeal;
             if (gameState.reputationSystem) {
                 const trustModifiers = getTrustDifficultyModifiers(gameState.reputationSystem.factions);
                 healAmount = Math.round(healAmount * trustModifiers.healingEfficiency);
                 
                 if (trustModifiers.healingEfficiency < 1.0) {
                     const penaltyPercent = Math.round((1 - trustModifiers.healingEfficiency) * 100);
-                    log(`Healing reduced by ${penaltyPercent}% due to poor reputation (${item.stats.heal} -> ${healAmount})`);
+                    log(`Healing reduced by ${penaltyPercent}% due to poor reputation (${baseHeal} -> ${healAmount})`);
                 }
             }
             
@@ -1511,7 +1519,7 @@ export async function useInventoryItem(itemId) {
             actionLog = `${player.name} uses ${item.name}. Result: Restored ${actualHeal} HP.`;
             
             // Show different messages based on trust penalty
-            if (gameState.reputationSystem && healAmount < item.stats.heal) {
+            if (gameState.reputationSystem && healAmount < baseHeal) {
                 const trustLevel = getTrustDifficultyModifiers(gameState.reputationSystem.factions).trustLevel;
                 if (actualHeal > 0) {
                     UI.showPopup(`${item.name} restored ${actualHeal} HP (reduced effectiveness due to ${trustLevel} reputation)`, 'healing');
@@ -1640,8 +1648,10 @@ export async function useInventoryItem(itemId) {
 
      // Remove Consumed Item
      if (consumed) {
-         player.inventory.splice(itemIndex, 1);
-         log(`${item.name} removed from inventory.`);
+         // One from a stack (before, drinking one of 3 potions deleted all 3).
+         if ((item.quantity ?? 1) > 1) item.quantity -= 1;
+         else player.inventory.splice(itemIndex, 1);
+         log(`${item.name} used (${item.quantity > 1 ? item.quantity + ' left' : 'removed'}).`);
      }
 
      // Update UI (player cards handled within turn advance or AI call completion)
