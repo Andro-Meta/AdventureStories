@@ -235,6 +235,7 @@ export function saveGameToLocalStorage(slotName) {
  */
 export function autosave() {
     if (!gameState.players?.length) return;
+    rememberNames();
     // One autosave per game: a single shared slot meant starting a new game
     // overwrote the previous game's only copy.
     if (!gameState.gameId) gameState.gameId = Date.now().toString(36);
@@ -244,6 +245,19 @@ export function autosave() {
     try { saveGameToLocalStorage(slot); }
     finally { gameState.currentSaveSlot = ownSlot; }
     pruneAutosaves(5);
+}
+
+/** Names this game invented (people, places, villain), kept across games so
+ *  the storyteller can be told not to reuse them. Newest 80. */
+function rememberNames() {
+    try {
+        const em = gameState.entityMemory || {};
+        const fresh = [...Object.keys(em.npcs || {}), ...Object.keys(em.locations || {}), gameState.questProgress?.villain]
+            .filter(n => n && !(gameState.players || []).some(p => p?.name === n));
+        const old = JSON.parse(localStorage.getItem('adv.usedNames') || '[]');
+        const all = [...old.filter(n => !fresh.includes(n)), ...fresh].slice(-80);
+        localStorage.setItem('adv.usedNames', JSON.stringify(all));
+    } catch (_) { /* storage blocked: variety hint just stays empty */ }
 }
 
 /** Keep the newest `keep` autosaves; manual saves are never touched. */

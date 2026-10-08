@@ -45,7 +45,11 @@ server.stdout.on('data', d => {
 server.stderr.on('data', d => process.stderr.write(d));
 await new Promise(r => setTimeout(r, 1200));
 
-const browser = await chromium.launch({ headless: !args.includes('--headed') });
+// --keep-profile: reuse one browser profile across runs, so a second game
+// sees the names the first one used (cross-game variety check).
+const browser = args.includes('--keep-profile')
+  ? await chromium.launchPersistentContext(`${ROOT}test-results/live_profile`, { headless: !args.includes('--headed'), viewport: { width: 1100, height: 900 } })
+  : await chromium.launch({ headless: !args.includes('--headed') });
 const page = await browser.newPage({ viewport: { width: 1100, height: 900 } });
 const errors = [];
 page.on('pageerror', e => errors.push(e.message));
@@ -75,11 +79,13 @@ const op = (ops) => page.evaluate(async (ops) => (await import('/engine.js')).ap
 
 // --- new game through the setup screens ------------------------------------
 await page.goto(URL_);
-await page.evaluate(() => { for (const k of Object.keys(localStorage)) if (!k.startsWith('adv.apiKey')) localStorage.removeItem(k); });
+await page.evaluate(() => { for (const k of Object.keys(localStorage)) if (!k.startsWith('adv.apiKey') && k !== 'adv.usedNames') localStorage.removeItem(k); });
 await page.goto(URL_);
 await page.click('#newGameBtn');
 await page.click(`.playerCountBtn[data-count="${PLAYERS}"]`);
-await page.selectOption('#adventureTypeSelect', 'pirate');
+const THEME = args.includes('--theme') ? args[args.indexOf('--theme') + 1] : 'pirate';
+await page.selectOption('#adventureTypeSelect', THEME);
+if (THEME === 'custom') await page.fill('#customThemeInput', args.includes('--custom') ? args[args.indexOf('--custom') + 1] : 'Ancient Egypt with talking cats');
 await page.click('#adventureTypeNextBtn');
 const AGES = [10, 12, 35], NAMES = ['Katie', 'Toby', 'Dad'];
 const ageInputs = await page.$$('#ageInputsContainer input');
@@ -109,7 +115,7 @@ if (TURNS) {
     if (await gs(g => g.inCombat)) { await clickType('Attack'); await settle(); } else await playTurn(t);
   }
   const tag = args.includes('--tag') ? args[args.indexOf('--tag') + 1] : 'run';
-  const story = await gs(g => ({ goal: g.adventureGoal, villain: g.questProgress?.villain, threads: g.storyThreads || [], log: g.storyLog }));
+  const story = await gs(g => ({ theme: g.adventureTheme, custom: g.customThemeDescription, location: g.currentLocation?.name, goal: g.adventureGoal, villain: g.questProgress?.villain, threads: g.storyThreads || [], names: Object.keys(g.entityMemory?.npcs || {}).concat(Object.keys(g.entityMemory?.locations || {})), usedBefore: JSON.parse(localStorage.getItem('adv.usedNames') || '[]'), log: g.storyLog }));
   fs.writeFileSync(`${ROOT}test-results/story_${tag}.json`, JSON.stringify(story, null, 2));
   console.log(`saved ${story.log.length} scenes -> test-results/story_${tag}.json | AI calls ${usage.calls} | tokens in ${usage.in} out ${usage.out}`);
   await browser.close(); server.kill(); process.exit(0);

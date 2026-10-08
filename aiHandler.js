@@ -80,7 +80,7 @@ YOURS TO EMIT when the story makes them happen:
 - Quest beats: add /questProgress/milestones/- using the EXACT names from the MAIN QUEST STAGE block, plus replace /questProgress/completionPercentage. Favors or rumors: add /questProgress/sideQuests/- {name, description, reward}.
 ${gameState.adventureGoal ? '' : '- Set /adventureGoal once early (turn 4-6).\n'}- Main quest truly finished: add the "final_blow" milestone (the game then completes the quest).
 If the narration says the hero picked something up, met someone named, arrived somewhere named, or a fight began, the matching op MUST be in "ops". An empty list is only for a turn where nothing in the world changed.
-Examples:
+Format examples only (never use these names or details in the story):
 {"op":"add","path":"/entityMemory/locations/The Crystal Hall","value":{"name":"The Crystal Hall","description":"a vaulted chamber of humming crystals"}}
 {"op":"add","path":"/enemies/-","value":{"name":"Stone Guardian","hp":40,"maxHp":40,"atk":7,"def":4,"abilities":["Slam"]}}
 {"op":"add","path":"/questProgress/milestones/-","value":{"name":"call_to_adventure","description":"The locket whispers the hero's name."}}`;
@@ -198,6 +198,16 @@ ${buildDiffInstructions(pIdx)}`;
  * finished story (world changes, reactions, each hero) before god mode.
  * Shown below the final turn's narration; failure just skips it.
  */
+// Names from this device's earlier games, so a replayed theme gets new
+// people and places (live: "Salty ..." in 4 of 4 pirate games).
+function usedNamesLine() {
+    let names = [];
+    try { names = JSON.parse(localStorage.getItem('adv.usedNames') || '[]'); } catch (_) {}
+    const mine = new Set(Object.keys(gameState.entityMemory?.npcs || {}).concat(Object.keys(gameState.entityMemory?.locations || {})));
+    names = names.filter(n => !mine.has(n)).slice(-40);
+    return names.length ? ` Names from earlier games, never reuse them or close variants: ${names.join(', ')}.` : '';
+}
+
 // The setups the story still owes a payoff, numbered by their index in
 // gameState.storyThreads so the narrator can mark them resolved.
 function openThreadsBlock() {
@@ -813,7 +823,7 @@ CONTENT POLICY (${tier}): ${policy} If players ask for something off-policy, the
     parts.push(`THEME: ${gameState.adventureTheme}${gameState.customThemeDescription ? ` (${gameState.customThemeDescription})` : ''}. ${getThemeSpecificGuidance(gameState.adventureTheme)}
 Atmosphere: ${getThemeAtmosphere(gameState.adventureTheme)}
 Typical interactions: ${getThemeInteractions(gameState.adventureTheme)}
-Use names, people, places and props native to this theme (no village elders in cyberpunk, no libraries in dinosaur times). Avoid over-used names: Sunken Library, Heart of Shadow/Darkness, Shadow Blight, Whispering Woods, the Ancient Evil, the Chosen One.`);
+Use names, people, places and props native to this theme (no village elders in cyberpunk, no libraries in dinosaur times). Avoid over-used names: Sunken Library, Heart of Shadow/Darkness, Shadow Blight, Whispering Woods/Cove, anything 'Salty', the Ancient Evil, the Chosen One.${usedNamesLine()}`);
 
     if (gameState.storyHook && (gameState.turn || 0) <= 3) {
         parts.push(`STORY HOOK FOR THIS RUN (the opening must come from it): ${gameState.storyHook.archetype}: ${gameState.storyHook.flavor}`);
@@ -1180,11 +1190,11 @@ export async function makeAICallForSystemAction(prompt, preventTurnAdvance = fal
 
         prompt = `Please provide a rich, detailed story introduction in three parts for the start of a new ${themeBlurb} adventure starring ${playerNames}.
 
-Part 1: vivid scene-setting paragraph establishing the world, mood, and immediate location. USE VOCABULARY NATIVE TO THE THEME — for dinosaur, words like "tar pit", "migration", "claw-strike", "scaled feet"; for space, "habitat", "transponder", "parsec", "biosignal"; for pirate, "cog", "rigging", "salt-blasted", "doubloon"; for cyberpunk, "decker", "neon", "deck", "ICE", "chrome". Avoid generic-fantasy phrasing in non-fantasy themes.
+Part 1: vivid scene-setting paragraph establishing the world, mood, and immediate location. USE VOCABULARY NATIVE TO THE THEME (a dinosaur story talks of tar pits and migrations, a space story of habitats and transponders). Pick your own words; do not open with the same images every game. Avoid generic-fantasy phrasing in non-fantasy themes.
 Part 2: introduce the player character(s) — their situation right now and what makes this moment a turning point. Anchor names and props to the theme.
 Part 3: USE THE STORY HOOK BELOW as the inciting incident. Do not invent a different inciting incident — turn the hook's flavor text into prose.${hookBlock}
 
-This opening may run up to half again the READING LEVEL length. Use second-person voice ("You ..."). Avoid the over-used names listed under THEME.`;
+This opening may run up to half again the READING LEVEL length. Third person, like every turn. Avoid the over-used names listed under THEME. In "ops", replace /currentLocation with the named place where the story opens and add it under /entityMemory/locations.`;
     }
 
     // Who picks from the choices this call produces: the same hero when the

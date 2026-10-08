@@ -29,23 +29,14 @@ export class LocationSystem {
         const log = window.displayVisualError || console.log;
         log(`LocationSystem: Generating dynamic starting location for theme: ${theme}`);
         
-        try {
-            // Use revolutionary dynamic location generation
-            const DynamicLocations = await import('./dynamicLocations.js');
-            const startingLocation = await DynamicLocations.generateDynamicStartingLocation(theme);
-            
-            if (startingLocation) {
-                log(`LocationSystem: Generated dynamic starting location: ${startingLocation.name}`);
-                return startingLocation;
-            }
-        } catch (error) {
-            log(`LocationSystem: Dynamic starting location generation failed: ${error.message}`);
-        }
-        
+        // ponytail: no separate AI call. The opening story names the place
+        // and sets /currentLocation itself; a separate generator named a
+        // different place than the story did (live: "Whispering Cove" in the
+        // state, "Port Blackwater" in the prose) and ignored the variety rules.
         // Ultimate fallback
         log(`LocationSystem: Using fallback starting location for theme: ${theme}`);
         return {
-            name: "Starting Area",
+            name: "Not named yet",
             type: "town",
             dangerLevel: 0.1,
             isStarting: true,
