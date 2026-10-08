@@ -41,7 +41,7 @@ export const CLOUD_PROVIDERS = {
     // provider that is out of quota, rate-limited or down is skipped for a
     // while and the same request goes to the next one, mid-turn.
     auto: {
-        name: 'Auto — Gemini Flash-Lite (Google), then Qwen (Groq), then Nemotron (OpenRouter) · all free ★ recommended',
+        name: '★ Smart switcher — fastest working free AI from all your keys (recommended)',
         // Was Gemma 4 31B first (Michael's pick). Measured on his phone
         // 2026-10-08: Gemma on Google always "thinks" first (cannot be turned
         // off there), 27-82 s per reply, 500/503 on half the calls. Flash-Lite
@@ -56,7 +56,7 @@ export const CLOUD_PROVIDERS = {
         signupUrl: 'https://aistudio.google.com/apikey',
         contextWindow: 262144,
         rateLimit: 'Google free tier, then Groq 1,000/day free, then OpenRouter 1000/day free',
-        notes: 'Uses whichever free keys you save: Google first, then Groq, then OpenRouter. Never spends credits.'
+        notes: 'Uses every free key you save (Google, Groq, OpenRouter): stays on the one that is working, moves on when one is busy, slow or used up, and learns which is fastest. Never spends credits.'
     },
     flashlite_google: {
         name: 'Google AI Studio — Gemini Flash-Lite (Free)',

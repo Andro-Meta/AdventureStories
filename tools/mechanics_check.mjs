@@ -1193,6 +1193,12 @@ await block(async () => {
 });
 await block(async () => {
   // A real exploration turn: the roll decides; a crit can't hurt; a failed Bad move does.
+  // A storyteller that answers (when none does, the roll is undone: Batch 18).
+  const offline = globalThis.fetch;
+  const STORY = JSON.stringify({ narration: 'It plays out.', ops: [], choices: ['Good', 'Bad', 'Risky', 'Silly', 'Investigative'].map((type, i) => ({ type, text: `Option ${i}`, stat: ['kind', 'brave', 'sneaky', 'luck', 'clever'][i] })) });
+  globalThis.fetch = window.fetch = async () => ({ ok: true, status: 200, statusText: '200', headers: { get: () => null }, json: async () => ({ choices: [{ message: { content: STORY } }] }), text: async () => '' });
+  localStorage.setItem('adv.cloudProvider', 'groq_qwen'); localStorage.setItem('adv.apiKey.api.groq.com', 'test');
+  try {
   const { p } = fresh(); p.stats = { brave: 1, clever: 1, sneaky: 1, kind: 1 };
   const xp0 = p.xp || 0, hp0 = p.hp;
   pinRandom(0.99); // natural 20
@@ -1206,6 +1212,7 @@ await block(async () => {
   pinRandom(0.1);
   await AH.handlePlayerChoice('Good', 'Help the fisherman haul his net'); unpinRandom();
   check(k.p.hp === 100, `failed Good move costs no HP (HP ${k.p.hp})`);
+  } finally { globalThis.fetch = window.fetch = offline; localStorage.removeItem('adv.apiKey.api.groq.com'); localStorage.removeItem('adv.cloudProvider'); }
 });
 await block(async () => {
   // Story milestones pay XP and coins.
@@ -1295,6 +1302,21 @@ await block(async () => {
   check(AIH.approachGaps(phone) === 2 && AIH.approachGaps(good) === 0, `approach gaps: phone set ${AIH.approachGaps(phone)} (no kind, no sneaky), balanced set ${AIH.approachGaps(good)}`);
   const ins = AIH.buildChoiceInstructions(['Good', 'Bad', 'Risky', 'Silly', 'Investigative'], false, []);
   check(/FIVE DIFFERENT APPROACHES/.test(ins) && /one sneaky/.test(ins) && /one kind/.test(ins), 'choice instructions ask for one brave, clever, sneaky, kind and luck choice');
+});
+
+// =====================================================================
+section('Batch 18: storyteller down = the roll is undone (phone 10-08)');
+await block(async () => {
+  // Network is off here, so every story call fails. Phone 10-08: five taps in
+  // five seconds while the AI was down each paid out coins/XP with no story.
+  const { p } = fresh({ player: { coins: 50, hp: 7, maxHp: 10 } });
+  gameState.enemies = [];
+  gameState.currentChoices = [{ type: 'Risky', text: 'Leap the gap', stat: 'brave' }];
+  const snap = () => JSON.stringify({ coins: p.coins, hp: p.hp, xp: p.xp, level: p.level, inv: p.inventory.length, stats: p.stats, sparks: p.sparks });
+  const before = snap();
+  for (let i = 0; i < 5; i++) { gameState.isLoading = false; await AH.handlePlayerChoice('Risky', 'Leap the gap'); }
+  const after = snap();
+  check(before === after, `5 choices with the storyteller down: hero unchanged (${after === before ? 'same' : before + ' -> ' + after})`);
 });
 
 console.error = realError;

@@ -127,7 +127,9 @@ export class LocalAIClient {
             throw e;
         }
         const byId = new Map(chain.map(x => [x.id, x]));
-        const order = Router.rank(chain.map(x => x.id)).map(id => byId.get(id));
+        const ranked = Router.rank(chain.map(x => x.id));
+        const order = ranked.map(id => byId.get(id));
+        order.race = ranked.race;
         const { p, out } = await this.hedgedRace(order, messages, options);
         if (this.activeName !== p.name) {
             if (this.activeName) announceAIStatus(`Storyteller switched to ${p.name}.`);
@@ -155,9 +157,9 @@ export class LocalAIClient {
                 const hedge = hasNext && setTimeout(() => {
                     if (done || successorUp) return;
                     successorUp = true;
-                    announceAIStatus(`${p.name} is slow; asking a backup too...`);
+                    if (!(i === 0 && order.race)) announceAIStatus(`${p.name} is slow; asking a backup too...`);
                     launch();
-                }, Router.hedgeDelay(id));
+                }, i === 0 && order.race ? 0 : Router.hedgeDelay(id));
                 let req;
                 try { req = this.buildRequest(p, messages, options); } catch (e) { req = Promise.reject(e); }
                 Promise.resolve(req).then(r => this.executeRequest(r, p, key, 0, hasNext, cancel.signal)).then(out => {

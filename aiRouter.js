@@ -65,12 +65,11 @@ export function record(id, { ok, ms, benchUntil = 0, why = '', now = Date.now() 
     save();
 }
 
-/** A hedged request: the loser was slower than `ms` (no failure, but its speed counts). */
+/** A raced request that lost: it took MORE than `ms`, so its average can only go up. */
 export function recordSlow(id, ms) {
     load();
     const x = h(id);
-    x.ewma = x.ewma == null ? ms : Math.round(ALPHA * ms + (1 - ALPHA) * x.ewma);
-    save();
+    if (x.ewma == null || ms > x.ewma) { x.ewma = x.ewma == null ? ms : Math.round(ALPHA * ms + (1 - ALPHA) * x.ewma); save(); }
 }
 
 /**
@@ -113,11 +112,13 @@ export function rank(ids, now = Date.now()) {
         const a = h(active).ewma;
         const faster = order.slice(1).find(id => h(id).n >= 3 && h(id).consecFail === 0 && !low(id) && a != null && h(id).ewma != null && h(id).ewma * SLOW_FACTOR < a);
         if (faster) order = [faster, ...order.filter(id => id !== faster)];
-        // Come back to the favourite now and then (hedged, so a slow probe is cheap).
+        // Now and then the favourite races the current one (both asked at
+        // once: no extra wait); it takes over only by answering first.
         const fav = order.find(id => ids.indexOf(id) < ids.indexOf(order[0]));
         if (fav && now - Math.max(state.activeSince, state.preferredTriedAt) > PROBE_MS) {
             state.preferredTriedAt = now; save();
             order = [fav, ...order.filter(id => id !== fav)];
+            order.race = true;
         }
     }
     return order;
