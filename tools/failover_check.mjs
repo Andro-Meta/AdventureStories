@@ -13,15 +13,17 @@ localStorage.setItem('adv.cloudProvider', 'auto');
 localStorage.setItem('adv.apiKey.generativelanguage.googleapis.com', 'g-key');
 localStorage.setItem('adv.apiKey.generativelanguage.googleapis.com#2', 'g2-key');
 localStorage.setItem('adv.apiKey.openrouter.ai', 'or-key');
+localStorage.setItem('adv.apiKey.api.groq.com', 'groq-key');
 C.AI_REQUEST_CONFIG.RETRY_DELAY_MS = 1;
 
 const calls = [];
 let googleReply = () => ({ status: 200, body: { choices: [{ message: { content: '{"ok":"google"}' } }] } });
+let groqReply = () => ({ status: 429, body: { error: { message: 'Rate limit reached for requests per day (RPD): limit 1000' } } }); // out for the older checks
 globalThis.fetch = async (url, opts) => {
   const req = JSON.parse(opts.body);
   const host = new URL(url).hostname;
   calls.push({ host, req, auth: opts.headers.Authorization });
-  const r = host.includes('google') ? googleReply(req) : { status: 200, body: { choices: [{ message: { content: '{"ok":"openrouter"}' } }] } };
+  const r = host.includes('google') ? googleReply(req) : host.includes('groq') ? groqReply(req) : { status: 200, body: { choices: [{ message: { content: '{"ok":"openrouter"}' } }] } };
   return { ok: r.status === 200, status: r.status, statusText: String(r.status), headers: { get: () => null },
     text: async () => JSON.stringify(r.body), json: async () => r.body };
 };
@@ -37,15 +39,15 @@ check(calls[0].req.messages[0].role === 'system', 'Flash-Lite keeps the system r
 calls.length = 0;
 googleReply = () => ({ status: 429, body: { error: { message: 'Quota exceeded for metric: generate_content_free_tier_requests, limit: GenerateRequestsPerDayPerProjectPerModel' } } });
 out = await ask();
-check(calls.length === 3 && calls[1].auth === 'Bearer g2-key' && calls[2].host.includes('openrouter') && out.includes('openrouter'),
-  'both Google keys out of quota: second Google key tried, then the same request is answered by OpenRouter');
-check(calls[2].auth === 'Bearer or-key' && calls[2].req.model === 'nvidia/nemotron-3-super-120b-a12b:free' && !calls[2].req.models,
+check(calls.length === 4 && calls[1].auth === 'Bearer g2-key' && calls[2].host.includes('groq') && calls[3].host.includes('openrouter') && out.includes('openrouter'),
+  'both Google keys and Groq out of quota: second Google key, then Groq, then the same request is answered by OpenRouter');
+check(calls[3].auth === 'Bearer or-key' && calls[3].req.model === 'nvidia/nemotron-3-super-120b-a12b:free' && !calls[3].req.models,
   'OpenRouter step is Nemotron 3 Super :free only, no other models');
 calls.length = 0;
 out = await ask();
 check(calls.length === 1 && calls[0].host.includes('openrouter'), 'Google keys stay benched until the daily reset (no wasted calls)');
 const models = new Set(C.providerChain().map(p => p.model));
-check(models.size === 2 && models.has('gemini-flash-lite-latest') && models.has('nvidia/nemotron-3-super-120b-a12b:free'), `Auto uses exactly two models (${[...models].join(', ')})`);
+check(models.size === 3 && models.has('gemini-flash-lite-latest') && models.has('qwen/qwen3.8-27b') && models.has('nvidia/nemotron-3-super-120b-a12b:free'), `Auto uses exactly three free models (${[...models].join(', ')})`);
 
 // Live phone case: Gemma returned 500 'Internal error'. No retries on Google,
 // straight to the next provider (was 3 attempts + waits on each).
@@ -96,6 +98,18 @@ check(nextDailyReset(C.CLOUD_PROVIDERS.openrouter_free, t) === Date.UTC(2026, 9,
   let o = null; try { o = await Promise.race([fresh.makeRequest([{ role: 'user', content: 'hi' }]), new Promise(r => setTimeout(() => r('HUNG'), 45000))]); } catch (e) { o = 'THREW ' + e.message.slice(0, 60); }
   globalThis.fetch = realFetch;
   check(String(o).includes('openrouter'), `Google body never arrives: failed over in ${((Date.now() - t0) / 1000).toFixed(0)} s (${String(o).slice(0, 30)})`);
+}
+
+// Groq between Google and OpenRouter, with Qwen's thinking switched off.
+{
+  const { localAI: fresh } = await import('../localAI.js?fresh=groq');
+  calls.length = 0;
+  googleReply = () => ({ status: 503, body: { error: { message: 'This model is currently experiencing high demand.' } } });
+  groqReply = () => ({ status: 200, body: { choices: [{ message: { content: '{"ok":"groq"}' } }] } });
+  const o = await fresh.makeRequest([{ role: 'user', content: 'hi' }]);
+  const g = calls.find(c => c.host.includes('groq'));
+  check(String(o).includes('groq') && g?.auth === 'Bearer groq-key' && g?.req.model === 'qwen/qwen3.8-27b' && g?.req.reasoning_effort === 'none' && !calls.some(c => c.host.includes('openrouter')),
+    `Gemini overloaded: Groq answers (Qwen 3.8 27B, reasoning_effort ${g?.req.reasoning_effort}) before OpenRouter is touched`);
 }
 
 console.log(failed ? `✗ ${failed} FAILOVER CHECK(S) FAILED` : '✓ failover checks pass');

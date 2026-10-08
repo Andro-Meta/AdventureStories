@@ -134,6 +134,9 @@ export class LocalAIClient {
             top_p: options.top_p ?? d.top_p,
             stream: false
         };
+        // Groq's Qwen is a hybrid thinker: "none" turns thinking off (no hidden
+        // reasoning tokens, straight to the answer).
+        if (provider.baseUrl.includes('api.groq.com') && /qwen/i.test(provider.model)) requestData.reasoning_effort = 'none';
         if (provider.baseUrl.includes('openrouter')) {
             // Server-side failover: each model in order on rate-limit/downtime.
             if (provider.fallbackModels?.length) requestData.models = [provider.model, ...provider.fallbackModels];

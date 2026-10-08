@@ -41,19 +41,22 @@ export const CLOUD_PROVIDERS = {
     // provider that is out of quota, rate-limited or down is skipped for a
     // while and the same request goes to the next one, mid-turn.
     auto: {
-        name: 'Auto — Gemini Flash-Lite (Google), then Nemotron (OpenRouter) · all free ★ recommended',
+        name: 'Auto — Gemini Flash-Lite (Google), then Qwen (Groq), then Nemotron (OpenRouter) · all free ★ recommended',
         // Was Gemma 4 31B first (Michael's pick). Measured on his phone
         // 2026-10-08: Gemma on Google always "thinks" first (cannot be turned
         // off there), 27-82 s per reply, 500/503 on half the calls. Flash-Lite
         // on the same free key: 1.5-1.9 s, valid JSON. Up to two Google keys
         // (separate accounts), then Nemotron 3 Super free on OpenRouter.
-        chain: ['flashlite_google', 'flashlite_google_2', 'nemotron_openrouter'],
+        // Groq added 2026-10-08 (Michael): on a day Gemini was overloaded and
+        // OpenRouter's free quota was spent, nothing answered. Groq's free tier
+        // (no card on file, so it can't bill) serves Qwen 3.8 27B fast.
+        chain: ['flashlite_google', 'flashlite_google_2', 'groq_qwen', 'nemotron_openrouter'],
         baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
         model: 'gemini-flash-lite-latest',
         signupUrl: 'https://aistudio.google.com/apikey',
         contextWindow: 262144,
-        rateLimit: 'Google free tier, then OpenRouter 1000/day free',
-        notes: 'Uses whichever free keys you save: Google first, OpenRouter when Google runs out. Never spends OpenRouter credits.'
+        rateLimit: 'Google free tier, then Groq 1,000/day free, then OpenRouter 1000/day free',
+        notes: 'Uses whichever free keys you save: Google first, then Groq, then OpenRouter. Never spends credits.'
     },
     flashlite_google: {
         name: 'Google AI Studio — Gemini Flash-Lite (Free)',
@@ -93,6 +96,17 @@ export const CLOUD_PROVIDERS = {
         contextWindow: 262144,
         rateLimit: 'Free tier — daily cap shown in AI Studio (resets midnight Pacific)',
         notes: 'Optional key from a second Google account.'
+    },
+    // Groq free tier: Qwen 3.8 27B with thinking switched off
+    // (reasoning_effort "none", added in localAI.buildRequest). ~450 tokens/s.
+    groq_qwen: {
+        name: 'Groq — Qwen 3.8 27B (Free, fast, no thinking)',
+        baseUrl: 'https://api.groq.com/openai/v1',
+        model: 'qwen/qwen3.8-27b',
+        signupUrl: 'https://console.groq.com/keys',
+        contextWindow: 131072,
+        rateLimit: 'Groq free tier: about 1,000 requests a day, 30 a minute',
+        notes: 'Free Groq account (no credit card); very fast.'
     },
     // Auto's OpenRouter step: Nemotron 3 Super free only, no other models.
     nemotron_openrouter: {
