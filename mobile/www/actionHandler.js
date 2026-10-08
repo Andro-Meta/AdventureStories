@@ -100,6 +100,7 @@ export async function handlePlayerChoice(actionType, choiceText) {
     const log = window.displayVisualError || console.log;
     log(`Handling player choice: ${actionType} - ${choiceText}`);
     let recapBefore = null, recapActor = null; // set once the turn actually starts
+    let heroBeforeRoll = null; // the hero before an exploration roll, put back if the story never comes
 
     try {
         if (gameState.isLoading || !canCurrentPlayerAct()) {
@@ -581,6 +582,7 @@ Fight round ${gameState.combat?.round || 1}. Narrate this round so the fight CHA
             // Coins, HP, items and XP follow from the result, never at random.
             const checkType = validateAndMapActionType(actionType);
             Progression.ensureStats(currentPlayer);
+            heroBeforeRoll = JSON.parse(JSON.stringify(currentPlayer));
             const chosen = (gameState.currentChoices || []).find(c => c?.type === actionType && String(c.text || '').trim() === String(choiceText || '').trim())
                 || (gameState.currentChoices || []).find(c => c?.type === actionType);
             const roll = Progression.rollCheck(checkType, currentPlayer, Math.random, chosen?.stat);
@@ -779,6 +781,16 @@ Result: ${{ crit: 'a brilliant success', success: 'it works out', partial: 'it w
             aiResponse = await makeAICallForSystemAction(actionLog, false);
         } catch (e) {
             log(`Exploration AI call failed: ${e?.message || e}`);
+        }
+        // No story came back: undo the roll (coins, HP, XP, items, growth).
+        // Phone 10-08, AI down: five taps in five seconds each paid out with
+        // no story, so a down storyteller became free rewards (or free damage).
+        if ((!aiResponse || aiResponse.failed) && heroBeforeRoll) {
+            for (const k of Object.keys(currentPlayer)) if (!(k in heroBeforeRoll)) delete currentPlayer[k];
+            Object.assign(currentPlayer, heroBeforeRoll);
+            UI.renderPlayerCards();
+            UI.showPopup("The storyteller didn't answer, so that roll was undone. Pick again in a moment.", 'info', 4000);
+            log('Exploration roll undone (no story).');
         }
         // makeAICallForSystemAction already rendered choices via processAIResponse.
         // Only render here if aiResponse is null (90s timeout fired) to guarantee

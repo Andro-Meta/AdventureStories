@@ -880,7 +880,8 @@ This opening may run up to half again the READING LEVEL length. Third person, li
 
         return {
             narrative: defaultNarrative,
-            choices: defaultChoices
+            choices: defaultChoices,
+            failed: true
         };
     }
 }
