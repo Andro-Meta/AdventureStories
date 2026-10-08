@@ -224,6 +224,14 @@ function usedNamesLine() {
     return names.length ? ` Names from earlier games, never reuse them or close variants: ${names.join(', ')}.` : '';
 }
 
+// Exactly who the heroes are: "for 1-5 friends" let a solo game grow
+// invented companions acting like extra players.
+function heroCountLine() {
+    const names = (gameState.players || []).map(p => p?.name).filter(Boolean);
+    if (names.length <= 1) return `one player. The only hero is ${names[0] || 'the player'}: never invent companions who act as heroes or take turns; helpers are NPCs.`;
+    return `${names.length} friends playing together. The heroes are exactly ${names.join(', ')}: never add other heroes or party members; anyone else is an NPC.`;
+}
+
 // The setups the story still owes a payoff, numbered by their index in
 // gameState.storyThreads so the narrator can mark them resolved.
 function openThreadsBlock() {
@@ -828,7 +836,7 @@ export function generateSystemPrompt() {
 - Vocabulary: ${g.contentGuidelines.vocabulary.description}.` : `READING LEVEL (average party age ${playerAge}): clear, vivid prose, 120-200 words.`;
 
     const parts = [buildCanonicalStateBlock()];
-    parts.push(`You are the storyteller of a turn-based text adventure for 1-5 friends playing together. Each turn, continue the story from the chosen action and set up the next decision. Make it fun: surprises, humor, vivid details, NPCs with personality, and consequences that clearly follow from what the players chose. Stay in the story; never mention being an AI.
+    parts.push(`You are the storyteller of a turn-based text adventure for ${heroCountLine()} Each turn, continue the story from the chosen action and set up the next decision. Make it fun: surprises, humor, vivid details, NPCs with personality, and consequences that clearly follow from what the players chose. Stay in the story; never mention being an AI.
 
 ${reading}
 

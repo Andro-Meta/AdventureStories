@@ -157,5 +157,15 @@ gameState.players[0].specialMoves = [{ name: 'Gale Kick' }];
   check(/Injury details are ON/.test(on) && !/no blood/i.test(on), 'injury details on: blood allowed, never gory');
 }
 
+// Solo games: the storyteller is told there is exactly one hero.
+{
+  const saved = gameState.players;
+  gameState.players = [saved[0]];
+  const solo = AI.generateSystemPrompt();
+  check(/only hero is/.test(solo) && !/1-5 friends/.test(solo), 'solo prompt says there is exactly one hero');
+  gameState.players = saved;
+  check(AI.generateSystemPrompt().includes(`heroes are exactly ${saved.map(p => p.name).join(', ')}`), 'multiplayer prompt names exactly the heroes');
+}
+
 console.log(failed ? `✗ ${failed} PROMPT CHECK FAILURE(S)` : '✓ prompt checks pass');
 process.exit(failed ? 1 : 0);
