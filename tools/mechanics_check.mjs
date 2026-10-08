@@ -874,13 +874,24 @@ await block(async () => {
   check(!p.statusEffects.some(s => s.name === 'Guarding'), `guard is gone after the hero's next turn (${p.statusEffects.map(s => s.name + ':' + s.duration).join(',') || 'none'})`);
 });
 await block(async () => {
-  // Defend is offered in every fight, as a fixed battle button.
+  // Defend is offered in every fight, as a fixed battle button: always last,
+  // never stored (stored, it was reshuffled), and the text the game sends is
+  // the choice itself, not the badge + text.
+  const buttons = [];
+  const realBox = UI.elements.choicesContainer;
+  try {
+  UI.elements.choicesContainer = { set innerHTML(_) { buttons.length = 0; }, get innerHTML() { return ''; }, appendChild(b) { buttons.push(b); }, querySelectorAll: () => [] };
   fresh(); startFight();
   UI.renderChoices([{ type: 'Attack', text: 'Hit the goblin' }, { type: 'Run', text: 'Flee' }]);
-  check(gameState.currentChoices.some(c => c.type === 'Defend'), `battle choices include Defend (${gameState.currentChoices.map(c => c.type).join(',')})`);
+  UI.renderChoices(gameState.currentChoices); // a re-render
+  const types = buttons.map(b => b.dataset?.actionType);
+  check(types[types.length - 1] === 'Defend' && !gameState.currentChoices.some(c => c.type === 'Defend'), `battle buttons end with Defend after a re-render (${types.join(',')}), not stored`);
+  const atk = buttons.find(b => b.dataset?.actionType === 'Attack');
+  check(atk?.dataset?.text === 'Hit the goblin', `choice text sent is the choice, not the badge ("${atk?.dataset?.text}")`);
   gameState.inCombat = false;
   UI.renderChoices([{ type: 'Good', text: 'a' }, { type: 'Bad', text: 'b' }]);
-  check(!gameState.currentChoices.some(c => c.type === 'Defend'), 'no Defend outside a fight');
+  check(!buttons.some(b => b.dataset?.actionType === 'Defend'), 'no Defend outside a fight');
+  } finally { UI.elements.choicesContainer = realBox; }
 });
 await block(async () => {
   // Haste: the hero follows up with a quick strike; a hasted foe strikes twice.

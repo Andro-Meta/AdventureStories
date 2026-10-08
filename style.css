@@ -2125,3 +2125,6 @@ body.in-battle #enemyContainer { display: none; }
 #battlePicker .bp-title, #battlePicker .bp-cancel { flex: 0 0 auto; }
 /* captured / failed escape: a notice that stays long enough to read */
 .popup-capture { background: #5a2a2a; border: 1px solid #c0504d; max-width: 92%; font-weight: 600; }
+/* The main action on a screen (Solo Adventure, Continue Anyway, Save). */
+button.primary { background: var(--accent-color, #6c5ce7); color: #fff; border-color: transparent; }
+.choice-btn.disabled, .choice-btn:disabled { opacity: 0.6; cursor: default; }

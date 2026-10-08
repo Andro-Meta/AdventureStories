@@ -74,6 +74,7 @@ Describe the scene after the victorious battle, mentioning the state of the defe
  * three times.
  */
 export async function handlePartyWipe() {
+    try { UI.clearCombatLog(); } catch (_) {} // the lost fight's log
     console.error("Party Wipe! Processing resolution...");
     displayVisualError("Party Wipe! Processing resolution...");
     if (gameState.handlingPartyWipe) {

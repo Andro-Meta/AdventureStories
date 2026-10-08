@@ -11,6 +11,7 @@ function makeStubElement() {
     children: [],
     addEventListener: noop, removeEventListener: noop,
     appendChild: noop, removeChild: noop, replaceChild: noop, insertBefore: noop,
+    append: noop, prepend: noop, remove: noop, before: noop, after: noop,
     querySelector: () => null, querySelectorAll: () => [],
     setAttribute: noop, getAttribute: () => null, removeAttribute: noop,
     innerHTML: '', textContent: '', value: '',

@@ -167,6 +167,7 @@ export function proceedToNameInput() {
  */
 export async function completeSetupAndStartGameIntelligent() {
     const log = window.displayVisualError || console.log;
+    try { UI.clearCombatLog(); UI.showTurnRecap(''); } catch (_) {} // nothing from the previous game
     log("Setup: Starting INTELLIGENT game initialization...");
     
     // Validate inputs one more time - use the same method as the working system

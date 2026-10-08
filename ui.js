@@ -940,6 +940,7 @@ export function renderChoices(choices, handler = null) {
     const log = window.displayVisualError || console.log;
     // Every set of story choices is shown in a fresh random order, whatever
     // path produced it (post-fight and fallback choices came in type order).
+    if (Array.isArray(choices) && !handler) choices = choices.filter(c => c?.type !== 'Defend');
     if (Array.isArray(choices) && choices.length > 1 && !handler) {
         choices = [...choices];
         for (let i = choices.length - 1; i > 0; i--) {
@@ -950,9 +951,10 @@ export function renderChoices(choices, handler = null) {
     }
     // Defend is a fixed battle command (like the classics): always offered,
     // last, without costing the storyteller any words.
-    if (gameState.inCombat && !handler && Array.isArray(choices) && choices.length && !choices.some(c => c?.type === 'Defend')) {
+    // (Added at render time only: stored, it was reshuffled into a random
+    // slot on every re-render.)
+    if (gameState.inCombat && !handler && Array.isArray(choices) && choices.length) {
         choices = [...choices, { type: 'Defend', text: 'Raise your guard: half damage until your next turn, and catch your breath' }];
-        gameState.currentChoices = choices;
     }
     log(`UI: Rendering choices. Data type: ${typeof choices}, Is Array: ${Array.isArray(choices)}, Handler Mode: ${!!handler}`);
     
@@ -1031,6 +1033,7 @@ export function renderChoices(choices, handler = null) {
         log("UI: No valid choices data provided. Rendering default/loading state.");
         const loadingChoice = document.createElement('button');
         loadingChoice.className = 'choice-btn disabled';
+        loadingChoice.disabled = true;
         loadingChoice.textContent = 'Waiting for storyteller...';
         elements.choicesContainer.appendChild(loadingChoice);
         return;
@@ -1047,6 +1050,7 @@ export function renderChoices(choices, handler = null) {
         button.className = 'choice-btn';
         // Markdown from the model (**Ghost Step**) shows as raw asterisks.
         const plain = choice.text.replace(/\*\*|__|`/g, '');
+        button.dataset.text = plain; // the click handler sends this, not the badge + text
         // In a fight the move type is shown: Attack/Special/Item/Run are
         // mechanics, not hidden story options.
         const badge = { Attack: '⚔️ Attack', Special: '✨ Special', Item: '🧪 Item', Run: '🏃 Run', Defend: '🛡️ Defend' }[choice.type];
@@ -1530,7 +1534,7 @@ export function updateHelpAllyModal(downedAllies, revivalItemCount, revivalItemN
     }
     const safeRevivalName = sanitizeText(revivalItemName);
     // Update status text using innerHTML to include styled count span
-    elements.revivalItemStatus.innerHTML = `Revival Items (${safeRevivalName}): <span id="revivalItemCount" class="${revivalItemCount > 0 ? 'has-items' : 'no-items'}">${revivalItemCount}</span>`;
+    elements.revivalItemStatus.innerHTML = `Revival Items (<span class="revival-item-name">${safeRevivalName}</span>): <span id="revivalItemCount" class="${revivalItemCount > 0 ? 'has-items' : 'no-items'}">${revivalItemCount}</span>`;
 
     // Clear previous list
     elements.helpAllyTargetList.innerHTML = '';

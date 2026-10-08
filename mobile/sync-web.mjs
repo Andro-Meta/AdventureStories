@@ -10,7 +10,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 const WWW  = resolve(__dirname, 'www');
 
-const INCLUDE_FILES = [
+// Every root .js except tooling, so new modules ship and deleted ones don't.
+const GAME_JS = (await readdir(ROOT)).filter(f => f.endsWith('.js') && f !== 'playwright.config.js');
+const INCLUDE_FILES = [...GAME_JS,
   'index.html', 'style.css', 'manifest.json', 'sw.js', 'mobile-bootstrap.js', 'icon-192.png', 'icon-512.png',
   'main.js', 'setup.js', 'state.js', 'engine.js', 'config.js', 'ui.js', 'fx.js', 'battle.js',
   'aiHandler.js', 'actionHandler.js', 'gameLoop.js', 'turnManager.js',

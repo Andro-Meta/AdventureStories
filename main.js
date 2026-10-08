@@ -39,6 +39,8 @@ window.__advBack = () => {
     if (picker) { picker.querySelector('.bp-cancel')?.click(); return true; }
     const open = document.querySelector('.modal:not(.hidden)');
     if (open) { open.classList.add('hidden'); return true; }
+    // Mid-turn the menu button is locked; back must not get round it.
+    if (gameState?.isLoading || gameState?.combatRoundInProgress) return true;
     const active = document.querySelector('.screen.active')?.id || 'mainMenuScreen';
     if (active === 'mainMenuScreen') return false;
     const prev = {
@@ -344,12 +346,15 @@ function setupEventListeners(UI, setup, actionHandler, saveLoad) { // Added acti
         // Out of the lost fight, with something to press.
         gameState.inCombat = false;
         if (gameState.combat) gameState.combat.isActive = false;
+        gameState.enemies = [];
+        UI.clearCombatLog?.();
         UI.showScreen('gameScreen');
         UI.renderPlayerCards();
         UI.renderEnemyCards();
-        UI.renderChoices(gameState.currentChoices?.length ? gameState.currentChoices : [
-            { type: 'Explore', text: 'Get back on your feet and take stock' },
-            { type: 'Social', text: 'Look for help nearby' }
+        UI.renderChoices([
+            { type: 'Good', text: 'Get back on your feet and take stock' },
+            { type: 'Investigative', text: 'Look around for what went wrong' },
+            { type: 'Risky', text: 'Go after them again, smarter this time' }
         ]);
         UI.showPopup('You rise again — battered, but unbowed.', 'info', 4000);
     }, 'gameOverContinueBtn');
@@ -379,7 +384,7 @@ function setupEventListeners(UI, setup, actionHandler, saveLoad) { // Added acti
         document.querySelectorAll('#choicesContainer .choice-btn').forEach(btn => btn.disabled = true);
 
         let actionType = button.dataset.actionType;
-        let choiceText = button.textContent; // Get the displayed text
+        let choiceText = button.dataset.text || button.textContent; // the choice itself (textContent also has the battle badge)
         // Battle commands open a picker (which item / move / target), like a
         // classic RPG menu. Cancel returns to the choices.
         if (gameState.inCombat && ['Attack', 'Item', 'Special'].includes(actionType) && !gameState.isLoading) {
