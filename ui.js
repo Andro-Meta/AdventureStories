@@ -186,33 +186,30 @@ export function showPopup(message, type = 'info', duration = 3000) {
     const log = window.displayVisualError || console.log;
     log(`Showing popup: ${message} (${type})`);
 
-    // Initialize popup queue if it doesn't exist
-    if (!gameState.popupQueue) {
-        gameState.popupQueue = [];
-    }
-    
-    // Add to queue
-    gameState.popupQueue.push({ message, type, duration });
-    
-    // If this is the first popup, start showing them
-    if (gameState.popupQueue.length === 1) {
-        showNextPopup();
-    }
+    // Queue lives in this module, not gameState: it was saved with the game,
+    // and a reloaded queue of 18 stale toasts never started again.
+    popupQueue.push({ message, type, duration });
+    if (popupQueue.length > 4) popupQueue.splice(1, popupQueue.length - 4); // keep it current
+    if (!popupShowing) showNextPopup();
 }
+const popupQueue = [];
+let popupShowing = false;
 
 /** Shows the next popup in the queue if enough time has passed. */
+let lastPopupTime = 0;
 function showNextPopup() {
     const log = window.displayVisualError || console.log;
     const now = Date.now();
     
     // Ensure minimum time between popups
-    if (now - gameState.lastPopupTime < 500) {
+    if (now - lastPopupTime < 500) {
         setTimeout(() => showNextPopup(), 500);
         return;
     }
 
     // Get next popup from queue
-    const nextPopup = gameState.popupQueue[0];
+    const nextPopup = popupQueue[0];
+    popupShowing = !!nextPopup;
     if (!nextPopup) {
         log("No more popups to show");
         return;
@@ -248,18 +245,17 @@ function showNextPopup() {
     });
 
     // Update last popup time
-    gameState.lastPopupTime = now;
+    lastPopupTime = now;
 
     // Remove popup after duration
     setTimeout(() => {
         popup.style.opacity = '0';
         popup.style.transform = 'translateX(-50%) translateY(20px)';
         setTimeout(() => {
-            document.body.removeChild(popup);
-            gameState.popupQueue.shift();
-            if (gameState.popupQueue.length > 0) {
-                showNextPopup();
-            }
+            popup.parentNode?.removeChild(popup);
+            popupQueue.shift();
+            if (popupQueue.length > 0) showNextPopup();
+            else popupShowing = false;
         }, 300);
     }, nextPopup.duration);
 }
@@ -1028,7 +1024,7 @@ export function updateNarrative(text) {
             .filter(line => !line.match(/^\*\*.+\*\*$/)) // Remove any **action** lines
             .join('\n')
             .trim();
-        elements.storyText.textContent = cleanText || "The story continues...";
+        elements.storyText.textContent = (cleanText || "The story continues...").replace(/\*\*|__/g, '');
         recordStoryScene(cleanText);
     }
 }
@@ -1172,7 +1168,19 @@ export function renderChoices(choices, handler = null) {
 
         const button = document.createElement('button');
         button.className = 'choice-btn';
-        button.textContent = choice.text;
+        // Markdown from the model (**Ghost Step**) shows as raw asterisks.
+        const plain = choice.text.replace(/\*\*|__|`/g, '');
+        // In a fight the move type is shown: Attack/Special/Item/Run are
+        // mechanics, not hidden story options.
+        const badge = { Attack: '⚔️ Attack', Special: '✨ Special', Item: '🧪 Item', Run: '🏃 Run' }[choice.type];
+        if (badge) {
+            const tag = document.createElement('span');
+            tag.className = 'choice-badge';
+            tag.textContent = badge;
+            button.append(tag, document.createTextNode(plain));
+        } else {
+            button.textContent = plain;
+        }
         button.dataset.actionType = choice.type;
         button.dataset.choiceIndex = index;
 
@@ -1478,7 +1486,9 @@ export function renderSavedGamesList(saves) {
 /** Creates the HTML structure for an item card (Inventory or Shop). Helper. */
 function createItemCard(item, context) {
     const card = document.createElement('div');
-    card.className = `item-card tier-${item.tier?.toLowerCase() || 'low'}`;
+    // Narrator items can carry a numeric tier (live: tier 1 crashed the Bag screen).
+    const tierName = String(item.tier ?? 'Low');
+    card.className = `item-card tier-${tierName.toLowerCase()}`;
     card.dataset.itemId = item.id;
     let player; try { player = getCurrentPlayer(); } catch(e) {}
     const isEquipped = player?.equipment && (player.equipment.weapon === item.id || player.equipment.armor === item.id);
@@ -1510,7 +1520,7 @@ function createItemCard(item, context) {
 
     card.innerHTML = `
         <h4>${sanitizeText(item.name)} ${item.quantity ? `(x${item.quantity})` : ''}</h4>
-        <p class="item-tier tier-${item.tier?.toLowerCase() || 'low'}">${sanitizeText(item.tier || '?')} ${sanitizeText(item.type)}</p>
+        <p class="item-tier tier-${tierName.toLowerCase()}">${sanitizeText(tierName)} ${sanitizeText(item.type)}</p>
         <p class="item-effect">${sanitizeText(item.effect || 'An item of interest.')}</p>
         ${statsString ? `<p class="item-stats">${statsString}</p>` : ''}
         ${context === 'shop' && item.cost !== undefined ? `<p class="item-cost">${actualPrice} 💰${actualPrice !== item.cost ? ` <span class="price-modifier">(was ${item.cost})</span>` : ''}</p>` : ''}

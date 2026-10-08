@@ -167,5 +167,10 @@ gameState.players[0].specialMoves = [{ name: 'Gale Kick' }];
   check(AI.generateSystemPrompt().includes(`heroes are exactly ${saved.map(p => p.name).join(', ')}`), 'multiplayer prompt names exactly the heroes');
 }
 
+// Live phone: a narrator item with tier 1 / type quest_item crashed the Bag screen.
+Engine.applyDiff([{ op: 'add', path: '/players/0/inventory/-', value: { name: 'Pocket Watch', type: 'quest_item', tier: 1 } }], { strict: false });
+{ const w = gameState.players[0].inventory.find(i => i.name === 'Pocket Watch');
+  check(w?.tier === 'Low' && w?.type === 'Quest', `narrator item tier/type normalized (${w?.tier}, ${w?.type})`); }
+
 console.log(failed ? `✗ ${failed} PROMPT CHECK FAILURE(S)` : '✓ prompt checks pass');
 process.exit(failed ? 1 : 0);

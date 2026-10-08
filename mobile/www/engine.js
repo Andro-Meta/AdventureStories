@@ -109,7 +109,7 @@ const PATHS = [
                 id: value.id || `item_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
                 name: value.name,
                 type: itemType(value),
-                tier: value.tier || 'Low',
+                tier: itemTier(value.tier),
                 effect: value.effect || '',
                 stats: value.stats || {},
                 quantity: value.quantity ?? 1
@@ -899,13 +899,21 @@ export function validateOp(op) {
 function itemType(value) {
     const t = String(value.type || '').trim().toLowerCase();
     const known = { weapon: 'Weapon', armor: 'Armor', armour: 'Armor', consumable: 'Consumable', potion: 'Consumable',
-        food: 'Consumable', revival: 'Revival', quest: 'Quest', key: 'Quest', misc: 'Misc' };
+        food: 'Consumable', revival: 'Revival', quest: 'Quest', quest_item: 'Quest', 'quest item': 'Quest', key: 'Quest', misc: 'Misc' };
     if (known[t]) return known[t];
     const st = value.stats || {};
     if (st.heal || st.healPercent || st.mp || /potion|elixir|tonic|salve|bandage|herb|antidote|ration|draught/i.test(value.name || '')) return 'Consumable';
     if (st.atk && !st.def) return 'Weapon';
     if (st.def && !st.atk) return 'Armor';
     return value.type ? String(value.type) : 'Misc';
+}
+
+// Tiers as the game names them; the narrator sometimes sends 1-5 or lowercase.
+function itemTier(t) {
+    const names = ['Low', 'Medium', 'High', 'Special', 'Legendary'];
+    if (typeof t === 'number') return names[Math.min(names.length, Math.max(1, Math.round(t))) - 1];
+    const s = String(t || '').trim().toLowerCase();
+    return names.find(n => n.toLowerCase() === s) || (s === 'god' ? 'God' : 'Low');
 }
 
 // An owned item by id, or by name (case-insensitive) as the narrator writes it.
