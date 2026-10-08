@@ -1511,8 +1511,7 @@ export async function handleEnemyTurn(enemyId) {
         showPopup(`\u{1F451} ${enemy.name} unleashes ${move}! (${hits.join(', ')})`, 'damage', 4000);
         try { (await import('./ui.js')).appendCombatLog?.(`${enemy.name} unleashes ${move}: ${hits.join(', ')}`, 'attack'); } catch (_) {}
         renderPlayerCards();
-        if (enemy.statusEffects?.length > 0) await processStatusEffectTicks(enemy);
-        await advanceCombatTurn();
+        await advanceCombatTurn(); // ticks the enemy's status effects (once)
         return;
     }
 
@@ -1525,12 +1524,8 @@ export async function handleEnemyTurn(enemyId) {
     // Execute the action
     await executeEnemyAction(enemy, action, target);
 
-    // Process any post-action effects
-    if (enemy.statusEffects?.length > 0) {
-        await processStatusEffectTicks(enemy);
-    }
-
-    // Advance the turn (awaited: see boss branch above)
+    // Advance the turn (awaited: see boss branch above); it also ticks the
+    // enemy's status effects, so they are not ticked here too.
     await advanceCombatTurn();
 }
 
