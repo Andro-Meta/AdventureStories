@@ -109,13 +109,9 @@ export const elements = {
     // toggleStoryBtn: document.getElementById('toggleStoryBtn'), // REMOVED
     choicesCard: document.getElementById('choicesCard'),
     choicesContainer: document.getElementById('choicesContainer'),
-    customActionContainer: document.getElementById('customActionContainer'),
-    customActionInput: document.getElementById('customActionInput'),
-    customActionBtn: document.getElementById('customActionBtn'),
 
     // In-Game Menu Screen
     resumeBtn: document.getElementById('resumeBtn'),
-    menuDirectBtns: document.querySelectorAll('.menuDirectBtn'),
     saveGameBtn: document.getElementById('saveGameBtn'),
     exitToMainMenuBtn: document.getElementById('exitToMainMenuBtn'),
     exitWithoutSavingBtn: document.getElementById('exitWithoutSavingBtn'),
@@ -137,10 +133,8 @@ export const elements = {
 
     // Sub-screen Back Buttons
     backToGameBtns: document.querySelectorAll('.backToGameBtn'),
-    backToMenuBtns: document.querySelectorAll('.backToMenuBtn'),
 
     // Popups & Indicators
-    popupMessage: document.getElementById('popupMessage'),
     loadingIndicator: document.getElementById('loadingIndicator'),
     loadingMessage: document.getElementById('loadingMessage'),
 
@@ -173,8 +167,7 @@ export const elements = {
         shopBtn: document.getElementById('shopBtn'),
         specialBtn: document.getElementById('specialBtn'),
         helpAllyBtn: document.getElementById('helpAllyBtn'),
-        menuBtn: document.getElementById('menuBtn'),
-        customActionBtn: document.getElementById('customActionBtn')
+        menuBtn: document.getElementById('menuBtn')
     }
 };
 
@@ -471,14 +464,6 @@ export function updateGameHeader() {
     if (chapterEl && nextEl) {
         chapterEl.textContent = gameState.isGoalComplete ? 'Quest complete!' : (step?.chapter || '');
         nextEl.textContent = gameState.isGoalComplete ? '· God mode: type anything to shape the world' : (step ? `· Next: ${step.next}` : '');
-    }
-
-    // Update custom action visibility based on game state
-    if (elements.customActionContainer) {
-        // Never shown: the golden god-mode box in the choices card is the one
-        // input (players saw two). This input only carries its text to
-        // handleCustomAction.
-        elements.customActionContainer.classList.add('hidden');
     }
 
     // Update quest progress
@@ -1637,31 +1622,6 @@ export function showLoading(isLoading, message = 'Loading...') {
     }
 }
 
-/**
- * Initializes the API key tab system
- */
-export function initializeApiTabs() {
-    if (!elements.apiTabs || !elements.apiSections) return;
-    
-    elements.apiTabs.forEach(tab => {
-        tab.addEventListener('click', () => {
-            const provider = tab.dataset.provider;
-            
-            // Update active tab
-            elements.apiTabs.forEach(t => t.classList.remove('active'));
-            tab.classList.add('active');
-            
-            // Update active section
-            elements.apiSections.forEach(section => {
-                section.classList.remove('active');
-                if (section.id === `${provider}-section`) {
-                    section.classList.add('active');
-                }
-            });
-        });
-    });
-
-}
 
 /* === QUEST PROGRESS UI FUNCTIONS === */
 

@@ -330,25 +330,6 @@ label {
     color: var(--text-muted-color);
 }
 
-.api-key-input-group {
-    margin-bottom: 1rem;
-}
-
-.api-key-input-group label {
-    display: block;
-    margin-bottom: 0.5rem;
-    color: var(--text-color);
-}
-
-.api-key-input-group input {
-    width: 100%;
-    padding: 0.5rem;
-    border: 1px solid var(--border-color);
-    border-radius: var(--border-radius);
-    background-color: var(--input-bg);
-    color: var(--text-color);
-}
-
 .input-grid { /* For Age/Name inputs */
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -362,7 +343,6 @@ label {
     gap: 0.3rem;
 }
 .input-grid input { width: 100%; margin-bottom: 0; }
-
 
 /* Game Screen Specifics */
 header#gameHeader {
@@ -378,7 +358,6 @@ header#gameHeader {
 #adventureGoalContainer { font-size: 0.9rem; color: var(--text-muted-color); margin-top: 0.3rem; }
 #adventureGoalContainer strong { color: var(--text-color); }
 #adventureGoal { color: var(--secondary-color); font-weight: bold;}
-.turn-info { font-size: 1.1rem; font-weight: bold; color: var(--text-muted-color); text-align: right; white-space: nowrap;}
 #turnCounter { color: var(--text-color); font-size: 1.2rem;}
 
 /* Player/Enemy Cards */
@@ -470,12 +449,6 @@ header#gameHeader {
     box-shadow: 0 0 15px rgba(255, 215, 0, 0.4);
 }
 
-.elite-enemy.champion {
-    border-color: #9c27b0;
-    box-shadow: 0 0 15px rgba(156, 39, 176, 0.5);
-    background: linear-gradient(135deg, rgba(156, 39, 176, 0.1), rgba(156, 39, 176, 0.05));
-}
-
 .elite-enemy.legendary {
     border-color: #ff5722;
     box-shadow: 0 0 20px rgba(255, 87, 34, 0.6);
@@ -516,10 +489,6 @@ header#gameHeader {
     text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
 }
 
-.elite-enemy.champion .enemy-name {
-    color: #ba68c8 !important;
-}
-
 .elite-enemy.legendary .enemy-name {
     color: #ff7043 !important;
 }
@@ -550,160 +519,6 @@ header#gameHeader {
     }
 }
 
-/* ===== SPELL SYSTEM STYLING ===== */
-
-/* Spellbook Modal */
-.spellbook-container {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    z-index: 2000;
-    opacity: 0;
-    visibility: hidden;
-    transition: opacity 0.3s ease, visibility 0.3s ease;
-}
-
-.spellbook-container.active {
-    opacity: 1;
-    visibility: visible;
-}
-
-.spellbook-backdrop {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.8);
-}
-
-.spellbook-modal {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 90%;
-    max-width: 1000px;
-    max-height: 90vh;
-    background: var(--card-bg);
-    border-radius: var(--border-radius);
-    border: 2px solid var(--primary-color);
-    box-shadow: 0 0 30px rgba(106, 17, 203, 0.5);
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-}
-
-.spellbook-header {
-    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
-    padding: 1rem 1.5rem;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    color: white;
-}
-
-.spellbook-header h2 {
-    margin: 0;
-    font-size: 1.5rem;
-}
-
-.close-spellbook-btn {
-    background: none;
-    border: none;
-    color: white;
-    font-size: 1.5rem;
-    cursor: pointer;
-    padding: 0.25rem;
-    border-radius: 50%;
-    transition: background-color 0.2s ease;
-}
-
-.close-spellbook-btn:hover {
-    background-color: rgba(255, 255, 255, 0.2);
-}
-
-.spellbook-stats {
-    padding: 1rem 1.5rem;
-    background: rgba(106, 17, 203, 0.1);
-    display: flex;
-    gap: 2rem;
-    flex-wrap: wrap;
-}
-
-.spellbook-stats > div {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-}
-
-.stat-label {
-    font-size: 0.9rem;
-    color: var(--text-muted-color);
-}
-
-.stat-value {
-    font-weight: bold;
-    font-size: 1.1rem;
-    color: var(--text-color);
-}
-
-.mp-display {
-    color: #4fc3f7;
-}
-
-.spellbook-tabs {
-    display: flex;
-    background: var(--input-bg);
-    border-bottom: 1px solid var(--border-color);
-}
-
-.spell-tab {
-    flex: 1;
-    padding: 1rem;
-    background: none;
-    border: none;
-    color: var(--text-muted-color);
-    cursor: pointer;
-    transition: all 0.2s ease;
-    border-bottom: 3px solid transparent;
-}
-
-.spell-tab:hover {
-    background: rgba(255, 255, 255, 0.05);
-    color: var(--text-color);
-}
-
-.spell-tab.active {
-    color: var(--primary-color);
-    border-bottom-color: var(--primary-color);
-    background: rgba(106, 17, 203, 0.1);
-}
-
-.spellbook-content {
-    flex: 1;
-    overflow-y: auto;
-    padding: 1.5rem;
-}
-
-.spell-tab-content {
-    display: none;
-}
-
-.spell-tab-content.active {
-    display: block;
-}
-
-/* Spell Cards */
-.spells-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: 1rem;
-    margin-bottom: 1rem;
-}
-
 .spell-card {
     background: var(--card-bg);
     border: 1px solid var(--border-color);
@@ -724,184 +539,10 @@ header#gameHeader {
 .spell-card.epic { border-left: 4px solid #ffee58; }
 .spell-card.legendary { border-left: 4px solid #ff7043; }
 
-.spell-header {
-    margin-bottom: 0.75rem;
-}
-
-.spell-name-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 0.5rem;
-}
-
 .spell-name {
     margin: 0;
     font-size: 1.1rem;
     color: var(--text-color);
-}
-
-.spell-level-badge {
-    background: var(--primary-color);
-    color: white;
-    padding: 0.25rem 0.5rem;
-    border-radius: 12px;
-    font-size: 0.75rem;
-    font-weight: bold;
-}
-
-.spell-level-badge.level-0 { background: #666; }
-.spell-level-badge.level-1 { background: #4caf50; }
-.spell-level-badge.level-2 { background: #2196f3; }
-.spell-level-badge.level-3 { background: #9c27b0; }
-.spell-level-badge.level-4 { background: #ff9800; }
-.spell-level-badge.level-5 { background: #f44336; }
-.spell-level-badge.level-6 { background: #ff5722; }
-.spell-level-badge.level-7 { background: linear-gradient(45deg, #ffd700, #ff6b35); }
-
-.spell-school-type {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 0.9rem;
-}
-
-.spell-school {
-    font-weight: bold;
-}
-
-.spell-type {
-    color: var(--text-muted-color);
-    font-style: italic;
-}
-
-.spell-description {
-    color: var(--text-muted-color);
-    font-size: 0.9rem;
-    line-height: 1.4;
-    margin-bottom: 1rem;
-}
-
-.spell-mechanics {
-    margin-bottom: 1rem;
-}
-
-.spell-stats {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.5rem;
-    margin-bottom: 0.75rem;
-}
-
-.spell-stat {
-    display: flex;
-    justify-content: space-between;
-    font-size: 0.85rem;
-}
-
-.spell-stat .stat-label {
-    color: var(--text-muted-color);
-}
-
-.spell-stat .stat-value {
-    font-weight: bold;
-}
-
-.mp-cost {
-    color: #4fc3f7;
-}
-
-.spell-effects {
-    margin: 0.75rem 0;
-}
-
-.spell-effect {
-    display: inline-block;
-    background: rgba(106, 17, 203, 0.1);
-    padding: 0.25rem 0.5rem;
-    border-radius: 12px;
-    font-size: 0.8rem;
-    margin: 0.25rem 0.25rem 0.25rem 0;
-}
-
-.spell-effect.damage { background: rgba(244, 67, 54, 0.2); color: #ff6b6b; }
-.spell-effect.healing { background: rgba(76, 175, 80, 0.2); color: #66bb6a; }
-.spell-effect.status { background: rgba(156, 39, 176, 0.2); color: #ba68c8; }
-
-.spell-components {
-    font-size: 0.85rem;
-    color: var(--text-muted-color);
-    margin-top: 0.75rem;
-    padding-top: 0.75rem;
-    border-top: 1px solid var(--border-color);
-}
-
-.spell-footer {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-top: 1rem;
-    padding-top: 0.75rem;
-    border-top: 1px solid var(--border-color);
-}
-
-.prepared-indicator {
-    background: rgba(76, 175, 80, 0.2);
-    color: #66bb6a;
-    padding: 0.25rem 0.5rem;
-    border-radius: 12px;
-    font-size: 0.8rem;
-    font-weight: bold;
-}
-
-.cast-spell-btn {
-    background: var(--primary-color);
-    color: white;
-    border: none;
-    padding: 0.5rem 1rem;
-    border-radius: var(--border-radius);
-    cursor: pointer;
-    font-weight: bold;
-    transition: background-color 0.2s ease;
-}
-
-.cast-spell-btn:hover:not(:disabled) {
-    background: var(--btn-hover);
-}
-
-.cast-spell-btn:disabled {
-    background: var(--disabled-bg);
-    color: var(--disabled-text);
-    cursor: not-allowed;
-}
-
-/* Spell Level Groups */
-.spell-level-group {
-    margin-bottom: 2rem;
-}
-
-.spell-level-header {
-    color: var(--primary-color);
-    margin-bottom: 1rem;
-    padding-bottom: 0.5rem;
-    border-bottom: 2px solid var(--primary-color);
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-}
-
-.level-description {
-    font-size: 0.9rem;
-    color: var(--text-muted-color);
-    font-weight: normal;
-    font-style: italic;
-}
-
-/* Magic Schools */
-.schools-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 1rem;
 }
 
 .school-card {
@@ -912,205 +553,15 @@ header#gameHeader {
     transition: all 0.2s ease;
 }
 
-.school-card.high-affinity {
-    border-color: var(--good-color);
-    box-shadow: 0 0 10px rgba(76, 175, 80, 0.3);
-}
-
-.school-card.medium-affinity {
-    border-color: var(--risky-color);
-}
-
-.school-card.low-affinity {
-    border-color: var(--border-color);
-}
-
-.school-header {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    margin-bottom: 1rem;
-}
-
-.school-icon {
-    font-size: 2rem;
-}
-
 .school-name {
     margin: 0;
     font-size: 1.3rem;
-}
-
-.school-description {
-    color: var(--text-muted-color);
-    margin-bottom: 1.5rem;
-    line-height: 1.4;
-}
-
-.affinity-bar {
-    margin-bottom: 1rem;
-}
-
-.affinity-label {
-    display: block;
-    margin-bottom: 0.5rem;
-    font-weight: bold;
-}
-
-.affinity-progress {
-    background: var(--input-bg);
-    border-radius: 10px;
-    height: 8px;
-    overflow: hidden;
-}
-
-.affinity-fill {
-    height: 100%;
-    border-radius: 10px;
-    transition: width 0.3s ease;
-}
-
-.school-spell-count {
-    color: var(--text-muted-color);
-    font-size: 0.9rem;
-}
-
-.school-elements {
-    margin-top: 1rem;
-    font-size: 0.85rem;
-    color: var(--text-muted-color);
-}
-
-/* Quick Spell Selector */
-.quick-spell-selector {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background: var(--card-bg);
-    border: 2px solid var(--primary-color);
-    border-radius: var(--border-radius);
-    padding: 1.5rem;
-    z-index: 1500;
-    max-width: 500px;
-    width: 90%;
-    box-shadow: 0 0 30px rgba(0, 0, 0, 0.8);
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(0.9);
-    transition: all 0.2s ease;
-}
-
-.quick-spell-selector.active {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
-}
-
-.quick-selector-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1rem;
-    padding-bottom: 0.75rem;
-    border-bottom: 1px solid var(--border-color);
-}
-
-.quick-selector-header h3 {
-    margin: 0;
-    color: var(--primary-color);
-}
-
-.close-selector-btn {
-    background: none;
-    border: none;
-    color: var(--text-muted-color);
-    font-size: 1.2rem;
-    cursor: pointer;
-    padding: 0.25rem;
-    border-radius: 50%;
-    transition: background-color 0.2s ease;
-}
-
-.close-selector-btn:hover {
-    background-color: rgba(255, 255, 255, 0.1);
-}
-
-.quick-spells-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-    gap: 0.75rem;
-}
-
-.quick-spell-btn {
-    background: var(--input-bg);
-    border: 1px solid var(--border-color);
-    border-radius: var(--border-radius);
-    padding: 1rem 0.5rem;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    text-align: center;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-}
-
-.quick-spell-btn:hover {
-    border-color: var(--primary-color);
-    background: rgba(106, 17, 203, 0.1);
-}
-
-.quick-spell-icon {
-    font-size: 1.5rem;
 }
 
 .quick-spell-name {
     font-weight: bold;
     font-size: 0.9rem;
     color: var(--text-color);
-}
-
-.quick-spell-cost {
-    font-size: 0.8rem;
-    color: #4fc3f7;
-}
-
-/* No Spells Message */
-.no-spells {
-    text-align: center;
-    color: var(--text-muted-color);
-    font-style: italic;
-    padding: 2rem;
-    background: rgba(255, 255, 255, 0.02);
-    border-radius: var(--border-radius);
-    border: 1px dashed var(--border-color);
-}
-
-/* Mobile Responsiveness */
-@media (max-width: 768px) {
-    .spellbook-modal {
-        width: 95%;
-        height: 90vh;
-    }
-    
-    .spells-grid {
-        grid-template-columns: 1fr;
-    }
-    
-    .schools-grid {
-        grid-template-columns: 1fr;
-    }
-    
-    .spell-stats {
-        grid-template-columns: 1fr;
-    }
-    
-    .spellbook-stats {
-        flex-direction: column;
-        gap: 1rem;
-    }
-    
-    .quick-spells-grid {
-        grid-template-columns: repeat(2, 1fr);
-    }
 }
 
 /* Quick Actions */
@@ -1129,12 +580,6 @@ nav#quickActions {
     white-space: pre-wrap; /* Allow wrapping and preserve line breaks */
     /* No max-height, no overflow: hidden */
 }
-
-/* Custom Action Input */
-#customActionContainer { margin-top: 1.5rem; border-top: 1px dashed var(--border-color); padding-top: 1rem; }
-#customActionContainer p { text-align: center; margin-bottom: 0.5rem; color: var(--tier-special-color); }
-#customActionContainer input { margin-bottom: 0.5rem; }
-#customActionBtn { width: 100%; margin: 0; }
 
 /* Item Grids (Inventory, Shop, Special Moves) */
 .item-grid {
@@ -1205,15 +650,6 @@ footer { margin-top: 2rem; text-align: center; }
 .version-info { font-size: 0.8rem; color: var(--border-color); }
 
 /* Popup Messages */
-.popup { position: fixed; bottom: -100px; /* Start off-screen */ left: 50%; transform: translateX(-50%); padding: 0.8rem 1.5rem; border-radius: var(--border-radius); color: white; font-weight: bold; box-shadow: 0 -4px 15px rgba(0, 0, 0, 0.3); z-index: 1001; opacity: 0; transition: opacity 0.4s ease, bottom 0.4s ease; text-align: center; min-width: 200px; max-width: 80%; pointer-events: none; /* Allow clicks through */}
-.popup.show { opacity: 1; bottom: 40px; }
-.popup.damage { background-color: var(--bad-color); }
-.popup.healing { background-color: var(--good-color); }
-.popup.coins { background-color: var(--coins-color); color: #333; }
-.popup.item { background-color: var(--tier-medium-color); }
-.popup.legendary { background-color: var(--legendary-color-text); color: white; text-shadow: 0 0 3px black;}
-.popup.skill { background-color: var(--skill-color); }
-.popup.info { background-color: var(--info-color); }
 /* Toasts from ui.showPopup. They had no CSS, so each one sat in the page as a
    flex sibling of .container and squeezed the game into ~55% of a phone. */
 .popup-message { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%) translateY(20px); z-index: 1003; /* above the battle picker (1002) */
@@ -1222,16 +658,12 @@ footer { margin-top: 2rem; text-align: center; }
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45); opacity: 0; transition: opacity 0.3s ease, transform 0.3s ease; pointer-events: none; }
 .popup-damage, .popup-error { background: var(--bad-color); }
 .popup-combat { background: #34405a; } /* neutral: your own hits and heals are not errors */
-.popup-healing, .popup-success { background: var(--good-color); }
+.popup-healing, .popup-heal, .popup-success { background: var(--good-color); }
 .popup-coins { background: var(--coins-color); color: #222; }
 .popup-item { background: var(--tier-medium-color); }
 .popup-legendary { background: var(--legendary-color-text); text-shadow: 0 0 3px #000; }
 .popup-skill { background: var(--skill-color); }
-.popup-warning { background: #b8860b; }
-.popup.error { background-color: var(--error-color); }
-.popup.success { background-color: var(--success-color); }
-.popup.warning { background-color: var(--risky-color); } /* Use risky for warning */
-.popup.risky { background-color: var(--risky-color); } /* For status effects etc */
+.popup-warning, .popup-risky { background: #b8860b; }
 
 /* Boss Encounter Popup */
 .popup-boss_encounter {
@@ -1340,16 +772,11 @@ footer { margin-top: 2rem; text-align: center; }
 /* Helper Classes */
 .hidden { display: none !important; }
 .error-message { color: var(--error-color); font-size: 0.9rem; text-align: center; margin-top: 0.5rem; font-weight: bold; }
-.success-message { color: var(--success-color); font-size: 0.9rem; text-align: center; margin-top: 0.5rem; font-weight: bold; }
 .info-message { color: var(--text-muted-color); font-size: 0.9rem; text-align: center; margin-top: 0.5rem; }
 .status-message { font-size: 0.9rem; text-align: center; margin-top: 0.5rem; font-weight: bold; }
 .status-message.healthy { color: #4CAF50; }
 .status-message.error { color: #f44336; }
 .status-message.checking { color: #ff9800; }
-.server-info, .error-info { margin-top: 1rem; text-align: left; }
-.server-info h4, .error-info h4 { margin-bottom: 0.5rem; }
-.server-info ul, .error-info ul { margin-left: 1rem; }
-.error-info code { background: #333; padding: 2px 4px; border-radius: 3px; }
 
 /* Animations */
 @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
@@ -1384,78 +811,9 @@ footer { margin-top: 2rem; text-align: center; }
     /* #storyText { --story-collapsed-height: 12em; } Removed */
     .modal-content { width: 95%; }
     header#gameHeader { padding: 0.8rem 1rem; }
-    #gameHeader #adventureTitle { font-size: 1.4rem; }
-    .turn-info { font-size: 1rem; } #turnCounter { font-size: 1.1rem; }
+    #gameHeader #adventureTitle { font-size: 1.4rem; } #turnCounter { font-size: 1.1rem; }
     .popup { width: 90%; }
     .input-grid { grid-template-columns: 1fr; }
-    .error-log-container { width: 95%; }
-    /* Adjust debug button size slightly for smaller screens */
-    #errorLogToggleBtn { width: 40px; height: 40px; font-size: 1.6rem !important; line-height: 40px; bottom: 10px; right: 10px;}
-}
-
-/* --- Debug Log Sidebar Styles --- */
-.error-log-container {
-    position: fixed;
-    top: 0;
-    right: 0;
-    width: 300px;
-    max-height: 100vh;
-    background-color: rgba(0, 0, 0, 0.9);
-    color: #fff;
-    padding: 10px;
-    font-family: monospace;
-    font-size: 12px;
-    overflow-y: auto;
-    z-index: 1000;
-    border-left: 1px solid #444;
-}
-
-.error-log-container.hidden {
-    display: none;
-}
-
-.error-log-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding-bottom: 10px;
-    border-bottom: 1px solid #444;
-    margin-bottom: 10px;
-}
-
-.error-log-header h3 {
-    margin: 0;
-    color: #ff4444;
-}
-
-.error-log-controls {
-    display: flex;
-    gap: 5px;
-}
-
-.error-log-controls button {
-    background-color: #333;
-    color: #fff;
-    border: 1px solid #555;
-    padding: 2px 5px;
-    cursor: pointer;
-    font-size: 11px;
-}
-
-.error-log-controls button:hover {
-    background-color: #444;
-}
-
-.error-log-content {
-    max-height: calc(100vh - 60px);
-    overflow-y: auto;
-}
-
-.error-log-content div {
-    margin-bottom: 5px;
-    padding: 3px;
-    border-left: 2px solid #ff4444;
-    background-color: rgba(255, 68, 68, 0.1);
 }
 
 /* Add missing classes */
@@ -1520,43 +878,6 @@ footer { margin-top: 2rem; text-align: center; }
 /* Ensure consistent hidden class */
 .hidden {
     display: none !important;
-}
-
-/* API Key Setup Tabs */
-.api-tabs {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 20px;
-    border-bottom: 1px solid #ccc;
-    padding-bottom: 10px;
-}
-
-.api-tab {
-    padding: 8px 16px;
-    border: none;
-    background: none;
-    cursor: pointer;
-    font-size: 1em;
-    color: #666;
-    border-bottom: 2px solid transparent;
-    transition: all 0.3s ease;
-}
-
-.api-tab:hover {
-    color: #333;
-}
-
-.api-tab.active {
-    color: #007bff;
-    border-bottom: 2px solid #007bff;
-}
-
-.api-section {
-    display: none;
-}
-
-.api-section.active {
-    display: block;
 }
 
 /* Character Development UI Styles */
@@ -1645,55 +966,6 @@ footer { margin-top: 2rem; text-align: center; }
     border: 1px solid var(--primary-color);
 }
 
-.ai-system-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 10px;
-}
-
-.ai-system-header h4 {
-    margin: 0;
-    font-size: 0.9em;
-    color: var(--primary-color);
-}
-
-.ai-system-count {
-    font-size: 0.8em;
-    color: var(--secondary-color);
-    font-weight: bold;
-}
-
-.ai-systems-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-    gap: 6px;
-}
-
-.ai-system-item {
-    display: flex;
-    align-items: center;
-    padding: 4px 6px;
-    border-radius: 4px;
-    font-size: 0.75em;
-    transition: all 0.2s ease;
-}
-
-.ai-system-active {
-    background: rgba(76, 175, 80, 0.1);
-    border: 1px solid rgba(76, 175, 80, 0.3);
-}
-
-.ai-system-inactive {
-    background: rgba(244, 67, 54, 0.1);
-    border: 1px solid rgba(244, 67, 54, 0.3);
-}
-
-.ai-system-icon {
-    margin-right: 4px;
-    font-size: 0.9em;
-}
-
 .ai-system-name {
     flex: 1;
     color: var(--text-color);
@@ -1701,139 +973,6 @@ footer { margin-top: 2rem; text-align: center; }
 
 .ai-system-status {
     font-size: 0.8em;
-}
-
-/* Responsive adjustments */
-@media (max-width: 768px) {
-    .ai-systems-grid {
-        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-        gap: 4px;
-    }
-    
-    .ai-system-item {
-        padding: 3px 4px;
-        font-size: 0.7em;
-    }
-}
-
-/* Story Memory UI Styles */
-.story-memory {
-    margin-top: 15px;
-    padding: 10px;
-    background: rgba(37, 117, 252, 0.1);
-    border-radius: 6px;
-    border: 1px solid var(--secondary-color);
-}
-
-.story-memory-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 10px;
-}
-
-.story-memory-header h4 {
-    margin: 0;
-    font-size: 0.9em;
-    color: var(--secondary-color);
-}
-
-.story-memory-count {
-    font-size: 0.8em;
-    color: var(--primary-color);
-    font-weight: bold;
-}
-
-.story-memory-content h5 {
-    margin: 8px 0 4px 0;
-    font-size: 0.8em;
-    color: var(--text-muted-color);
-}
-
-/* Plot Threads Styles */
-.plot-threads {
-    margin-bottom: 8px;
-}
-
-.plot-thread {
-    padding: 4px 6px;
-    margin: 2px 0;
-    border-radius: 4px;
-    font-size: 0.75em;
-    border-left: 3px solid;
-}
-
-.thread-active {
-    background: rgba(255, 193, 7, 0.1);
-    border-left-color: #ffc107;
-}
-
-.thread-resolved {
-    background: rgba(76, 175, 80, 0.1);
-    border-left-color: #4caf50;
-}
-
-.thread-dormant {
-    background: rgba(158, 158, 158, 0.1);
-    border-left-color: #9e9e9e;
-}
-
-.thread-header {
-    display: flex;
-    align-items: center;
-    margin-bottom: 2px;
-}
-
-.thread-icon {
-    margin-right: 4px;
-    font-size: 0.9em;
-}
-
-.thread-title {
-    font-weight: bold;
-    color: var(--text-color);
-}
-
-.thread-description {
-    color: var(--text-muted-color);
-    font-size: 0.9em;
-    line-height: 1.2;
-}
-
-/* Key Events Styles */
-.key-events {
-    margin-bottom: 8px;
-}
-
-.key-event {
-    display: flex;
-    align-items: center;
-    padding: 2px 4px;
-    margin: 1px 0;
-    border-radius: 3px;
-    font-size: 0.7em;
-}
-
-.event-major {
-    background: rgba(255, 193, 7, 0.15);
-}
-
-.event-moderate {
-    background: rgba(33, 150, 243, 0.1);
-}
-
-.event-minor {
-    background: rgba(158, 158, 158, 0.1);
-}
-
-.event-icon {
-    margin-right: 4px;
-    font-size: 0.9em;
-}
-
-.event-text {
-    color: var(--text-color);
-    line-height: 1.2;
 }
 
 /* Relationships Styles */
@@ -1851,23 +990,6 @@ footer { margin-top: 2rem; text-align: center; }
     font-size: 0.7em;
 }
 
-.relationship-positive {
-    background: rgba(76, 175, 80, 0.1);
-}
-
-.relationship-negative {
-    background: rgba(244, 67, 54, 0.1);
-}
-
-.relationship-neutral {
-    background: rgba(255, 193, 7, 0.1);
-}
-
-.relationship-icon {
-    margin-right: 4px;
-    font-size: 0.9em;
-}
-
 .relationship-name {
     flex: 1;
     color: var(--text-color);
@@ -1880,17 +1002,10 @@ footer { margin-top: 2rem; text-align: center; }
 
 /* Responsive adjustments for story memory */
 @media (max-width: 768px) {
-    .story-memory {
-        padding: 8px;
-    }
     
     .plot-thread, .key-event, .relationship {
         font-size: 0.65em;
         padding: 2px 4px;
-    }
-    
-    .thread-description, .event-text {
-        font-size: 0.85em;
     }
 }
 
@@ -2302,16 +1417,6 @@ footer { margin-top: 2rem; text-align: center; }
     box-shadow: 0 0 30px rgba(0, 123, 255, 0.3);
 }
 
-.loading-spinner {
-    width: 60px;
-    height: 60px;
-    border: 4px solid rgba(0, 123, 255, 0.3);
-    border-top: 4px solid var(--accent-color);
-    border-radius: 50%;
-    animation: loadingSpin 1s linear infinite;
-    margin: 0 auto 20px auto;
-}
-
 @keyframes loadingSpin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
@@ -2360,27 +1465,6 @@ footer { margin-top: 2rem; text-align: center; }
     font-style: italic;
 }
 
-/* Loading states for individual components */
-.component-loading {
-    opacity: 0.6;
-    pointer-events: none;
-    position: relative;
-}
-
-.component-loading::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 20px;
-    height: 20px;
-    margin: -10px 0 0 -10px;
-    border: 2px solid rgba(0, 123, 255, 0.3);
-    border-top: 2px solid var(--accent-color);
-    border-radius: 50%;
-    animation: loadingSpin 1s linear infinite;
-}
-
 /* System status indicators */
 .system-status {
     display: inline-flex;
@@ -2408,14 +1492,6 @@ footer { margin-top: 2rem; text-align: center; }
     background: rgba(220, 53, 69, 0.2);
     color: #dc3545;
     border: 1px solid rgba(220, 53, 69, 0.3);
-}
-
-.system-status-icon {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: currentColor;
-    animation: statusPulse 2s infinite;
 }
 
 @keyframes statusPulse {
@@ -2828,27 +1904,6 @@ footer { margin-top: 2rem; text-align: center; }
     line-height: 1.5;
 }
 
-/* Phase 3.5 P3 — experimental multiplayer disclosure */
-.experimental-multiplayer {
-    margin-top: 1rem;
-    padding: 0.75rem 1rem;
-    background: rgba(255, 152, 0, 0.08);
-    border-left: 3px solid #ff9800;
-    border-radius: 4px;
-}
-.experimental-multiplayer summary {
-    cursor: pointer;
-    font-weight: 600;
-    color: #ffb74d;
-    user-select: none;
-}
-.experimental-multiplayer summary:hover {
-    color: #ffcc80;
-}
-.experimental-multiplayer[open] summary {
-    margin-bottom: 0.5rem;
-}
-
 /* ============================================================
    Phase 4.0d — Mobile touch target polish (≥44px on phones)
    ============================================================ */
@@ -2891,10 +1946,6 @@ footer { margin-top: 2rem; text-align: center; }
         line-height: 1.55;
         font-size: 1rem;
     }
-    /* Player/enemy cards stack on narrow viewports */
-    #playerCardsContainer, #enemyCardsContainer {
-        flex-direction: column;
-    }
     /* Quest panel headings smaller */
     .card h2, .card h3 {
         font-size: 1.15rem;
@@ -2923,38 +1974,6 @@ footer { margin-top: 2rem; text-align: center; }
         padding-left: max(0.5rem, env(safe-area-inset-left));
         padding-right: max(0.5rem, env(safe-area-inset-right));
     }
-}
-
-/* ─────────────────────────────────────────────────────────────────────────
- * Phase 0: Cloud AI configuration UI
- * ───────────────────────────────────────────────────────────────────────── */
-.backend-mode-section {
-    margin: 1rem 0;
-    padding: 0.85rem;
-    background: rgba(255,255,255,0.03);
-    border-radius: 8px;
-}
-.backend-mode-section h3 {
-    margin-top: 0;
-    margin-bottom: 0.6rem;
-    font-size: 1rem;
-}
-.backend-mode-label {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    margin: 0.4rem 0;
-    padding: 0.5rem 0.7rem;
-    cursor: pointer;
-    border-radius: 6px;
-    transition: background 0.15s;
-}
-.backend-mode-label:hover {
-    background: rgba(255,255,255,0.05);
-}
-.backend-mode-label input[type="radio"] {
-    margin: 0;
-    accent-color: #4a9eff;
 }
 .cloud-config {
     margin: 1rem 0;
@@ -3014,19 +2033,6 @@ footer { margin-top: 2rem; text-align: center; }
 }
 .status-message.warning {
     color: #ffaa44;
-}
-
-/* ============================================================
- * Android APK overrides - applied when mobile-bootstrap.js sets
- * <html data-platform="android">. Hides desktop-only paths and
- * dev instructions that should never reach a phone user.
- * ============================================================ */
-html[data-platform="android"] #localModeLabel,
-html[data-platform="android"] #localConfigSection {
-    display: none !important;
-}
-html[data-platform="android"] #litertModeLabel {
-    display: flex !important;
 }
 
 /* Turn spinner: dim the page, keep the story readable underneath. */

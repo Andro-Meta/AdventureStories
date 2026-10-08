@@ -10,7 +10,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // Loader-using suites (need preload.mjs to strip ?cb= from imports).
 const LOADER_SUITES = ['audit', 'engine_audit', 'godmode_audit', 'llm_contract', 'first_turn_check', 'prompt_check', 'loot_check', 'mechanics_check', 'failover_check', 'runtime_load_check'];
 // Pure static-analysis suites (read source as text — no module loading).
-const PLAIN_SUITES  = ['ui_audit', 'dead_code --check'];
+const PLAIN_SUITES  = ['ui_audit', 'dead_code --check', 'dead_css --check'];
 
 let failed = 0;
 async function run(suite, useLoader) {

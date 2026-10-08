@@ -49,16 +49,10 @@ async function handleGodModeChoice(customChoice) {
     // quests, stats, etc.) defined in handleCustomAction.
     try {
         log(`God Mode: Processing custom choice via consolidated handleCustomAction path - ${customChoice.slice(0, 50)}...`);
-        // Stage the choice in the customActionInput so handleCustomAction
-        // reads the same field it was designed for. Set the gating flag so
-        // the entry guard passes regardless of which UI path opened it.
-        if (UI.elements?.customActionInput) {
-            UI.elements.customActionInput.value = customChoice;
-        }
         // Make sure allowCustomActions is true (god mode unlock should have
         // set it, but reaffirm in case of partial state).
         gameState.allowCustomActions = true;
-        await handleCustomAction();
+        await handleCustomAction(customChoice);
         // Record after completion so it doesn't double-record on errors.
         try { recordPlayerChoice(getCurrentPlayer()?.id, 'God Mode', customChoice, 1.0); } catch (_) {}
     } catch (error) {
@@ -1405,13 +1399,9 @@ export function extractGodModeDiffOps(text) {
  * Handles the player submitting a custom action after the goal is complete.
  * Triggers AI for narrative progression.
  */
-export async function handleCustomAction() {
+export async function handleCustomAction(text = '') {
     const log = window.displayVisualError || console.log; // Use logger
     log("Handling custom action submission...");
-    if (!UI.elements.customActionInput || !UI.elements.customActionBtn) {
-         log("ERROR: Custom action UI elements not found.");
-         return;
-    }
 
     const recapBefore = snapshotParty(), recapActor = getCurrentPlayer()?.name; // god-mode turns get the recap too
 
@@ -1436,14 +1426,13 @@ export async function handleCustomAction() {
         return;
     }
 
-    const actionText = UI.elements.customActionInput.value.trim();
+    const actionText = String(text || '').trim();
     if (!actionText) {
         UI.showPopup('Please enter your custom action.', 'error');
         log("Custom action blocked: Input is empty.");
         return;
     }
 
-    UI.elements.customActionInput.value = ''; // Clear input immediately
     UI.renderChoices([], null); // Clear choice buttons visually
 
     // Phase 3: anchor the free-form input in existing world entities. We
