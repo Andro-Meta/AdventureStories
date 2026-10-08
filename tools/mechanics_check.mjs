@@ -1286,6 +1286,17 @@ await block(async () => {
   check(shop.some(i => i.stats?.luck === 1 && i.cost === 60), `the shop sells a lucky charm (${shop.find(i => i.stats?.luck)?.name})`);
 });
 
+// =====================================================================
+section('Batch 17: five choices, five approaches (phone 10-08)');
+await block(async () => {
+  const AIH = await import('../aiHandler.js');
+  const phone = ['clever', 'clever', 'luck', 'brave', 'brave'].map(stat => ({ stat }));
+  const good = ['brave', 'clever', 'sneaky', 'kind', 'luck'].map(stat => ({ stat }));
+  check(AIH.approachGaps(phone) === 2 && AIH.approachGaps(good) === 0, `approach gaps: phone set ${AIH.approachGaps(phone)} (no kind, no sneaky), balanced set ${AIH.approachGaps(good)}`);
+  const ins = AIH.buildChoiceInstructions(['Good', 'Bad', 'Risky', 'Silly', 'Investigative'], false, []);
+  check(/FIVE DIFFERENT APPROACHES/.test(ins) && /one sneaky/.test(ins) && /one kind/.test(ins), 'choice instructions ask for one brave, clever, sneaky, kind and luck choice');
+});
+
 console.error = realError;
 out(`\nfetch attempts blocked: ${fetchCalls}; elapsed ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 out(failed ? `✗ ${failed} mechanics check(s) failed` : '✓ all mechanics checks passed');
