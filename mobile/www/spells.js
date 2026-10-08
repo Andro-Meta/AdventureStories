@@ -202,6 +202,7 @@ export async function initializePlayerSpellcasting(player) {
             
             // Give starting spells based on theme/background
             await grantStartingSpells(player);
+            ensureBattleSpells(player);
             log(`Successfully initialized spellcasting for ${player.name}`);
         } catch (error) {
             log(`ERROR: Failed to initialize spellcasting for ${player.name}:`, error);
@@ -776,3 +777,29 @@ export default {
     getSpellsBySchool,
     getSpellsByType
 };
+
+/**
+ * Generated starting spells were often all utility (live: Aether Sense, Mage
+ * Ward, Minor Prestidigitation: nothing to fight or heal with). Every hero
+ * gets one attack spell and one healing spell if they lack them.
+ */
+export function ensureBattleSpells(player) {
+    const sc = player?.spellcasting;
+    if (!sc) return;
+    const theme = String(gameState.adventureTheme || '').toLowerCase();
+    const names = {
+        space: ['Plasma Burst', 'Nano Patch'], cyberpunk: ['Overload Pulse', 'Stim Patch'], pirate: ['Storm Shot', 'Sea Salt Salve'],
+        dinosaur: ['Fire Stone', 'Healing Moss'], haunted: ['Banishing Flare', 'Warding Prayer'], wild_west: ['Lightning Lasso', 'Snake-Oil Tonic'],
+        steampunk: ['Tesla Arc', 'Clockwork Mender'], underwater: ['Riptide Lance', 'Coral Balm'], arctic: ['Frost Spike', 'Hearth Glow'],
+        jungle: ['Thorn Volley', 'Jungle Remedy'], post_apoc: ['Scrap Blast', 'Rad-Away Shot'], future_utopia: ['Photon Lance', 'Regen Field'],
+    }[theme] || ['Arcane Bolt', 'Mending Light'];
+    const add = (spell) => { sc.knownSpells.push(spell); (sc.preparedSpells = sc.preparedSpells || []).push(spell); };
+    if (!sc.knownSpells.some(s => s?.effects?.damage > 0)) {
+        add({ id: `spell_atk_${player.id}`, name: names[0], school: 'ELEMENTAL', type: 'OFFENSIVE', level: 1, mpCost: 5, targeting: 'single',
+            range: 'medium', duration: 'instant', effects: { damage: 12 }, description: 'A quick blast at one foe.' });
+    }
+    if (!sc.knownSpells.some(s => s?.effects?.healing > 0)) {
+        add({ id: `spell_heal_${player.id}`, name: names[1], school: 'DIVINE', type: 'HEALING', level: 1, mpCost: 6, targeting: 'self',
+            range: 'self', duration: 'instant', effects: { healing: 22 }, description: 'Restores some health.' });
+    }
+}

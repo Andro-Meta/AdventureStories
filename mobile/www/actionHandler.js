@@ -340,7 +340,9 @@ export async function handlePlayerChoice(actionType, choiceText) {
                         const spell = spells.find(sp => sp?.name && said.includes(sp.name.toLowerCase()));
                         if (!spell) { combatLog = `${currentPlayer.name} reaches for a spell but the words won't come.`; break; }
                         const SpellCasting = await import('./spellCasting.js');
-                        const res = await SpellCasting.castSpell(currentPlayer, spell, target);
+                        // Healing/self spells land on the caster, not the foe.
+                        const selfCast = spell.targeting === 'self' || (spell.effects?.healing > 0 && !(spell.effects?.damage > 0));
+                        const res = await SpellCasting.castSpell(currentPlayer, spell, selfCast ? currentPlayer : target);
                         combatLog = res?.success
                             ? `${currentPlayer.name} casts ${spell.name}!`
                             : `${currentPlayer.name} tries ${spell.name} but it fizzles (${res?.reason || 'failed'}).`;
