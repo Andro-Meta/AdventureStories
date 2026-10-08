@@ -120,7 +120,7 @@ const PATHS = [
             const item = {
                 id: value.id || `item_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
                 name: value.name,
-                type: value.type || 'Misc',
+                type: itemType(value),
                 tier: value.tier || 'Low',
                 effect: value.effect || '',
                 stats: value.stats || {},
@@ -865,6 +865,21 @@ export function validateOp(op) {
  * op first and only invoke applyDiff if all pass — but understand that an
  * exception in handler.apply still leaves partial state.
  */
+// Narrator items arrive typed "weapon", "potion" or not at all; the game
+// only uses Weapon/Armor/Consumable, so map them (live-like: an untyped
+// "Healing Potion" became Misc and could never be drunk).
+function itemType(value) {
+    const t = String(value.type || '').trim().toLowerCase();
+    const known = { weapon: 'Weapon', armor: 'Armor', armour: 'Armor', consumable: 'Consumable', potion: 'Consumable',
+        food: 'Consumable', revival: 'Revival', quest: 'Quest', key: 'Quest', misc: 'Misc' };
+    if (known[t]) return known[t];
+    const st = value.stats || {};
+    if (st.heal || st.healPercent || st.mp || /potion|elixir|tonic|salve|bandage|herb|antidote|ration|draught/i.test(value.name || '')) return 'Consumable';
+    if (st.atk && !st.def) return 'Weapon';
+    if (st.def && !st.atk) return 'Armor';
+    return value.type ? String(value.type) : 'Misc';
+}
+
 // An owned item by id, or by name (case-insensitive) as the narrator writes it.
 function findOwnedItem(player, ref) {
     const inv = (player?.inventory || []).filter(Boolean);
