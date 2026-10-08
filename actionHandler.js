@@ -441,7 +441,12 @@ Narrate this combat round in vivid second-person voice. Then provide ${gameState
                 // final blow, even if the narrator forgot the milestone.
                 if (!gameState.inCombat && !gameState.isGoalComplete) {
                     const names = (gameState.questProgress?.milestones || []).map(m => String(m.name || ''));
-                    if (names.includes('final_confrontation') && !names.includes('final_blow')) {
+                    // Or the named villain just fell (live 2-player run: boss at
+                    // 0 HP, no final_confrontation milestone, quest never ended).
+                    const villain = String(gameState.questProgress?.villain || '').toLowerCase().replace(/^the\s+/, '');
+                    const villainDown = !!villain && (gameState.enemies || []).some(e => e.isBoss && (e.isDefeated || e.hp <= 0)
+                        && (n => !!n && (n.includes(villain) || villain.includes(n)))(String(e.name || '').toLowerCase().replace(/^the\s+/, '')));
+                    if ((names.includes('final_confrontation') || villainDown) && !names.includes('final_blow')) {
                         const { applyDiff } = await import('./engine.js');
                         applyDiff([{ op: 'add', path: '/questProgress/milestones/-', value: { name: 'final_blow', description: 'The final foe is defeated.' } }], { strict: false });
                     }
