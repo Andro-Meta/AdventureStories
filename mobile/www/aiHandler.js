@@ -289,6 +289,7 @@ export async function ensureChoiceMix(choices, narrative, avoid = []) {
     const log = window.displayVisualError || console.log;
     // This round's version of each approach from its danger ladder.
     const want = gameState.choicePlan || null;
+    if (choices.some(c => c?.ladder)) log(`Ladders: ${JSON.stringify(choices.map(c => [c.stat, c.ladder?.Safe, c.ladder?.Bold, c.ladder?.Reckless]))}`);
     choices = Progression.pickFromLadders(choices, want);
     const plan = Progression.mixPlan(choices, want);
     if (!plan.length) return choices;
