@@ -217,7 +217,9 @@ export function ensureStats(hero) {
     hero.stats = hero.stats || {};
     for (const k of Object.keys(STATS)) hero.stats[k] = clampStat(hero.stats[k] ?? 1);
     hero.sparks = hero.sparks || {};
-    hero.statPoints = hero.statPoints || 0;
+    // Points beyond what the stats can still take can never be spent (live
+    // 10-09: god mode set level 20 with every stat at 5 -> 16 stuck points).
+    hero.statPoints = Math.min(hero.statPoints || 0, statRoom(hero));
     hero.level = hero.level || 1;
     hero.xp = hero.xp || 0;
     return hero;
@@ -332,7 +334,7 @@ export function gainXp(hero, amount, levelUp) {
     while (hero.xp >= xpForLevel(hero.level) && hero.level < 99) {
         hero.xp -= xpForLevel(hero.level);
         if (levelUp) levelUp(hero, 1); else hero.level += 1;
-        hero.statPoints += 1;
+        if (hero.statPoints < statRoom(hero)) hero.statPoints += 1;
         gained++;
     }
     return gained;
@@ -352,11 +354,27 @@ export function addSpark(hero, stat) {
     return null;
 }
 
+/** The type an item with no known type should have: Consumable if it describes an effect, else Misc. */
+export function usableType(item) {
+    const known = ['Weapon', 'Armor', 'Consumable', 'Revival', 'Quest', 'Misc'];
+    if (known.includes(item?.type)) return item.type;
+    return String(item?.effect || '').trim() ? 'Consumable' : 'Misc';
+}
+
+/** How many more points the stats can take (each stat stops at STAT_MAX). */
+export function statRoom(hero) {
+    return Object.keys(STATS).reduce((n, k) => n + Math.max(0, STAT_MAX - (hero?.stats?.[k] ?? 1)), 0);
+}
+
+/** "Later" on the level-up picker: don't ask again until another point is earned. */
+export function snoozeStatPrompt(hero) { hero.statPromptSnooze = hero.statPoints || 0; }
+
 /** Spend a level-up point. */
 export function spendStatPoint(hero, stat) {
     ensureStats(hero);
     if (!hero.statPoints || !STATS[stat] || hero.stats[stat] >= STAT_MAX) return false;
     hero.stats[stat] += 1; hero.statPoints -= 1;
+    if (hero.statPromptSnooze > hero.statPoints) hero.statPromptSnooze = hero.statPoints; // so the next new point asks again
     return true;
 }
 

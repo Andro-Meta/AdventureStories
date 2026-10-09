@@ -16,7 +16,6 @@ import { makeAICallForSystemAction } from './aiHandler.js';
 // Import turnManager functions statically
 import { advanceTurn } from './turnManager.js';
 // Import game loop
-import { processPlayerAction as gameLoopProcessAction } from './gameLoop.js';
 // Import intelligent compression helpers
 import { recordPlayerChoice, recordStoryBeat } from './state.js';
 
@@ -750,11 +749,6 @@ Result: ${(lastRoll && !lastRoll.stat
 
         log(`Constructed AI prompt with enhanced context: ${actionLog}`);
 
-        // Process action through game loop (handles encounters, location progression, etc.)
-        const gameLoopSuccess = await gameLoopProcessAction(actionType, choiceText);
-        if (!gameLoopSuccess) {
-            log("Game loop processing failed");
-        }
 
         // ROOT CAUSE FIX (smoke #6 finding):
         // If combat started DURING this exploration turn (narrator emitted
@@ -1405,6 +1399,7 @@ export async function useInventoryItem(itemId) {
          return;
      }
      const item = player.inventory[itemIndex];
+     item.type = Progression.usableType(item); // an invented type ("Artifact") from an older save
      log(`Found item: ${item.name} (${item.type})`);
 
      // In a fight, drinking from the pack is the battle Item action: it costs

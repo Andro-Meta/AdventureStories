@@ -1641,7 +1641,3 @@ async function executeAbilityWeb(enemy, target, context, description) {
     renderPlayerCards();
 }
 
-function processCombatAction(action, player, enemies) {
-    const context = determineContext(player);
-    // ... rest of the function ...
-}

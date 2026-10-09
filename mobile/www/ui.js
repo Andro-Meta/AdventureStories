@@ -770,7 +770,7 @@ function heroStatsRow(hero) {
         + (Progression.luckOf(hero) ? `<span class="stat-chip" title="Lucky charm: helps luck rolls; crits from ${20 - Progression.luckOf(hero)}">🍀${Progression.luckOf(hero)}</span>` : '');
     return `<div class="hero-stats">${chips}
         <span class="xp-wrap" title="${hero.xp}/${need} XP to level ${hero.level + 1}"><span class="xp-bar"><span style="width:${pct}%"></span></span><small>${hero.xp}/${need} XP</small></span>
-        ${hero.statPoints > 0 ? `<button class="spend-points" data-hero="${sanitizeText(hero.id)}">⭐ +${hero.statPoints} stat</button>` : ''}</div>`;
+        ${Math.min(hero.statPoints || 0, Progression.statRoom(hero)) > 0 ? `<button class="spend-points" data-hero="${sanitizeText(hero.id)}">⭐ +${Math.min(hero.statPoints, Progression.statRoom(hero))} stat</button>` : ''}</div>`;
 }
 
 /** In the card details: what each stat does, and how close it is to growing. */
@@ -784,6 +784,15 @@ function statsExplainer(hero) {
 }
 
 let statPromptOpen = false;
+
+/**
+ * Open the level-up picker by itself? Only for points earned since the
+ * player last tapped Cancel (live 10-09: Cancel re-rendered the choices,
+ * which reopened the picker, forever). The ⭐ button still opens it any time.
+ */
+export function wantsStatPrompt(players) {
+    return (players || []).some(p => p && Math.min(p.statPoints || 0, Progression.statRoom(p)) > (p.statPromptSnooze || 0));
+}
 /** Level-up: let each hero with unspent points pick the stat to raise (battle picker sheet). */
 export async function promptStatPoints(heroId = null) {
     if (statPromptOpen || gameState.inCombat) return;
@@ -798,7 +807,7 @@ export async function promptStatPoints(heroId = null) {
                     detail: `${s.does}; in fights ${s.fight}`, key: k, disabled: hero.stats[k] >= Progression.STAT_MAX
                 }));
                 const pick = await pickBattleOption(`⭐ ${hero.name} reached level ${hero.level}: raise a stat (${hero.statPoints} to spend)`, opts);
-                if (!pick) break; // later: the ⭐ button on the card
+                if (!pick) { Progression.snoozeStatPrompt(hero); break; } // later: the ⭐ button on the card
                 Progression.spendStatPoint(hero, pick.key);
                 showPopup(`${Progression.STATS[pick.key].icon} ${hero.name}'s ${Progression.STATS[pick.key].name} is now ${hero.stats[pick.key]}!`, 'success', 2500);
                 try { (await import('./combat.js')).recalculateCharacterStats(hero); } catch (_) {}
@@ -957,7 +966,7 @@ export function renderChoices(choices, handler = null) {
         choices = [...choices, { type: 'Defend', text: 'Raise your guard: half damage until your next turn, and catch your breath' }]
             .sort((a, b) => rank(a) - rank(b));
     }
-    if (!handler && !gameState.inCombat && (gameState.players || []).some(p => p?.statPoints > 0)) setTimeout(() => promptStatPoints(), 700);
+    if (!handler && !gameState.inCombat && wantsStatPrompt(gameState.players)) setTimeout(() => promptStatPoints(), 700);
     log(`UI: Rendering choices. Data type: ${typeof choices}, Is Array: ${Array.isArray(choices)}, Handler Mode: ${!!handler}`);
     
     if (!elements.choicesContainer) {
@@ -1442,6 +1451,7 @@ function createItemCard(item, context) {
 
     // Build stats string, filtering out zero/false values unless specifically needed
     // Plain words ("Revives a downed ally", "Heals 25%"), not "revive | HEALPERCENT: 0.25".
+    item.type = Progression.usableType(item); // older saves: an invented type ("Artifact") had no buttons
     const st = item.stats || {};
     const statsString = [
         st.atk ? `⚔️ ATK +${st.atk}` : '',

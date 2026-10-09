@@ -7,6 +7,7 @@ import * as Config from './config.js';
 import * as UI from './ui.js';
 import * as API from './api_new.js';
 import * as Progression from './progression.js';
+import * as Battle from './battle.js';
 import * as AdaptiveAbilities from './adaptiveAbilities.js';
 import { getChoiceSchema, validateChoicesPayload, arcMemorySchema, validateArcMemoryPayload, storyTurnSchema, validateNarrativeTurnPayload, EXPLORATION_CHOICE_TYPES, COMBAT_CHOICE_TYPES } from './schemas.js';
 import { applyDiff, describeAllowedPaths } from './engine.js';
@@ -148,7 +149,10 @@ function combatKitLine() {
     const p = gameState.players?.[gameState.nextActorIndex ?? gameState.currentPlayerIndex ?? 0];
     if (!p) return '';
     const items = (p.inventory || []).filter(i => i?.type === 'Consumable' && (i.quantity == null || i.quantity > 0)).map(i => i.name);
-    const moves = (p.specialMoves || []).filter(m => !(m.currentCooldown > 0)).map(m => m.name);
+    // The same list the Special picker shows (spells and rituals too): live
+    // 10-09 only specialMoves were named, Power Strike was cooling down, and
+    // the storyteller invented "Phantasmal Step" and "Soul Burst".
+    const moves = (Battle.battleOptions('Special', p) || []).filter(o => !o.disabled).map(o => o.text.replace(/^(Use|Cast) /, ''));
     return ` Item must use one of ${p.name}'s items: ${items.length ? [...new Set(items)].join(', ') : 'none (write it as searching their pack)'}. Special must use ${moves.length ? `one of: ${moves.join(', ')}` : 'a bold signature move'}.`;
 }
 
