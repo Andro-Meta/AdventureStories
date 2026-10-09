@@ -96,7 +96,7 @@ Each choice: under 160 characters, starts with a verb, names something specific 
 - luck: something ABSURD and ridiculous, laugh-out-loud funny for this age group, that only pure luck could make work (challenge the troll to a dance-off, disguise yourself as a potted plant, ask the dragon for directions). A long shot, but spectacular if it works.
 The action must truly be that approach: kicking a guard dog is brave, slipping past it sneaky, sweet-talking it kind, studying its collar clever.
 For EACH approach write a danger ladder: three versions of one idea that clearly escalate. "safe": little can go wrong. "bold": a real risk of getting hurt. "reckless": likely to get hurt if it fails, but a big payoff, and the words name what could hurt the hero. Example, brave near a guard dog: safe "Stand guard at the gate and keep the dog in sight", bold "Step out and face the growling dog", reckless "Kick the snarling guard dog aside and charge through". A safe brave version is courage with little risk; a reckless clever one acts on an untested idea in the middle of danger, not just studying; a reckless kind one puts the hero in harm's way to help.
-Each choice: under 160 characters, starts with a verb, names something specific from the narration, and never states its approach or danger (no "safely", "sneakily", "risky"). Make the five genuinely different from each other. If your ops START a fight, write four fight choices instead, types Attack, Special, Item, Run.${noRepeat}`;
+Each version: under 100 characters (one short sentence), starts with a verb, names something specific from the narration, and never states its approach or danger (no "safely", "sneakily", "risky"). Make the five genuinely different from each other. If your ops START a fight, write four fight choices instead, types Attack, Special, Item, Run.${noRepeat}`;
 }
 
 /** The JSON shape the choices are asked for in: exploration asks for a danger ladder per approach. */
@@ -258,7 +258,15 @@ ${buildDiffInstructions(pIdx)}`;
         try { choices = validateChoicesPayload(payload, nowInCombat); }
         catch (e) { log(`Turn choices unusable (${e.message}); asking for choices only.`); }
         const done = recentActionTexts(prompt);
-        if (!choices) choices = await requestChoicesOnly(cleanNarrative, nowInCombat, null, done);
+        if (!choices) {
+            // The story is already told and applied: a failure here must not
+            // fail the turn (that undid a roll the story had just described).
+            try { choices = await requestChoicesOnly(cleanNarrative, nowInCombat, null, done); }
+            catch (e) {
+                log(`Choices call failed after the story (${e.message}); using plain choices.`);
+                choices = nowInCombat ? validateAndFixChoices([], true) : Progression.fallbackChoices(gameState.choicePlan);
+            }
+        }
         // One fresh choices-only call when the set repeats a recent action;
         // keep whichever set is better.
         const flaws = (cs) => nowInCombat ? 0 : (cs || []).filter(c => isNearRepeat(c.text, done)).length * 2 + approachGaps(cs);

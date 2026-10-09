@@ -41,7 +41,7 @@ export const CLOUD_PROVIDERS = {
     // provider that is out of quota, rate-limited or down is skipped for a
     // while and the same request goes to the next one, mid-turn.
     auto: {
-        name: '★ Smart switcher — fastest working free AI from all your keys (recommended)',
+        name: '★ Smart switcher (recommended)',
         // Was Gemma 4 31B first (Michael's pick). Measured on his phone
         // 2026-10-08: Gemma on Google always "thinks" first (cannot be turned
         // off there), 27-82 s per reply, 500/503 on half the calls. Flash-Lite

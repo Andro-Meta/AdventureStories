@@ -1444,7 +1444,7 @@ function createItemCard(item, context) {
         st.atk ? `⚔️ ATK +${st.atk}` : '',
         st.def ? `🛡️ DEF +${st.def}` : '',
         st.revive ? `Revives a downed ally (${Math.round((st.healPercent || 0.25) * 100)}% HP)` : '',
-        st.heal ? `Heals ${st.heal} HP` : '',
+        st.heal && !(item.effect || '').includes(` ${st.heal} HP`) ? `Heals ${st.heal} HP` : '', // shop showed "Restores 27 HP" then "Heals 27 HP"
         st.healPercent && !st.revive ? `Heals ${Math.round(st.healPercent * 100)}% HP` : '',
         st.cure ? `Cures ${sanitizeText(String(st.cure))}` : '',
         st.applyStatus ? `Gives ${sanitizeText([].concat(st.applyStatus).join(', '))}` : '',

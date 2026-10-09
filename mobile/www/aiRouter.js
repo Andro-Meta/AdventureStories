@@ -55,7 +55,9 @@ export function record(id, { ok, ms, benchUntil = 0, why = '', now = Date.now() 
     if (ok) {
         x.ok++; x.consecFail = 0; x.n++;
         if (Number.isFinite(ms)) x.ewma = x.ewma == null ? ms : Math.round(ALPHA * ms + (1 - ALPHA) * x.ewma);
-        if (!(x.remaining <= 0)) { x.benchedUntil = 0; x.why = ''; } // a reply that said "0 left today" keeps its rest
+        // A reply that said "0 left today" keeps its rest (remaining is null for
+        // providers without the header, and null <= 0 is true in JS).
+        if (!(x.remaining != null && x.remaining <= 0)) { x.benchedUntil = 0; x.why = ''; }
         if (state.active !== id) { state.active = id; state.activeSince = now; }
     } else {
         x.fail++; x.consecFail++;
