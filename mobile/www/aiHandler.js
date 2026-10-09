@@ -93,7 +93,7 @@ Each choice: under 160 characters, starts with a verb, names something specific 
 - clever: searching, figuring out, knowing things
 - sneaky: stealth, tricks, hiding, slipping past unseen
 - kind: helping, talking, calming, making friends
-- luck: something silly or random, genuinely funny for this age group, that might just work
+- luck: something ABSURD and ridiculous, laugh-out-loud funny for this age group, that only pure luck could make work (challenge the troll to a dance-off, disguise yourself as a potted plant, ask the dragon for directions). A long shot, but spectacular if it works.
 The action must truly be that approach: kicking a guard dog is brave, slipping past it sneaky, sweet-talking it kind, studying its collar clever.
 Give each a "danger" that fits what could go wrong: Safe (little harm if it fails), Bold (could get hurt), Reckless (likely to get hurt if it fails, but a big payoff). Kicking a guard dog is Reckless; sweet-talking it is Safe. Use all three: at least one Safe, one Bold and one Reckless.
 Each choice: under 160 characters, starts with a verb, names something specific from the narration, and never states its approach or danger (no "safely", "sneakily", "risky"). Make the five genuinely different from each other. If your ops START a fight, write four fight choices instead, types Attack, Special, Item, Run.${noRepeat}`;
@@ -284,7 +284,7 @@ export async function ensureChoiceMix(choices, narrative, avoid = []) {
     const plan = Progression.mixPlan(choices);
     if (!plan.length) return choices;
     const out = choices.map(c => ({ ...c }));
-    const WHAT = { brave: 'BRAVE (force, daring, facing danger head-on)', clever: 'CLEVER (searching, figuring out, knowing)', sneaky: 'SNEAKY (stealth, tricks, hiding, slipping past unseen)', kind: 'KIND (helping, talking, calming, making friends)', luck: 'LUCK (silly, random, pure chance)' };
+    const WHAT = { brave: 'BRAVE (force, daring, facing danger head-on)', clever: 'CLEVER (searching, figuring out, knowing)', sneaky: 'SNEAKY (stealth, tricks, hiding, slipping past unseen)', kind: 'KIND (helping, talking, calming, making friends)', luck: 'LUCK (absurd, ridiculous, laugh-out-loud funny, a long shot only pure luck could make work)' };
     const RISK = { Safe: 'SAFE (little can go wrong)', Bold: 'BOLD (could get hurt)', Reckless: 'RECKLESS (likely to get hurt if it fails, but a big payoff)' };
     log(`Choice mix needs ${plan.map(p => `${p.stat}/${p.danger}`).join(', ')}; rewriting ${plan.length}.`);
     try {

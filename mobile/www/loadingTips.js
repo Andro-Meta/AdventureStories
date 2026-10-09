@@ -41,7 +41,7 @@ export class LoadingTipsManager {
                 "Stats Tip: Use a stat successfully 6 times and it grows by itself.",
                 "Stats Tip: Brave adds attack, Sneaky dodges, Clever powers abilities, Kind heals more.",
                 "Stats Tip: ⚠ means a choice can hurt if it fails, ⚠⚠ means it probably will - but it pays more.",
-                "Stats Tip: A lucky charm in your bag helps 🍀 luck choices and makes a 19 a critical success."
+                "Stats Tip: 🍀 choices are absurd long shots - rarely work, but spectacular when they do. A lucky charm helps."
             ],
             items: [
                 "Item Tip: Prices follow what an item does - a stronger sword costs more.",

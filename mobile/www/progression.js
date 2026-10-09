@@ -52,7 +52,7 @@ export const PLAIN_CHOICE = {
     clever: { Safe: 'Stop and work out what is really going on here.', Bold: 'Test your best guess about what is going on.', Reckless: 'Bet everything on a wild theory and act on it now.' },
     sneaky: { Safe: 'Stay hidden and watch from cover.', Bold: 'Slip out of sight and move in quietly.', Reckless: 'Sneak right past them, close enough to touch.' },
     kind:   { Safe: 'Reach out and help someone nearby.', Bold: 'Step in and calm things down before they get worse.', Reckless: 'Put yourself between the danger and someone who needs help.' },
-    luck:   { Safe: 'Flip a coin and follow wherever it points.', Bold: 'Do something wild and hope luck is on your side.', Reckless: 'Try the most ridiculous idea you have and hope it works.' }
+    luck:   { Safe: 'Ask the nearest small creature for advice, very politely.', Bold: 'Challenge whoever is in charge to a dance-off.', Reckless: 'Disguise yourself as a piece of furniture and stroll right past.' }
 };
 
 /** A full fallback set: one plain choice per approach, all three dangers. */
@@ -117,12 +117,19 @@ export function fillMix(choices) {
     return out;
 }
 
+// 🍀 choices are absurd long shots (Michael 10-08: "sillier, more absurd, but
+// super amazing results if it succeeds"): harder than the danger alone, and
+// a success pays spectacularly (outcomeFor).
+export const LUCK_LONG_SHOT = 3;
+
 // The check a choice makes: its difficulty and the stat that helps (null = luck).
 function checkOf(type, stat) {
     const legacy = LEGACY_TYPES[type];
-    const c = CHECKS[type] || CHECKS[legacy?.[0]] || CHECKS.Bold;
+    const base = CHECKS[type] || CHECKS[legacy?.[0]] || CHECKS.Bold;
     const s = stat === undefined ? legacy?.[1] : stat;
-    return { c, danger: CHECKS[type] ? type : legacy?.[0] || 'Bold', stat: STATS[s] ? s : null };
+    const st = STATS[s] ? s : null;
+    const c = st ? base : { ...base, dc: base.dc + LUCK_LONG_SHOT };
+    return { c, danger: CHECKS[type] ? type : legacy?.[0] || 'Bold', stat: st };
 }
 
 /**
@@ -202,9 +209,14 @@ export function outcomeFor(roll, hero, rng = Math.random) {
     if (roll.band === 'crit') o.xp += 10;
 
     if (won) {
-        if (approach === 'luck') { // pure chance: small stakes, the odd jackpot
-            if (roll.die >= 19) { o.jackpot = true; o.coins = coins(k.crit); o.note = 'an absurd stroke of luck'; }
-            else if (rng() < 0.5) o.coins = coins([Math.ceil(k.coins[0] / 2), k.coins[0]]);
+        if (approach === 'luck') { // the absurd long shot came off: spectacular
+            o.note = 'an absurd plan that worked spectacularly';
+            const r = rng();
+            if (r < 0.5) { o.jackpot = true; o.coins = coins(k.crit); }
+            else if (r < 0.8) o.item = { tierPool: roll.type === 'Safe' ? ['Medium'] : ['High'], typePool: ['Weapon', 'Armor', 'Consumable'] };
+            else if (roll.type !== 'Safe' && luckOf(hero) < 3) o.charm = luckOf(hero) + 1; // a better lucky charm (not for a safe silly move)
+            else { o.jackpot = true; o.coins = coins(k.crit); }
+            if (roll.band === 'crit') { o.jackpot = true; o.coins += coins(k.crit) * 2; o.note = 'a ridiculous stroke of luck nobody will ever believe'; }
         } else if (approach === 'clever') { // figuring it out: a stash, gear, a charm, or a clue
             const r = rng();
             if (r < 0.40) {
@@ -219,7 +231,7 @@ export function outcomeFor(roll, hero, rng = Math.random) {
             else if (approach !== 'kind' && roll.type !== 'Safe' && rng() < 0.4) o.item = { tierPool: k.items, typePool: ['Weapon', 'Armor', 'Consumable'] };
             else o.coins = coins(k.coins);
         }
-        if (roll.band === 'crit' && !o.jackpot) o.coins += coins(k.crit);
+        if (roll.band === 'crit' && approach !== 'luck' && !o.jackpot) o.coins += coins(k.crit);
     } else if (roll.band === 'partial') { // it works, at a cost
         o.coins = coins([Math.ceil(k.coins[0] / 3), Math.ceil(k.coins[0] / 2)]);
         if (k.partial) o.hpLoss = pctHp(hero, k.partial[0], k.partial[1], rng);
