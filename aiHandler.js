@@ -95,15 +95,21 @@ Each choice: under 160 characters, starts with a verb, names something specific 
 - kind: helping, talking, calming, making friends
 - luck: something ABSURD and ridiculous, laugh-out-loud funny for this age group, that only pure luck could make work (challenge the troll to a dance-off, disguise yourself as a potted plant, ask the dragon for directions). A long shot, but spectacular if it works.
 The action must truly be that approach: kicking a guard dog is brave, slipping past it sneaky, sweet-talking it kind, studying its collar clever.
-Give each a "danger" that fits what could go wrong: Safe (little harm if it fails), Bold (could get hurt), Reckless (likely to get hurt if it fails, but a big payoff). Kicking a guard dog is Reckless; sweet-talking it is Safe. Use all three: at least one Safe, one Bold and one Reckless.
+Each approach comes with its DANGER for this turn, given in the reply format below: write an action that is truly that approach AND that danger. Safe = little can go wrong; Bold = could get hurt; Reckless = likely to get hurt if it fails, but a big payoff. Kicking a guard dog is a Reckless brave action, sweet-talking it a Safe kind one; a Reckless kind action puts the hero in harm's way to help, a Safe brave one stands firm and keeps watch.
 Each choice: under 160 characters, starts with a verb, names something specific from the narration, and never states its approach or danger (no "safely", "sneakily", "risky"). Make the five genuinely different from each other. If your ops START a fight, write four fight choices instead, types Attack, Special, Item, Run.${noRepeat}`;
 }
 
-/** The JSON shape the choices are asked for in. */
+/** The JSON shape the choices are asked for in: exploration carries this round's dangers. */
 function choiceFormat(inCombat) {
+    const plan = gameState.choicePlan || Progression.DEFAULT_DANGER;
     return inCombat
         ? COMBAT_CHOICE_TYPES.map(t => `{"type":"${t}","text":"..."}`).join(',')
-        : Progression.APPROACHES.map(s => `{"stat":"${s}","danger":"...","text":"..."}`).join(',');
+        : Progression.APPROACHES.map(s => `{"stat":"${s}","danger":"${plan[s]}","text":"..."}`).join(',');
+}
+
+/** Pick this round's approach -> danger pairing (before the choices are asked for). */
+function planChoiceDangers() {
+    gameState.choicePlan = Progression.pickDangerPlan(gameState.choiceMixHistory || []);
 }
 
 /**
@@ -164,6 +170,7 @@ export async function processAIResponse(prompt) {
     const wc = getReadingSpecification(ages.length ? Math.round(ages.reduce((a, b) => a + b, 0) / ages.length) : 25).targetWordCount;
     const words = isInitialSetup ? `${wc.min}-${Math.round(wc.max * 1.5)}` : `${wc.min}-${wc.max}`;
 
+    planChoiceDangers(); // used if this turn ends with exploration choices
     const recent = (gameState.recentTurns || []).slice(-3);
     const scene = isInitialSetup ? prompt : `${recent.length ? `RECENT TURNS (oldest first):\n${recent.join('\n')}\n\n` : ''}PREVIOUS SCENE:
 ${gameState.currentNarrative || '(the story is just beginning)'}
@@ -281,7 +288,10 @@ ${buildDiffInstructions(pIdx)}`;
  */
 export async function ensureChoiceMix(choices, narrative, avoid = []) {
     const log = window.displayVisualError || console.log;
-    const plan = Progression.mixPlan(choices);
+    // The round's planned danger wins over whatever label came back.
+    const want = gameState.choicePlan || null;
+    if (want) choices = choices.map(c => (want[c?.stat] ? { ...c, type: want[c.stat] } : c));
+    const plan = Progression.mixPlan(choices, want);
     if (!plan.length) return choices;
     const out = choices.map(c => ({ ...c }));
     const WHAT = { brave: 'BRAVE (force, daring, facing danger head-on)', clever: 'CLEVER (searching, figuring out, knowing)', sneaky: 'SNEAKY (stealth, tricks, hiding, slipping past unseen)', kind: 'KIND (helping, talking, calming, making friends)', luck: 'LUCK (absurd, ridiculous, laugh-out-loud funny, a long shot only pure luck could make work)' };
@@ -300,7 +310,7 @@ export async function ensureChoiceMix(choices, narrative, avoid = []) {
             if (t.length >= 8 && t.length <= 220 && !clash) out[p.index] = { ...out[p.index], type: p.danger, text: t, stat: p.stat };
         });
     } catch (e) { log(`Choice mix fix failed (${e.message}); using plain choices for the gaps.`); }
-    return Progression.fillMix(out); // any gap left: a plain choice, never a broken mix
+    return Progression.fillMix(out, want); // any gap left: a plain choice, never a broken mix
 }
 
 /** Small call: choices for an already-written scene (optionally for a named hero). */
@@ -389,6 +399,7 @@ ${text}`.trim();
 
 export async function requestChoicesOnly(narrative, inCombat, forHero = null, avoid = []) {
     const types = inCombat ? COMBAT_CHOICE_TYPES : EXPLORATION_CHOICE_TYPES;
+    if (!inCombat) planChoiceDangers();
     const enemies = inCombat ? `\nEnemies: ${(gameState.enemies || []).filter(e => !e.isDefeated).map(e => e.name).join(', ')}` : '';
     const payload = await API.getAIResponseJSON([
         { role: 'system', content: `You write the player choices for a ${getThemeName()} text adventure. Reply with one JSON object only.` },

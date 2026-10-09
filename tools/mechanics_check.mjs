@@ -1330,7 +1330,7 @@ await block(async () => {
   const good = ['brave', 'clever', 'sneaky', 'kind', 'luck'].map(stat => ({ stat }));
   check(AIH.approachGaps(phone) === 2 && AIH.approachGaps(good) === 0, `approach gaps: phone set ${AIH.approachGaps(phone)} (no kind, no sneaky), balanced set ${AIH.approachGaps(good)}`);
   const ins = AIH.buildChoiceInstructions(Prog.DANGERS, false, []);
-  check(/one for each APPROACH/.test(ins) && ['brave', 'clever', 'sneaky', 'kind', 'luck'].every(a => ins.includes(`- ${a}:`)) && /Safe \(/.test(ins) && /Reckless \(/.test(ins) && /kicking a guard dog is Reckless/i.test(ins) && /luck: something ABSURD/.test(ins),
+  check(/one for each APPROACH/.test(ins) && ['brave', 'clever', 'sneaky', 'kind', 'luck'].every(a => ins.includes(`- ${a}:`)) && /Safe = little/.test(ins) && /Reckless = likely/.test(ins) && /DANGER for this turn/.test(ins) && /guard dog is a Reckless brave action/.test(ins) && /luck: something ABSURD/.test(ins),
     'choice instructions: one per approach, plus a danger (Safe / Bold / Reckless) that fits the action');
 });
 
@@ -1352,6 +1352,7 @@ await block(async () => {
 // =====================================================================
 section('Batch 19: always five approaches and all three dangers (phone 10-08: two luck, no sneaky)');
 await block(async () => {
+  gameState.choicePlan = null; // repair logic on its own (Batch 20 covers the round plan)
   const Prog = await import('../progression.js');
   const AIH = await import('../aiHandler.js');
   const ALL = Prog.APPROACHES;
@@ -1443,6 +1444,69 @@ await block(async () => {
   check(mixed(gameState.currentChoices), `an all-Safe set on screen gets all three dangers (${gameState.currentChoices.map(c => c.type).join(', ')})`);
   UI.renderChoices(['Good', 'Bad', 'Risky', 'Silly', 'Investigative'].map(type => ({ type, text: type })));
   check(mixed(gameState.currentChoices), `an old saved set renders as five approaches with dangers (${gameState.currentChoices.map(c => `${c.stat}/${c.type}`).join(', ')})`);
+});
+
+// =====================================================================
+section('Batch 20: the approach -> danger pairing shuffles every round (Michael 10-08)');
+await block(async () => {
+  const Prog = await import('../progression.js');
+  const ALL = Prog.APPROACHES;
+  const changes = (a, b) => ALL.filter(x => a[x] !== b[x]).length;
+  // How varied a run of plans is: worst approach/danger share, least change round to round, longest same-danger streak.
+  const measure = (plans) => {
+    const share = {}; let minChange = 5, streak = 0, maxStreak = 0;
+    plans.forEach((p, i) => {
+      ALL.forEach(a => { share[`${a}/${p[a]}`] = (share[`${a}/${p[a]}`] || 0) + 1; });
+      if (i) minChange = Math.min(minChange, changes(plans[i - 1], p));
+    });
+    for (const a of ALL) { streak = 1; for (let i = 1; i < plans.length; i++) { streak = plans[i][a] === plans[i - 1][a] ? streak + 1 : 1; maxStreak = Math.max(maxStreak, streak); } }
+    const maxShare = Math.max(...Object.values(share)) / plans.length;
+    return { maxShare, minChange, maxStreak, combos: Object.keys(share).length };
+  };
+  // Positive control: the five sets the storyteller picked by itself on the phone.
+  const phone = [
+    { sneaky: 'Reckless', luck: 'Bold', brave: 'Bold', clever: 'Safe', kind: 'Safe' },
+    { clever: 'Safe', sneaky: 'Bold', brave: 'Bold', luck: 'Reckless', kind: 'Safe' },
+    { kind: 'Safe', clever: 'Bold', brave: 'Reckless', luck: 'Reckless', sneaky: 'Safe' },
+    { luck: 'Reckless', kind: 'Safe', clever: 'Safe', sneaky: 'Reckless', brave: 'Bold' },
+    { brave: 'Bold', luck: 'Reckless', sneaky: 'Safe', clever: 'Safe', kind: 'Bold' }];
+  const before = measure(phone);
+  const plans = []; const hist = [];
+  for (let i = 0; i < 300; i++) { const p = Prog.pickDangerPlan(hist); plans.push(p); hist.push(p); if (hist.length > 8) hist.shift(); }
+  const after = measure(plans);
+  const okAll = plans.every(p => Prog.DANGERS.every(d => ALL.some(a => p[a] === d)));
+  check(before.maxShare >= 0.8 && before.maxStreak >= 3, `control: the storyteller alone kept one pairing ${Math.round(before.maxShare * 100)}% of rounds, same danger ${before.maxStreak} rounds running`);
+  check(okAll && after.minChange >= 3 && after.maxStreak <= 2 && after.maxShare <= 0.4 && after.combos === 15 && new Set(plans.map(p => JSON.stringify(p))).size >= 50,
+    `300 planned rounds: all three dangers every round (${okAll}), >=3 approaches change each round (min ${after.minChange}), same danger at most ${after.maxStreak} rounds running, no pairing over ${Math.round(after.maxShare * 100)}%, ${after.combos}/15 pairings used, ${new Set(plans.map(p => JSON.stringify(p))).size} different plans (a loop would be 3)`);
+  const firsts = new Set(Array.from({ length: 40 }, () => JSON.stringify(Prog.pickDangerPlan([]))));
+  check(firsts.size >= 10, `a new game's first round varies too (${firsts.size} different plans in 40 games)`);
+
+  // End to end through requestChoicesOnly: the prompt carries the plan, a reply
+  // that ignores it (all Safe) still shows the planned dangers, every round.
+  const AIH = await import('../aiHandler.js');
+  const offline = globalThis.fetch; let asked = '';
+  globalThis.fetch = window.fetch = async (u, o) => {
+    asked = JSON.parse(o.body).messages[1].content;
+    const content = JSON.stringify({ choices: ALL.map((stat, i) => ({ stat, danger: 'Safe', text: `Do the ${stat} thing number ${Math.random().toString(36).slice(2, 7)}` })) });
+    return { ok: true, status: 200, statusText: '200', headers: { get: () => null }, json: async () => ({ choices: [{ message: { content } }] }), text: async () => '' };
+  };
+  localStorage.setItem('adv.cloudProvider', 'groq_qwen'); localStorage.setItem('adv.apiKey.api.groq.com', 'test');
+  try {
+    fresh(); gameState.inCombat = false; gameState.choiceMixHistory = [];
+    const shown = []; let promptOk = true, labelOk = true;
+    for (let r = 0; r < 12; r++) {
+      const cs = await AIH.requestChoicesOnly('A market square at dusk.', false);
+      const plan = gameState.choicePlan;
+      if (!ALL.every(a => asked.includes(`{"stat":"${a}","danger":"${plan[a]}"`))) promptOk = false;
+      if (!ALL.every(a => cs.find(c => c.stat === a)?.type === plan[a])) labelOk = false;
+      UI.renderChoices(cs); UI.renderChoices(gameState.currentChoices); // a re-render must not count twice
+      shown.push(Prog.planOf(gameState.currentChoices));
+    }
+    const m = measure(shown);
+    check(promptOk, 'every round the prompt asks for this round\'s danger per approach');
+    check(labelOk, 'a reply that ignores the plan (all Safe) still gets the planned dangers');
+    check(gameState.choiceMixHistory.length === 8 && m.minChange >= 3 && m.maxStreak <= 2, `12 rounds on screen: >=3 approaches change each round (min ${m.minChange}), same danger at most ${m.maxStreak} running, history ${gameState.choiceMixHistory.length}/8 (no double count)`);
+  } finally { globalThis.fetch = window.fetch = offline; localStorage.removeItem('adv.apiKey.api.groq.com'); localStorage.removeItem('adv.cloudProvider'); }
 });
 
 console.error = realError;
