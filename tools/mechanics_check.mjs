@@ -1621,6 +1621,57 @@ await block(async () => {
   } finally { document.getElementById = realGet; globalThis.fetch = window.fetch = offline; localStorage.removeItem('adv.apiKey.api.groq.com'); localStorage.removeItem('adv.cloudProvider'); }
 });
 
+// =====================================================================
+section('Batch 23: haunted mansion playtest 10-09 (orb, maxed stats, picker loop, special names)');
+await block(async () => {
+  const Prog = await import('../progression.js');
+  // 1. The storyteller invented an item type ("Special Artifact"): no Use, no Equip.
+  const { p } = fresh();
+  Engine.applyDiff([{ op: 'add', path: '/players/0/inventory/-', value: { name: 'Luminous Orb of Zenith', type: 'Artifact', tier: 'Special', effect: 'Maxes out stats and radiates radiant energy', stats: { atk: 30, def: 30 } } }]);
+  const orb = p.inventory.find(i => i.name === 'Luminous Orb of Zenith');
+  check(orb?.type === 'Consumable', `an invented item type with an effect becomes usable (type ${orb?.type})`);
+  // ...and one already in a save with the made-up type can be used too.
+  p.inventory.push({ id: 'item_old_orb', name: 'Old Orb', type: 'Artifact', tier: 'Special', effect: 'Glows with power', stats: { atk: 5, def: 5 } });
+  let refused = false; const pops = [];
+  const realPop = UI.showPopup; // showPopup is a live binding; watch the log for the refusal instead
+  gameLog.length = 0;
+  await AH.useInventoryItem('item_old_orb').catch(() => {});
+  refused = gameLog.some(l => /Cannot 'Use' a Artifact/.test(l));
+  check(!refused && !p.inventory.some(i => i.id === 'item_old_orb'), `an old save's "Artifact" item can be used (refused: ${refused})`);
+
+  // 2. God mode set level 20 with every stat already 5: no points that can never be spent.
+  const g = fresh(); g.p.stats = { brave: 5, clever: 5, sneaky: 5, kind: 5 };
+  gameState.isGoalComplete = true; // god mode
+  Engine.applyDiff([{ op: 'replace', path: '/players/0/level', value: 20 }]);
+  check((g.p.statPoints || 0) === 0, `level 20 with all stats at 5: ${g.p.statPoints || 0} unspendable points handed out`);
+  const h = Prog.ensureStats({ stats: { brave: 5, clever: 5, sneaky: 4, kind: 5 }, statPoints: 16 });
+  check(h.statPoints === 1, `a save holding 16 points with room for 1 keeps 1 (${h.statPoints})`);
+  const x = Prog.ensureStats({ stats: { brave: 5, clever: 5, sneaky: 5, kind: 5 }, level: 3, xp: 0 });
+  Prog.gainXp(x, 500);
+  check(x.statPoints === 0 && x.level > 3, `levelling with every stat at 5 gives no stat points (level ${x.level}, points ${x.statPoints})`);
+
+  // 3. Cancel on the stat picker: it must not reopen until a new point is earned.
+  const c = Prog.ensureStats({ stats: { brave: 1, clever: 1, sneaky: 1, kind: 1 }, statPoints: 2 });
+  check(UI.wantsStatPrompt([c]) === true, 'unspent points: the picker opens');
+  Prog.snoozeStatPrompt(c);
+  check(UI.wantsStatPrompt([c]) === false, 'after Cancel: it does not reopen by itself');
+  c.statPoints += 1;
+  check(UI.wantsStatPrompt([c]) === true, 'a new point earned: it opens again');
+  Prog.spendStatPoint(c, 'brave'); Prog.spendStatPoint(c, 'brave'); Prog.spendStatPoint(c, 'brave'); // spent via the star button
+  c.statPoints += 1;
+  check(UI.wantsStatPrompt([c]) === true, 'after spending with the star, the next new point opens it again');
+
+  // 4. The storyteller's Special choice must name a special the hero really has.
+  const s4 = fresh(); s4.p.mp = 20;
+  s4.p.spellcasting = { knownSpells: [{ name: 'Whispering Pendulum', mpCost: 5 }, { name: 'Ward of Ash', mpCost: 4 }] };
+  s4.p.specialMoves = [{ name: 'Power Strike', currentCooldown: 2 }];
+  gameState.inCombat = true;
+  const AIH = await import('../aiHandler.js');
+  const ins = AIH.buildChoiceInstructions(['Attack', 'Special', 'Item', 'Run'], true, []);
+  gameState.inCombat = false;
+  check(/Whispering Pendulum/.test(ins) && /Ward of Ash/.test(ins), `combat prompt lists the hero's real specials (${(ins.match(/Special must use[^.]*/) || ['none'])[0]})`);
+});
+
 console.error = realError;
 out(`\nfetch attempts blocked: ${fetchCalls}; elapsed ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 out(failed ? `✗ ${failed} mechanics check(s) failed` : '✓ all mechanics checks passed');

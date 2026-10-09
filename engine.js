@@ -21,7 +21,7 @@ import { gameState, recordStoryBeat, recordWorldStateChange } from './state.js';
 import * as Combat from './combat.js';
 import * as Config from './config.js';
 import { levelUp } from './battle.js';
-import { gainXp } from './progression.js';
+import { gainXp, usableType, ensureStats } from './progression.js';
 
 /**
  * Phase 1.2: Look up a status effect from Config.STATUS_EFFECTS by name
@@ -274,6 +274,7 @@ const PATHS = [
                 const gained = value - (player.level || 1);
                 levelUp(player, gained);
                 player.statPoints = (player.statPoints || 0) + gained; // each level: a stat to raise
+                ensureStats(player); // ...but never more than the stats can still take
                 try { Combat.recalculateCharacterStats(player); } catch (_) {}
                 return `${player.name}.level = ${player.level}`;
             }
@@ -924,7 +925,10 @@ function itemType(value) {
     if (st.heal || st.healPercent || st.mp || /potion|elixir|tonic|salve|bandage|herb|antidote|ration|draught/i.test(value.name || '')) return 'Consumable';
     if (st.atk && !st.def) return 'Weapon';
     if (st.def && !st.atk) return 'Armor';
-    return value.type ? String(value.type) : 'Misc';
+    // A type the game has no buttons for ("Artifact", "Relic"): live 10-09 the
+    // "Luminous Orb of Zenith" could be neither used nor equipped. With an
+    // effect it is used (the storyteller narrates the effect); else a keepsake.
+    return usableType(value);
 }
 
 // Tiers as the game names them; the narrator sometimes sends 1-5 or lowercase.

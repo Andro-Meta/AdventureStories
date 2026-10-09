@@ -15,7 +15,7 @@ const FILES = {
   html: 'index.html',
   js: [
     'main.js', 'ui.js', 'setup.js', 'actionHandler.js', 'aiHandler.js',
-    'gameLoop.js', 'turnManager.js', 'godMode.js', 'saveLoad.js',
+    'turnManager.js', 'godMode.js', 'saveLoad.js',
     'initializationManager.js', 'spellUI.js', 'jailSystem.js',
     'resolution.js', 'localAI.js', 'config.js'
   ]
@@ -145,7 +145,7 @@ if (matches.length < 3) {
 }
 const requiredFlows = [
   { name: 'post-combat victory',  pattern: /handleCombatVictory[\s\S]{0,1500}advanceTurn/ },
-  { name: 'gameLoop processPlayerAction', pattern: /processPlayerAction[\s\S]{0,3000}advanceTurn/ },
+  { name: 'story turn advances the turn', pattern: /makeAICallForSystemAction[\s\S]{0,6000}advanceTurn/ },
   { name: 'turnManager export',   pattern: /export\s+(?:async\s+)?function\s+advanceTurn/ }
 ];
 for (const f of requiredFlows) {
