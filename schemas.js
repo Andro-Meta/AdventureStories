@@ -308,7 +308,7 @@ export function validateChoicesPayload(payload, inCombat) {
     }
 
     // Exploration: five choices, each { stat, danger, text }. Doubled
-    // approaches are repaired later (aiHandler.ensureFiveApproaches).
+    // approaches or a missing danger are repaired later (aiHandler.ensureChoiceMix).
     if (!inCombat) {
         if (choices.length !== 5) throw new Error(`Expected 5 choices, got ${choices.length}`);
         return choices.map(raw => {

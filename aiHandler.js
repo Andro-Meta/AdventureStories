@@ -95,7 +95,7 @@ Each choice: under 160 characters, starts with a verb, names something specific 
 - kind: helping, talking, calming, making friends
 - luck: something silly or random, genuinely funny for this age group, that might just work
 The action must truly be that approach: kicking a guard dog is brave, slipping past it sneaky, sweet-talking it kind, studying its collar clever.
-Give each a "danger" that fits what could go wrong: Safe (little harm if it fails), Bold (could get hurt), Reckless (likely to get hurt if it fails, but a big payoff). Kicking a guard dog is Reckless; sweet-talking it is Safe. Mix them: at least one Safe and at least one Bold or Reckless.
+Give each a "danger" that fits what could go wrong: Safe (little harm if it fails), Bold (could get hurt), Reckless (likely to get hurt if it fails, but a big payoff). Kicking a guard dog is Reckless; sweet-talking it is Safe. Use all three: at least one Safe, one Bold and one Reckless.
 Each choice: under 160 characters, starts with a verb, names something specific from the narration, and never states its approach or danger (no "safely", "sneakily", "risky"). Make the five genuinely different from each other. If your ops START a fight, write four fight choices instead, types Attack, Special, Item, Run.${noRepeat}`;
 }
 
@@ -261,7 +261,7 @@ ${buildDiffInstructions(pIdx)}`;
             try { const fresh = await requestChoicesOnly(cleanNarrative, false, null, done); if (flaws(fresh) < flaws(choices)) choices = fresh; }
             catch (e) { log(`Fresh choices failed (${e.message}); keeping the first set.`); }
         }
-        if (!nowInCombat) choices = await ensureFiveApproaches(choices, cleanNarrative, done);
+        if (!nowInCombat) choices = await ensureChoiceMix(choices, cleanNarrative, done);
 
         UI.renderChoices(choices); // shuffles and sets gameState.currentChoices
         return { narrative: cleanNarrative, choices: gameState.currentChoices };
@@ -273,33 +273,34 @@ ${buildDiffInstructions(pIdx)}`;
 }
 
 /**
- * Exactly one brave, clever, sneaky, kind and luck choice. The model often
- * doubles one (phone 10-08: two luck, no sneaky) however it's asked, so the
- * code checks: only the off-approach choices are rewritten, in one small
- * call; anything still wrong gets a plain fallback at render time.
+ * Exactly one brave, clever, sneaky, kind and luck choice, and at least one
+ * Safe, one Bold and one Reckless. The model often doubles an approach
+ * (phone 10-08: two luck, no sneaky) or a danger however it's asked, so the
+ * code checks: only the choices that break the mix are rewritten, in one
+ * small call; anything still wrong gets a plain choice.
  */
-export async function ensureFiveApproaches(choices, narrative, avoid = []) {
+export async function ensureChoiceMix(choices, narrative, avoid = []) {
     const log = window.displayVisualError || console.log;
-    const plan = Progression.approachPlan(choices);
+    const plan = Progression.mixPlan(choices);
     if (!plan.length) return choices;
     const out = choices.map(c => ({ ...c }));
     const WHAT = { brave: 'BRAVE (force, daring, facing danger head-on)', clever: 'CLEVER (searching, figuring out, knowing)', sneaky: 'SNEAKY (stealth, tricks, hiding, slipping past unseen)', kind: 'KIND (helping, talking, calming, making friends)', luck: 'LUCK (silly, random, pure chance)' };
-    log(`Choices missing ${plan.map(p => p.stat).join(', ')}; rewriting ${plan.length} of them.`);
+    const RISK = { Safe: 'SAFE (little can go wrong)', Bold: 'BOLD (could get hurt)', Reckless: 'RECKLESS (likely to get hurt if it fails, but a big payoff)' };
+    log(`Choice mix needs ${plan.map(p => `${p.stat}/${p.danger}`).join(', ')}; rewriting ${plan.length}.`);
     try {
         const others = out.filter((c, i) => !plan.some(p => p.index === i)).map(c => `- ${c.text}`).join('\n');
         const payload = await API.getAIResponseJSON([
             { role: 'system', content: `You write player choices for a ${getThemeName()} text adventure. Reply with one JSON object only.` },
-            { role: 'user', content: `SCENE:\n${narrative}\n\nThese choices stay:\n${others}\n\nWrite ${plan.length} new choice${plan.length > 1 ? 's' : ''}, one sentence each, that fit this scene and differ from the ones above:\n${plan.map((p, k) => `${k + 1}. a ${WHAT[p.stat]} action`).join('\n')} Give each a "danger" that fits it: Safe, Bold or Reckless.\n\nReply exactly as {"choices":[${plan.map(p => `{"text":"...","danger":"..."}`).join(',')}]}` }
+            { role: 'user', content: `SCENE:\n${narrative}\n\nThese choices stay:\n${others}\n\nWrite ${plan.length} new choice${plan.length > 1 ? 's' : ''}, one sentence each, that fit this scene and differ from the ones above:\n${plan.map((p, k) => `${k + 1}. a ${RISK[p.danger]}, ${WHAT[p.stat]} action`).join('\n')}\n\nReply exactly as {"choices":[${plan.map(() => '{"text":"..."}').join(',')}]}` }
         ], null, { max_tokens: 250, temperature: 0.7, jsonObject: true });
         const got = Array.isArray(payload?.choices) ? payload.choices : [];
         plan.forEach((p, k) => {
             const t = String(got[k]?.text || '').trim();
-            const danger = Progression.DANGERS.find(d => d.toLowerCase() === String(got[k]?.danger || '').trim().toLowerCase()) || Progression.DEFAULT_DANGER[p.stat];
             const clash = out.some((c, i) => i !== p.index && isNearRepeat(t, [c.text])) || isNearRepeat(t, avoid);
-            if (t.length >= 8 && t.length <= 220 && !clash) out[p.index] = { ...out[p.index], type: danger, text: t, stat: p.stat };
+            if (t.length >= 8 && t.length <= 220 && !clash) out[p.index] = { ...out[p.index], type: p.danger, text: t, stat: p.stat };
         });
-    } catch (e) { log(`Approach fix failed (${e.message}); using plain choices for the gaps.`); }
-    return Progression.fillApproaches(out); // any gap left: plain text, never a doubled approach
+    } catch (e) { log(`Choice mix fix failed (${e.message}); using plain choices for the gaps.`); }
+    return Progression.fillMix(out); // any gap left: a plain choice, never a broken mix
 }
 
 /** Small call: choices for an already-written scene (optionally for a named hero). */
@@ -394,7 +395,7 @@ export async function requestChoicesOnly(narrative, inCombat, forHero = null, av
         { role: 'user', content: `SCENE:\n${narrative}${enemies}\n\n${forHero ? `Write the choices for ${forHero}, who acts next.\n` : ''}${buildChoiceInstructions(types, inCombat, avoid)}\n\nReply exactly as {"choices":[${choiceFormat(inCombat)}]}` }
     ], getChoiceSchema(inCombat), { jsonSchemaName: inCombat ? 'combat_choices' : 'exploration_choices', max_tokens: 600, temperature: 0.7 });
     const choices = validateChoicesPayload(payload, inCombat);
-    return inCombat ? choices : ensureFiveApproaches(choices, narrative, avoid);
+    return inCombat ? choices : ensureChoiceMix(choices, narrative, avoid);
 }
 
 /**

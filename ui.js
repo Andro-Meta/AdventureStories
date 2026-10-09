@@ -930,7 +930,7 @@ export function renderChoices(choices, handler = null) {
     // Exploration: five different approaches, always (the storyteller is asked
     // and repaired in aiHandler; this is the last line for every other path).
     if (Array.isArray(choices) && !handler && !gameState.inCombat) choices = choices.map(Progression.normalizeChoice);
-    if (Array.isArray(choices) && !handler && !gameState.inCombat && choices.length === 5) choices = Progression.fillApproaches(choices);
+    if (Array.isArray(choices) && !handler && !gameState.inCombat && choices.length === 5) choices = Progression.fillMix(choices);
     if (Array.isArray(choices) && choices.length > 1 && !handler) {
         choices = [...choices];
         for (let i = choices.length - 1; i > 0; i--) {

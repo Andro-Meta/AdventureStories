@@ -1339,12 +1339,13 @@ await block(async () => {
 });
 
 // =====================================================================
-section('Batch 19: always five different approaches (phone 10-08: two luck, no sneaky)');
+section('Batch 19: always five approaches and all three dangers (phone 10-08: two luck, no sneaky)');
 await block(async () => {
   const Prog = await import('../progression.js');
   const AIH = await import('../aiHandler.js');
   const ALL = Prog.APPROACHES;
   const distinct = (cs) => new Set(cs.map(c => c.stat)).size === 5 && cs.every(c => ALL.includes(c.stat));
+  const mixed = (cs) => distinct(cs) && Prog.DANGERS.every(d => cs.some(c => c.type === d));
   // The screenshot's set.
   const phone = [
     { type: 'Bold', stat: 'luck', text: 'Balance a wobbling hubcap on your head to mimic the moving shadows.' },
@@ -1352,51 +1353,85 @@ await block(async () => {
     { type: 'Reckless', stat: 'brave', text: 'Vault across the jagged alleyway using the Makeshift Pipe Wrench.' },
     { type: 'Safe', stat: 'kind', text: 'Share a ration of filtered water with the shivering scavenger.' },
     { type: 'Reckless', stat: 'luck', text: 'Lick the suspicious frost off the vibrating metallic sign.' }];
-  const plan = Prog.approachPlan(phone);
+  const plan = Prog.mixPlan(phone);
   check(plan.length === 1 && plan[0].index === 4 && plan[0].stat === 'sneaky', `screenshot set: only the licking choice changes, to sneaky (${JSON.stringify(plan)})`);
+  const allSafe = phone.map((c, i) => ({ ...c, stat: ALL[i], type: 'Safe' }));
+  const ds = Prog.mixPlan(allSafe);
+  check(ds.length === 2 && ds.every(p => p.stat === allSafe[p.index].stat) && new Set(ds.map(p => p.danger)).size === 2 && !ds.some(p => p.danger === 'Safe'),
+    `all five Safe: two choices become Bold and Reckless, keeping their approach (${JSON.stringify(ds)})`);
   // Every combination of stats (incl. missing/invalid) on every type order.
   const TYPES = ['Safe', 'Bold', 'Reckless', 'Bold', 'Safe'];
   const opts = [...ALL, undefined];
-  let bad = 0, sets = 0, keptWrong = 0;
+  let bad = 0, sets = 0;
   const rec = (pre) => {
     if (pre.length === 5) {
       sets++;
       const cs = pre.map((stat, i) => ({ type: TYPES[(i + sets) % 5], stat, text: `choice ${i}` }));
-      const out = Prog.fillApproaches(cs);
-      if (!distinct(out)) bad++;
-      // a choice whose approach is the only one of its kind is never touched
-      cs.forEach((c, i) => { if (c.stat && cs.filter(d => d.stat === c.stat).length === 1 && out[i].text !== c.text) keptWrong++; });
+      const out = Prog.fillMix(cs);
+      if (!mixed(out)) bad++;
       return;
     }
     for (const o of opts) rec([...pre, o]);
   };
   rec([]);
-  check(bad === 0 && keptWrong === 0, `all ${sets} possible stat sets end with exactly one of each approach (${bad} failed), unique choices untouched (${keptWrong})`);
-  check(new Set(Prog.fallbackChoices().map(c => c.stat)).size === 5, 'the plain fallback set is five different approaches');
+  check(bad === 0, `all ${sets} possible stat sets end with one of each approach and all three dangers (${bad} failed)`);
+  // Every danger combination (incl. missing/invalid) on every approach order.
+  let dBad = 0, dSets = 0, tooMany = 0, touchedFine = 0;
+  const dOpts = [...Prog.DANGERS, undefined, 'nonsense'];
+  const recD = (pre) => {
+    if (pre.length === 5) {
+      for (let rot = 0; rot < 5; rot++) {
+        dSets++;
+        const cs = pre.map((type, i) => ({ type, stat: ALL[(i + rot) % 5], text: `c${i}` }));
+        const out = Prog.fillMix(cs);
+        if (!mixed(out)) dBad++;
+        if (out.filter((c, i) => c.text !== cs[i].text).length > 2) tooMany++;
+        if (Prog.DANGERS.every(d => cs.some(c => c.type === d)) && out.some((c, i) => c.text !== cs[i].text)) touchedFine++;
+      }
+      return;
+    }
+    for (const o of dOpts) recD([...pre, o]);
+  };
+  recD([]);
+  check(dBad === 0 && tooMany === 0 && touchedFine === 0, `all ${dSets} danger sets end mixed (${dBad} failed), at most 2 rewrites (${tooMany} over), good sets untouched (${touchedFine} touched)`);
+  // Random sets with both problems at once.
+  let rBad = 0; const pick = (a) => a[Math.floor(Math.random() * a.length)];
+  for (let i = 0; i < 20000; i++) { const cs = Array.from({ length: 5 }, (_, j) => ({ type: pick(dOpts), stat: pick(opts), text: `r${j}` })); if (!mixed(Prog.fillMix(cs))) rBad++; }
+  check(rBad === 0, `20000 random sets (approach and danger both broken) all end mixed (${rBad} failed)`);
+  check(mixed(Prog.fallbackChoices()), 'the plain fallback set has five approaches and all three dangers');
 
   // Storyteller down (network off here): gaps get plain choices, still five approaches.
-  const down = await AIH.ensureFiveApproaches(phone, 'A frozen alley.', []);
-  check(distinct(down) && down[4].text === Prog.APPROACH_FALLBACK.sneaky && down[0].text === phone[0].text, `AI down: the gap gets "${down[4].text}", the other four unchanged`);
+  const down = await AIH.ensureChoiceMix(phone, 'A frozen alley.', []);
+  check(mixed(down) && down[4].text === Prog.PLAIN_CHOICE.sneaky[down[4].type] && down[0].text === phone[0].text, `AI down: the gap gets "${down[4].text}" (${down[4].type}), the other four unchanged`);
+  const downSafe = await AIH.ensureChoiceMix(allSafe, 'A frozen alley.', []);
+  check(mixed(downSafe), `AI down, all Safe: plain Bold and Reckless choices fill in (${downSafe.map(c => c.type).join(', ')})`);
 
   // Storyteller up: the one choice is rewritten as a sneaky action.
   const offline = globalThis.fetch; let asked = '';
   globalThis.fetch = window.fetch = async (u, o) => { asked = JSON.parse(o.body).messages[1].content; return { ok: true, status: 200, statusText: '200', headers: { get: () => null }, json: async () => ({ choices: [{ message: { content: '{"choices":[{"text":"Creep along the shadowed wall and slip past the sign unseen.","danger":"Bold"}]}' } }] }), text: async () => '' }; };
   localStorage.setItem('adv.cloudProvider', 'groq_qwen'); localStorage.setItem('adv.apiKey.api.groq.com', 'test');
   try {
-    const fixed = await AIH.ensureFiveApproaches(phone, 'A frozen alley.', []);
-    check(distinct(fixed) && /slip past/.test(fixed[4].text) && fixed[4].type === "Bold" && /SNEAKY/.test(asked) && fixed.filter((c, i) => c.text !== phone[i].text).length === 1, `AI up: one small call rewrites only that choice ("${fixed[4].text}")`);
+    const fixed = await AIH.ensureChoiceMix(phone, 'A frozen alley.', []);
+    check(mixed(fixed) && /slip past/.test(fixed[4].text) && fixed[4].type === "Bold" && /SNEAKY/.test(asked) && fixed.filter((c, i) => c.text !== phone[i].text).length === 1, `AI up: one small call rewrites only that choice ("${fixed[4].text}")`);
     // A rewrite that just repeats another choice is not accepted.
     globalThis.fetch = window.fetch = async () => ({ ok: true, status: 200, statusText: '200', headers: { get: () => null }, json: async () => ({ choices: [{ message: { content: '{"choices":[{"text":"Share a ration of filtered water with the shivering scavenger.","danger":"Safe"}]}' } }] }), text: async () => '' });
-    const dup = await AIH.ensureFiveApproaches(phone, 'A frozen alley.', []);
-    check(distinct(dup) && dup[4].text === Prog.APPROACH_FALLBACK.sneaky, 'a rewrite that copies another choice is refused (plain sneaky choice instead)');
+    const dup = await AIH.ensureChoiceMix(phone, 'A frozen alley.', []);
+    check(mixed(dup) && dup[4].text === Prog.PLAIN_CHOICE.sneaky[dup[4].type], 'a rewrite that copies another choice is refused (plain sneaky choice instead)');
+    // All Safe: the call asks for exactly the missing dangers, with the approach kept.
+    let asked2 = '';
+    globalThis.fetch = window.fetch = async (u, o) => { asked2 = JSON.parse(o.body).messages[1].content; return { ok: true, status: 200, statusText: '200', headers: { get: () => null }, json: async () => ({ choices: [{ message: { content: '{"choices":[{"text":"Shoulder through the crowd toward the shouting."},{"text":"Leap onto the moving cart and grab the reins."}]}' } }] }), text: async () => '' }; };
+    const fixedSafe = await AIH.ensureChoiceMix(allSafe, 'A frozen alley.', []);
+    check(mixed(fixedSafe) && /BOLD/.test(asked2) && /RECKLESS/.test(asked2) && fixedSafe.filter((c, i) => c.text !== allSafe[i].text).length === 2, `all Safe, AI up: one call rewrites two choices as Bold and Reckless (${fixedSafe.map(c => c.type).join(', ')})`);
   } finally { globalThis.fetch = window.fetch = offline; localStorage.removeItem('adv.apiKey.api.groq.com'); localStorage.removeItem('adv.cloudProvider'); }
 
   // Render time: whatever path produced the set, the screen gets five approaches.
   fresh(); gameState.inCombat = false;
   UI.renderChoices(phone.map(c => ({ ...c })));
-  check(distinct(gameState.currentChoices), `on screen: ${gameState.currentChoices.map(c => c.stat).sort().join(', ')}`);
+  check(mixed(gameState.currentChoices), `on screen: ${gameState.currentChoices.map(c => `${c.stat}/${c.type}`).sort().join(', ')}`);
+  UI.renderChoices(allSafe.map(c => ({ ...c })));
+  check(mixed(gameState.currentChoices), `an all-Safe set on screen gets all three dangers (${gameState.currentChoices.map(c => c.type).join(', ')})`);
   UI.renderChoices(['Good', 'Bad', 'Risky', 'Silly', 'Investigative'].map(type => ({ type, text: type })));
-  check(distinct(gameState.currentChoices) && gameState.currentChoices.every(c => Prog.DANGERS.includes(c.type)), `an old saved set renders as five approaches with dangers (${gameState.currentChoices.map(c => `${c.stat}/${c.type}`).join(', ')})`);
+  check(mixed(gameState.currentChoices), `an old saved set renders as five approaches with dangers (${gameState.currentChoices.map(c => `${c.stat}/${c.type}`).join(', ')})`);
 });
 
 console.error = realError;

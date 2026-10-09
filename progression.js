@@ -45,17 +45,18 @@ export const LEGACY_TYPES = { Good: ['Safe', 'kind'], Investigative: ['Safe', 'c
 export const APPROACHES = ['brave', 'clever', 'sneaky', 'kind', 'luck'];
 // When the storyteller gave no danger, the usual one for the approach.
 export const DEFAULT_DANGER = { kind: 'Safe', clever: 'Safe', sneaky: 'Bold', luck: 'Bold', brave: 'Reckless' };
-// Last resort when the storyteller can't fix a set: plain, honest actions.
-export const APPROACH_FALLBACK = {
-    brave: 'Step up and face it head-on.',
-    clever: 'Stop and work out what is really going on here.',
-    sneaky: 'Slip out of sight and move in quietly.',
-    kind: 'Reach out and help someone nearby.',
-    luck: 'Do something wild and hope luck is on your side.'
+// Last resort when the storyteller can't fix a set: plain, honest actions,
+// one per approach and danger.
+export const PLAIN_CHOICE = {
+    brave:  { Safe: 'Stand your ground and keep watch.', Bold: 'Step up and face it head-on.', Reckless: 'Charge straight in, holding nothing back.' },
+    clever: { Safe: 'Stop and work out what is really going on here.', Bold: 'Test your best guess about what is going on.', Reckless: 'Bet everything on a wild theory and act on it now.' },
+    sneaky: { Safe: 'Stay hidden and watch from cover.', Bold: 'Slip out of sight and move in quietly.', Reckless: 'Sneak right past them, close enough to touch.' },
+    kind:   { Safe: 'Reach out and help someone nearby.', Bold: 'Step in and calm things down before they get worse.', Reckless: 'Put yourself between the danger and someone who needs help.' },
+    luck:   { Safe: 'Flip a coin and follow wherever it points.', Bold: 'Do something wild and hope luck is on your side.', Reckless: 'Try the most ridiculous idea you have and hope it works.' }
 };
 
-/** A full fallback set: one plain choice per approach. */
-export const fallbackChoices = () => APPROACHES.map(stat => ({ type: DEFAULT_DANGER[stat], stat, text: APPROACH_FALLBACK[stat] }));
+/** A full fallback set: one plain choice per approach, all three dangers. */
+export const fallbackChoices = () => APPROACHES.map(stat => ({ type: DEFAULT_DANGER[stat], stat, text: PLAIN_CHOICE[stat][DEFAULT_DANGER[stat]] }));
 
 /** Any choice in the current shape { type: danger, stat, text } (old saves and loose model output converted). */
 export function normalizeChoice(c) {
@@ -81,12 +82,38 @@ export function approachPlan(choices) {
     return APPROACHES.filter(s => !seen.has(s)).map((stat, k) => ({ index: free[k], stat })).filter(p => p.index != null);
 }
 
-/** Apply a plan with fixed fallback texts (sync; used at render time). */
-export function fillApproaches(choices) {
-    const plan = approachPlan(choices);
-    if (!plan.length) return choices;
-    const out = choices.map(c => ({ ...c }));
-    for (const { index, stat } of plan) out[index] = { ...out[index], type: DEFAULT_DANGER[stat], text: APPROACH_FALLBACK[stat], stat };
+/**
+ * Every exploration set: five different approaches AND all three dangers
+ * (at least one Safe, one Bold, one Reckless), so there is always a safe
+ * option and a risky one worth the risk. Returns the choices to rewrite as
+ * [{ index, stat, danger }]: the approach fixes first (they take a missing
+ * danger), then, if a danger is still missing, one choice from a danger that
+ * appears more than once. A text is never just relabelled. Empty = fine.
+ */
+const dangerOf = (c) => (DANGERS.includes(c?.type) ? c.type : DEFAULT_DANGER[c?.stat] || 'Bold');
+export function mixPlan(choices) {
+    const list = choices || [];
+    const slots = approachPlan(list).map(p => ({ ...p, danger: null }));
+    const isSlot = (i) => slots.some(p => p.index === i);
+    const count = Object.fromEntries(DANGERS.map(d => [d, 0]));
+    list.forEach((c, i) => { if (!isSlot(i)) count[dangerOf(c)]++; });
+    const missing = DANGERS.filter(d => !count[d]);
+    for (const p of slots) { p.danger = missing.shift() || DEFAULT_DANGER[p.stat]; count[p.danger]++; }
+    while (missing.length) {
+        const d = missing.shift();
+        const donor = list.findIndex((c, i) => !isSlot(i) && count[dangerOf(c)] > 1);
+        if (donor === -1) break;
+        count[dangerOf(list[donor])]--; count[d]++;
+        slots.push({ index: donor, stat: list[donor].stat, danger: d });
+    }
+    return slots.sort((a, b) => a.index - b.index);
+}
+
+/** Apply mixPlan with the plain texts (sync; the render-time guarantee). */
+export function fillMix(choices) {
+    const plan = mixPlan(choices);
+    const out = choices.map(c => ({ ...c, type: dangerOf(c) })); // a missing or junk danger gets the usual one
+    for (const { index, stat, danger } of plan) out[index] = { ...out[index], type: danger, stat, text: PLAIN_CHOICE[stat][danger] };
     return out;
 }
 
