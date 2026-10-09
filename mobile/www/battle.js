@@ -82,7 +82,10 @@ export function battleOptions(type, hero) {
             const noMp = (m.mpCost || 0) > (hero.mp || 0);
             return { label: m.name, detail: cd > 0 ? `ready in ${cd}` : `${m.mpCost ? m.mpCost + ' MP · ' : ''}${m.description || 'special move'}`.slice(0, 70), type: 'Special', text: `Use ${m.name}`, disabled: cd > 0 || noMp };
         });
+        const listed = new Set(opts.map(o => o.label.toLowerCase()));
         for (const s of hero.spellcasting?.knownSpells || []) {
+            if (listed.has(String(s?.name).toLowerCase())) continue; // a spell learned twice shows once
+            listed.add(String(s?.name).toLowerCase());
             const cost = s.mpCost || 0;
             const area = isAreaSpell(s) ? (s.effects?.healing > 0 && !(s.effects?.damage > 0) ? 'whole party · ' : 'hits all foes · ') : '';
             const kind = abilityKind();
@@ -118,6 +121,8 @@ function itemDetail(i) {
  */
 export function pickBattleOption(title, options) {
     document.getElementById('battlePicker')?.remove();
+    const log = window.displayVisualError || console.log;
+    log(`Picker "${title}": ${options.map(o => `${o.label}${o.disabled ? ' (off)' : ''}`).join(' | ')}`);
     return new Promise(resolve => {
         const sheet = document.createElement('div');
         sheet.id = 'battlePicker';
@@ -131,10 +136,10 @@ export function pickBattleOption(title, options) {
             const l = document.createElement('span'); l.className = 'bp-label'; l.textContent = o.label;
             const d = document.createElement('span'); d.className = 'bp-detail'; d.textContent = o.detail || '';
             b.append(l, d);
-            b.addEventListener('click', () => { sheet.remove(); resolve(o); });
+            b.addEventListener('click', () => { sheet.remove(); log(`Picker "${title}": chose ${o.label}`); resolve(o); });
             list.appendChild(b);
         }
-        const cancel = () => { sheet.remove(); resolve(null); };
+        const cancel = () => { sheet.remove(); log(`Picker "${title}": cancelled`); resolve(null); };
         sheet.querySelector('.bp-cancel').addEventListener('click', cancel);
         sheet.addEventListener('click', (e) => { if (e.target === sheet) cancel(); });
         document.body.appendChild(sheet);

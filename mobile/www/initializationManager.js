@@ -292,6 +292,10 @@ export class InitializationManager {
             critical: true,
             action: async () => {
                 const { makeAICallForSystemAction } = await import('./aiHandler.js');
+                const { gameState: gs } = await import('./state.js');
+                const { APP_VERSION } = await import('./config.js');
+                gs.gameId = gs.gameId || Date.now().toString(36);
+                (window.displayVisualError || console.log)(`=== NEW GAME ${gs.gameId} | ${gs.adventureTheme}${gs.customThemeDescription ? ` (${gs.customThemeDescription.slice(0, 60)})` : ''} | ${(gs.players || []).map(p => `${p.name} age ${p.age}`).join(', ')} | app ${APP_VERSION} ===`);
                 await makeAICallForSystemAction('start_adventure', true); // the opening must not use up player 1's turn
                 return { storyGenerated: true };
             },

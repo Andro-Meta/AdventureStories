@@ -107,7 +107,6 @@ let _migrationAttemptedThisSession = false;
 export function saveGameToLocalStorage(slotName) {
     // (Unchanged)
     const log = window.displayVisualError || console.log;
-    log(`SaveLoad: Attempting to save game to slot: "${slotName}"`);
 
     if (!slotName) {
         log("SaveLoad ERROR: Save failed - No slot name provided.");
@@ -123,7 +122,6 @@ export function saveGameToLocalStorage(slotName) {
     if (UI.elements.saveError) UI.hideMessage(UI.elements.saveError);
 
     try {
-        log("SaveLoad: Creating deep copy of gameState...");
         // BUG-26 fix: capture GodModeManager's Map state BEFORE the
         // JSON.stringify deep-clone strips it (Maps don't survive JSON
         // serialization without a toJSON method, and the manager is a
@@ -153,7 +151,6 @@ export function saveGameToLocalStorage(slotName) {
         delete stateToSave.popupQueue;
         delete stateToSave.activeModals;
         stateToSave.combatRoundInProgress = false;
-        log("SaveLoad: Pruning message history for save...");
         // Last 20 turns (compressing to 3 left the arc summary blind after a load).
         stateToSave.messageHistory = (stateToSave.messageHistory || []).slice(-20);
         stateToSave.isLoading = false;
@@ -210,7 +207,6 @@ export function saveGameToLocalStorage(slotName) {
             saveDate: Date.now(),
             gameState: stateToSave
         };
-        log(`SaveLoad: Saving data (Version: ${saveData.saveFormatVersion}, Date: ${new Date(saveData.saveDate).toLocaleString()})`);
         const json = JSON.stringify(saveData);
         try { localStorage.setItem(Config.SAVE_GAME_PREFIX + slotName, json); }
         catch (e) {
@@ -219,7 +215,7 @@ export function saveGameToLocalStorage(slotName) {
             pruneAutosaves(1, Config.SAVE_GAME_PREFIX + slotName);
             localStorage.setItem(Config.SAVE_GAME_PREFIX + slotName, json);
         }
-        log(`SaveLoad: Game saved successfully to slot: ${slotName}`);
+        log(`Saved: ${slotName}`);
         gameState.currentSaveSlot = slotName;
         return true;
 
@@ -389,6 +385,7 @@ export async function loadGame(slotName) {
 
         Object.assign(gameState, loadedGameState);
         log("SaveLoad: Loaded game state applied.");
+        log(`=== LOADED GAME ${gameState.gameId || '?'} | ${gameState.adventureTheme} | ${(gameState.players || []).map(p => `${p.name} L${p.level || 1}`).join(', ')} | turn ${gameState.turn} | app ${Config.APP_VERSION} ===`);
         UI.resetFx?.(); // HP from another game must not fire hit/heal effects
         // Saves made while resetGameState built an incomplete narrativeContext
         // lack these arrays, and every turn after loading would crash on them.

@@ -610,7 +610,7 @@ async function checkSpellLearning(caster, spell) {
             
             const newSpell = await Spells.generateDynamicSpell(spell.school, newType, newLevel, context);
             
-            if (newSpell) {
+            if (newSpell && !caster.spellcasting.knownSpells.some(x => String(x?.name).toLowerCase() === String(newSpell.name).toLowerCase())) { // never the same spell twice
                 // Add to known spells
                 caster.spellcasting.knownSpells.push(newSpell);
                 

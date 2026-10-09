@@ -15,6 +15,9 @@ export const AI_REQUEST_CONFIG = {
     RETRY_DELAY_MS: 2000 // network hiccups; per-minute 429s wait for Retry-After / 20 s
 };
 
+// Shown in the log header of every game (keep in step with package.json / build.gradle).
+export const APP_VERSION = '1.2.1';
+
 export const AI_DEFAULT_PARAMS = { max_tokens: 2048, temperature: 0.7, top_p: 0.95 };
 
 // CLOUD MODEL IDs — re-verified 2026-10-07 against openrouter.ai/api/v1/models

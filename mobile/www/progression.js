@@ -2,7 +2,7 @@
 //
 // Design (researched from games players love, see docs in the 2026-10-08
 // commit): every outcome has a visible reason.
-//  - Four stats, 0-5: Brave, Clever, Sneaky, Kind (Fighting Fantasy / PbtA
+//  - Four stats, 0-10 (was 0-5 until 10-09): Brave, Clever, Sneaky, Kind (Fighting Fantasy / PbtA
 //    sized: few, broad, readable by a 6-year-old).
 //  - Each choice is a check: d20 + stat against a difficulty, with the odds
 //    shown on the button (Baldur's Gate 3, Disco Elysium). Three result bands:
@@ -24,7 +24,8 @@ export const STATS = {
     sneaky: { icon: '🥷', name: 'Sneaky', does: 'hide, trick, take shortcuts', fight: '3% dodge per point, easier escapes' },
     kind:   { icon: '💛', name: 'Kind',   does: 'help, talk, make friends', fight: '+10% healing per point' }
 };
-export const STAT_MAX = 5;
+// Was 5: a long game (or god mode) maxed every stat and points piled up.
+export const STAT_MAX = 10;
 export const SPARKS_PER_POINT = 6;
 
 // Each exploration choice has an APPROACH, the stat it uses (brave, clever,
@@ -119,6 +120,20 @@ export function pickFromLadders(choices, want = null) {
         if (i >= 0) { out[i].type = d; out[i].text = out[i].ladder[d]; }
     }
     return out.map(({ ladder, ...c }) => c);
+}
+
+// Chance a fight starts this exploration turn, by exploration turns since
+// the last one (0, 1, 2, 3, 4+). Left to itself the storyteller started few
+// fights (playtest 10-09: 2-3 fight scenes in 57, the same two foes).
+export const ENCOUNTER_ODDS = [0, 0.1, 0.3, 0.6, 1];
+
+/**
+ * Is a fight due this turn? An encounter called last turn that the storyteller
+ * didn't start is still owed; otherwise the odds rise with every quiet turn,
+ * and a fight is certain after four.
+ */
+export function encounterDue(turnsSinceFight = 0, owed = false, rng = Math.random) {
+    return !!owed || rng() < ENCOUNTER_ODDS[Math.min(ENCOUNTER_ODDS.length - 1, Math.max(0, turnsSinceFight))];
 }
 
 /** The plan a shown set actually has ({ stat: danger }), or null if it isn't a full set. */
@@ -380,7 +395,7 @@ export function spendStatPoint(hero, stat) {
 
 // ---------------------------------------------------------------- fights
 export const braveAttack = (hero) => statOf(hero, 'brave');
-export const sneakyDodge = (hero) => 0.03 * statOf(hero, 'sneaky');
+export const sneakyDodge = (hero) => Math.min(0.25, 0.03 * statOf(hero, 'sneaky')); // capped: Sneaky 10 would dodge 30%
 export const cleverPower = (hero) => 1 + 0.10 * statOf(hero, 'clever');
 export const kindHealing = (hero) => 1 + 0.10 * statOf(hero, 'kind');
 

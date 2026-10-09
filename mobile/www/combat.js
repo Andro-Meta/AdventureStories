@@ -8,7 +8,7 @@ import * as Progression from './progression.js';
 // Import specific functions from utils needed here
 import { getRandomInt, getRandomElement, clamp, generateId } from './utils.js';
 // Import item functions needed for enemy loot generation
-import { generateLootDrop } from './items.js';
+import { generateLootDrop, lootTierFor, betterTier, partyLevel } from './items.js';
 import * as AdaptiveAbilities from './adaptiveAbilities.js';
 // Import UI function for popups and potentially updating UI after combat actions
 import { showPopup, renderPlayerCards, renderEnemyCards, updateContextHeaders, renderInventory } from './ui.js'; // Added renderInventory
@@ -956,6 +956,9 @@ export function isPartyWiped() {
 async function rollLootItem(enemy) {
     const log = window.displayVisualError || console.log;
     if (Math.random() > enemy.lootChance) return null;
+    // Loot keeps pace with the party: never below the tier for its level.
+    const lvl = partyLevel();
+    enemy.lootTier = betterTier(enemy.lootTier || 'Low', lootTierFor(lvl, enemy.isBoss ? 1 : 0));
     try {
         const dynamicItems = await import('./dynamicItems.js');
         if (enemy.isBoss) return await dynamicItems.generateBossRewardItem(gameState.adventureTheme, enemy.lootTier, { name: enemy.name, bossType: enemy.bossType || 'boss', phase: enemy.currentPhase || 0 });
@@ -1031,7 +1034,7 @@ export async function handleEnemyDefeat(enemyId) {
              const DynamicSpells = await import('./dynamicSpells.js');
              const rewardSpell = await DynamicSpells.generateSpellReward(enemy.type || 'regular', player);
              
-             if (rewardSpell) {
+             if (rewardSpell && !player.spellcasting.knownSpells.some(x => String(x?.name).toLowerCase() === String(rewardSpell.name).toLowerCase())) { // never the same spell twice
                  // Add to player's known spells
                  player.spellcasting.knownSpells.push(rewardSpell);
                  

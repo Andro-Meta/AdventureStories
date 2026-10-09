@@ -85,9 +85,11 @@ export function buildChoiceInstructions(types, inCombat, avoid = []) {
         : '';
     if (inCombat) {
         const list = types.map(t => `- ${t}: ${CHOICE_TYPE_MEANINGS[t]}`).join('\n');
+        const kit = combatKitLine();
+        (window.displayVisualError || console.log)(`Battle kit offered:${kit}`);
         return `CHOICES: exactly ${types.length}, one of each type:
 ${list}
-Each choice: under 160 characters, starts with a verb, names something specific from the narration. Attack must name the enemy it targets.${combatKitLine()}`;
+Each choice: under 160 characters, starts with a verb, names something specific from the narration. Attack must name the enemy it targets.${kit}`;
     }
     return `CHOICES: exactly 5, one for each APPROACH ("stat"), each used exactly once:
 - brave: force, daring, facing danger head-on
@@ -152,7 +154,7 @@ function combatKitLine() {
     // The same list the Special picker shows (spells and rituals too): live
     // 10-09 only specialMoves were named, Power Strike was cooling down, and
     // the storyteller invented "Phantasmal Step" and "Soul Burst".
-    const moves = (Battle.battleOptions('Special', p) || []).filter(o => !o.disabled).map(o => o.text.replace(/^(Use|Cast) /, ''));
+    const moves = [...new Set((Battle.battleOptions('Special', p) || []).filter(o => !o.disabled).map(o => o.text.replace(/^(Use|Cast) /, '')))];
     return ` Item must use one of ${p.name}'s items: ${items.length ? [...new Set(items)].join(', ') : 'none (write it as searching their pack)'}. Special must use ${moves.length ? `one of: ${moves.join(', ')}` : 'a bold signature move'}.`;
 }
 
@@ -174,12 +176,22 @@ export async function processAIResponse(prompt) {
     const words = isInitialSetup ? `${wc.min}-${Math.round(wc.max * 1.5)}` : `${wc.min}-${wc.max}`;
 
     planChoiceDangers(); // used if this turn ends with exploration choices
+    // Fights are paced by the game: the storyteller alone started few.
+    const wasOwed = !!gameState.encounterOwed;
+    const encounter = !inCombat && !isInitialSetup && !prompt.startsWith('[God mode]')
+        && Progression.encounterDue(gameState.turnsSinceFight || 0, wasOwed);
+    gameState.encounterOwed = encounter;
+    const met = (gameState.foesMet || []).slice(-8);
+    const encounterLine = encounter
+        ? `\n\nENCOUNTER THIS TURN: the heroes' action runs into trouble and a FIGHT STARTS. A new foe that fits this place and the ${getThemeName()} theme bursts in${met.length ? ` (not one already met: ${met.join(', ')})` : ''}; it may be a minion of the villain, never the villain unless this is the climax. In "ops" add it with /enemies/- (name, hp, atk, def, abilities) AND replace /inCombat true, then write four fight choices (Attack, Special, Item, Run). Let the action the hero chose still matter: it decides how the fight begins.`
+        : '';
+    if (encounter) log(`Encounter due (quiet turns ${gameState.turnsSinceFight || 0}${wasOwed ? ', owed' : ''}).`);
     const recent = (gameState.recentTurns || []).slice(-3);
     const scene = isInitialSetup ? prompt : `${recent.length ? `RECENT TURNS (oldest first):\n${recent.join('\n')}\n\n` : ''}PREVIOUS SCENE:
 ${gameState.currentNarrative || '(the story is just beginning)'}
 
 WHAT ${actor.toUpperCase()} JUST DID:
-${prompt}`;
+${prompt}${encounterLine}`;
 
     const userPrompt = `${scene}
 
@@ -255,6 +267,12 @@ ${buildDiffInstructions(pIdx)}`;
         }
         // The diff may have started or ended a fight; choices must match the mode now.
         const nowInCombat = !!gameState.inCombat;
+        // Pacing count: quiet exploration turns since the last fight.
+        if (!inCombat && !isInitialSetup) {
+            if (nowInCombat) { gameState.turnsSinceFight = 0; gameState.encounterOwed = false; }
+            else gameState.turnsSinceFight = (gameState.turnsSinceFight || 0) + 1;
+            if (encounter && !nowInCombat) log('Encounter was due but no fight started; it stays owed.');
+        }
         let choices = null;
         // Accept the reply's choices whenever they fit the mode now: a turn that
         // starts a fight may already carry Attack/Special/Item/Run (asked for

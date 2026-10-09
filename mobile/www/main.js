@@ -2,8 +2,8 @@
 // Entry point for the Adventure Stories application
 
 // --- Game log ---
-// One capped log (window.__advLog, newest 1000 lines), also saved on the
-// device (localStorage 'adv.log', newest 400) so a slow or broken turn can be
+// One capped log (window.__advLog, newest 1500 lines), also saved on the
+// device (localStorage 'adv.log', newest 1500) so a slow or broken turn can be
 // read afterwards: tools/phone.mjs logs, or AI Settings > Copy debug log.
 // It used to add a DOM node per line for the whole session (pages grew by
 // thousands of nodes) and wrote everything with console.error.
@@ -13,7 +13,7 @@ let advLogDirty = false;
 const saveAdvLog = () => {
     if (!advLogDirty) return;
     advLogDirty = false;
-    try { localStorage.setItem('adv.log', JSON.stringify(window.__advLog.slice(-400))); } catch (_) {}
+    try { localStorage.setItem('adv.log', JSON.stringify(window.__advLog.slice(-1500))); } catch (_) {}
 };
 setInterval(saveAdvLog, 5000);
 addEventListener('pagehide', saveAdvLog);
@@ -27,7 +27,7 @@ window.displayVisualError = (message, error = null) => {
     }
     const line = `[${new Date().toLocaleTimeString()}] ${message}${details}`;
     window.__advLog.push(line);
-    if (window.__advLog.length > 1000) window.__advLog.splice(0, window.__advLog.length - 1000);
+    if (window.__advLog.length > 1500) window.__advLog.splice(0, window.__advLog.length - 1500);
     advLogDirty = true;
     (error ? console.error : console.log)(line);
 };
@@ -211,7 +211,7 @@ function setupEventListeners(UI, setup, actionHandler, saveLoad) { // Added acti
             displayVisualError(`Attaching listener: ${eventType} on #${elementId} for ${handlerName}`);
             // Use an async wrapper always to handle both sync and async handlers
             element.addEventListener(eventType, async (event) => {
-                displayVisualError(`Event Triggered: ${handlerName} on #${elementId}`);
+
                 try {
                     await handler(event); // Await the handler (works for both sync/async)
                 } catch (e) {
@@ -219,7 +219,7 @@ function setupEventListeners(UI, setup, actionHandler, saveLoad) { // Added acti
                     // Optional: Show a generic error popup to the user
                     // UI.showPopup(`Error processing ${handlerName}.`, 'error');
                 } finally {
-                    displayVisualError(`Event Handling Complete: ${handlerName} on #${elementId}`);
+
                 }
             });
         } else {
@@ -235,13 +235,13 @@ function setupEventListeners(UI, setup, actionHandler, saveLoad) { // Added acti
             elementsNodeList.forEach((element, index) => {
                 const specificHandlerName = `${handlerNamePrefix}_${index}`;
                 const eventHandler = async (event) => {
-                    displayVisualError(`Event Triggered: ${specificHandlerName} on element matching '${selector}'`);
+
                     try {
                          await handler(event, element, index); // Await handler (works for sync/async)
                     } catch (e) {
                          displayVisualError(`Error in handler ${specificHandlerName} for event ${eventType} on element matching '${selector}'`, e);
                     } finally {
-                         displayVisualError(`Event Handling Complete: ${specificHandlerName}`);
+
                     }
                 };
                 element.addEventListener(eventType, eventHandler);
@@ -260,7 +260,7 @@ function setupEventListeners(UI, setup, actionHandler, saveLoad) { // Added acti
         if (b) { e.stopPropagation(); UI.promptStatPoints(b.dataset.hero); }
     });
     safeAddListener('copyDebugLogBtn', 'click', async () => {
-        const text = (window.__advLog || []).slice(-400).join('\n');
+        const text = (window.__advLog || []).join('\n');
         try { await navigator.clipboard.writeText(text); UI.showPopup('Debug log copied', 'success', 2000); }
         catch (_) { UI.showPopup('Copy blocked on this device', 'info', 2500); }
     }, 'copyDebugLogBtn');

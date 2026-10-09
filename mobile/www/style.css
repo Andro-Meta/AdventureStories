@@ -1057,25 +1057,6 @@ footer { margin-top: 2rem; text-align: center; }
     box-shadow: 0 0 15px rgba(255, 215, 0, 0.3);
 }
 
-.god-mode-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 8px;
-}
-
-.god-mode-header .god-mode-icon {
-    font-size: 1.3em;
-    animation: godModePulse 2s infinite;
-}
-
-.god-mode-label {
-    font-weight: bold;
-    color: #ffd700;
-    font-size: 0.9em;
-    text-shadow: 0 0 5px rgba(255, 215, 0, 0.5);
-}
-
 .god-mode-input-container {
     display: flex;
     flex-direction: column;
@@ -1129,33 +1110,10 @@ footer { margin-top: 2rem; text-align: center; }
     transform: translateY(0);
 }
 
-.god-mode-separator {
-    margin: 10px 0;
-    text-align: center;
-}
-
-.god-mode-separator hr {
-    border: none;
-    height: 1px;
-    background: linear-gradient(to right, transparent, #ffd700, transparent);
-    margin: 8px 0;
-}
-
-.separator-text {
-    color: var(--text-muted-color);
-    font-size: 0.8em;
-    margin: 0;
-    font-style: italic;
-}
-
 /* Responsive adjustments for God Mode */
 @media (max-width: 768px) {
     .god-mode-choice-input {
         padding: 8px;
-    }
-    
-    .god-mode-label {
-        font-size: 0.8em;
     }
     
     #godModeCustomChoice {
@@ -2150,3 +2108,9 @@ button.primary { background: var(--accent-color, #6c5ce7); color: #fff; border-c
 body::before, body::after { content: ''; position: fixed; left: 0; right: 0; z-index: 1000; pointer-events: none; background: var(--bg-color); }
 body::before { top: 0; height: env(safe-area-inset-top); }
 body::after { bottom: 0; height: env(safe-area-inset-bottom); }
+
+/* God mode "write your own": below the choices, compact (Michael 10-09). */
+.god-mode-choice-input.compact { margin-top: 0.4rem; padding: 0.6rem 0.7rem; }
+.god-mode-choice-input.compact .god-mode-or { margin: 0 0 0.35rem; font-size: 0.85rem; color: var(--text-muted-color); }
+.god-mode-choice-input.compact textarea { min-height: 0; font-size: 0.95rem; padding: 0.5rem; }
+.god-mode-choice-input.compact .god-mode-submit { padding: 0.5rem 0.8rem; font-size: 0.95rem; }

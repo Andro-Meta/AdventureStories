@@ -226,7 +226,8 @@ export async function advanceTurn(opts = {}) {
     //      }
     // }
 
-    log(`Turn advanced processing complete. Current Player: ${getCurrentPlayer()?.name || 'None'}, Turn: ${gameState.turn}`);
+    // One line of state per turn: what the log could never show before.
+    log(`TURN ${gameState.turn} | ${(gameState.players || []).map(p => `${p.name} HP ${p.hp}/${p.maxHp} MP ${p.mp ?? 0}/${p.maxMp ?? 0} L${p.level || 1} XP ${p.xp || 0} pts ${p.statPoints || 0} coins ${p.coins || 0} ATK ${p.atk ?? '?'} DEF ${p.def ?? '?'}`).join(' ; ')} | ${gameState.currentLocation?.name || '?'} | ${gameState.inCombat ? 'fight' : 'explore'} | next: ${getCurrentPlayer()?.name || 'None'}`);
 
     // --- Update UI for New Turn State (Player Cards, Headers, Quick Actions) ---
     UI.updateGameHeader();
