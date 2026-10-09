@@ -241,6 +241,30 @@ const ok = (who) => () => ({ status: 200, body: { choices: [{ message: { content
   localAI.setApiKey('groq-key', 'groq_qwen');
   check(!Router.isBenched(GQ), 'saving a new key for it clears the rest');
 }
+// Review 10-08 #1: a non-Groq provider (no remaining-requests header) that
+// answers must leave its rest. null <= 0 is true in JS, so it never did.
+{
+  Router.reset();
+  Router.record(G1, { ok: false, ms: 50, benchUntil: Date.now() + 3600e3, why: "today's free requests used up" });
+  Router.record(G1, { ok: true, ms: 900 });
+  check(!Router.isBenched(G1) && Router.rank([G1, GQ, OR])[0] === G1, 'a benched Gemini that answers is back in play (and becomes the sticky one)');
+}
+// Review 10-08 #6: Google's daily-quota marker sits in "details", past the
+// first 500 characters of the body.
+{
+  const longMsg = 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/usage?tab=rate-limit. ' + 'x'.repeat(300);
+  const body = JSON.stringify([{ error: { code: 429, message: longMsg, status: 'RESOURCE_EXHAUSTED', details: [{ '@type': 'type.googleapis.com/google.rpc.QuotaFailure', violations: [{ quotaMetric: 'generativelanguage.googleapis.com/generate_content_free_tier_requests', quotaId: 'GenerateRequestsPerDayPerProjectPerModel-FreeTier' }] }] } }]);
+  Router.reset(); calls.length = 0;
+  googleReply = () => ({ status: 429, body: JSON.parse(body) });
+  groqReply = ok('groq');
+  localStorage.removeItem('adv.apiKey.generativelanguage.googleapis.com#2');
+  await ask();
+  localStorage.setItem('adv.apiKey.generativelanguage.googleapis.com#2', 'g2-key');
+  const snap = Router.snapshot([G1])[0];
+  check(snap.restingUntil > Date.now() + 3600e3 && /used up/.test(snap.why), `Google daily quota (marker after 500 chars) rests until the reset, not 60 s (${snap.why})`);
+  const minute = classifyFailure(429, '{"error":{"message":"Resource has been exhausted (e.g. check quota). Please retry in 39.1s."}}', null, C.CLOUD_PROVIDERS.flashlite_google, 1000);
+  check(minute.kind === 'rate' && minute.until === 1000 + 39100, `Google per-minute 429 waits the "retry in 39.1s" it asks for (${minute.until - 1000} ms)`);
+}
 
 console.log(failed ? `✗ ${failed} FAILOVER CHECK(S) FAILED` : '✓ failover checks pass');
 process.exit(failed ? 1 : 0);

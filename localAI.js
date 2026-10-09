@@ -33,7 +33,8 @@ export function classifyFailure(status, body = '', headers = null, provider = nu
         // Google: quota_exceeded = daily; rate_limit_exceeded / too_many_requests = per minute.
         // Groq: 0 requests left today. OpenRouter: "free-models-per-day".
         if (groqLeft === '0' || /quota_exceeded|per[- ]?day|daily|PerDay|\bRPD\b|free-models-per-day/i.test(body)) return r('used_up', "today's free requests used up", dailyReset());
-        return r('rate', 'too many requests this minute', rest(retryAfter || Router.parseDuration(h('x-ratelimit-reset-tokens')) || 60e3));
+        const googleRetry = Number((body.match(/retry in (\d+(?:\.\d+)?)s/i) || [])[1]) * 1000 || 0;
+        return r('rate', 'too many requests this minute', rest(retryAfter || googleRetry || Router.parseDuration(h('x-ratelimit-reset-tokens')) || 60e3));
     }
     // Google answers a bad key with 400 API_KEY_INVALID or 403; others with 401.
     if (status === 401 || ((status === 400 || status === 403) && /api[ _-]?key|API_KEY_INVALID|PERMISSION_DENIED|unauthenticated/i.test(body))) {
@@ -252,8 +253,11 @@ export class LocalAIClient {
             Router.noteHeaders(benchKey(provider), response.headers);
 
             if (!response.ok) {
-                let body = '';
-                try { body = (await response.text()).slice(0, 500); } catch (_) {}
+                // Classify on the whole body (Google puts "PerDay" in details, past
+                // the first 500 characters); only the message is trimmed.
+                let fullBody = '';
+                try { fullBody = await response.text(); } catch (_) {}
+                const body = fullBody.slice(0, 500);
                 clearTimeout(timeoutId);
                 // A model that refuses JSON mode: retry once without it.
                 if (response.status === 400 && requestData.response_format && /response_format|json|mime/i.test(body)) {
@@ -262,7 +266,7 @@ export class LocalAIClient {
                 }
                 const err = new Error(`HTTP ${response.status}: ${response.statusText}${body ? ' — ' + body : ''}`);
                 err.httpStatus = response.status;
-                err.failure = classifyFailure(response.status, body, response.headers, provider);
+                err.failure = classifyFailure(response.status, fullBody.slice(0, 20000), response.headers, provider);
                 err.retryable = ['rate', 'busy', 'server', 'timeout'].includes(err.failure.kind);
                 err.retryAfterMs = Number(response.headers.get('retry-after')) * 1000 || 0;
                 Router.noteHeaders(benchKey(provider), response.headers);

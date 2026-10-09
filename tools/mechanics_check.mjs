@@ -1533,6 +1533,39 @@ await block(async () => {
     `pickFromLadders follows the plan and drops the ladders (${picked.map(c => c.type).join(', ')})`);
 });
 
+// =====================================================================
+section('Batch 21: review 10-08 (story already told; markdown choice text)');
+await block(async () => {
+  const Prog = await import('../progression.js');
+  const offline = globalThis.fetch;
+  const story = JSON.stringify({ narration: 'Ava leaps the gap and lands in a pile of coins.', ops: [] }); // no choices: a choices-only call follows
+  let n = 0;
+  globalThis.fetch = window.fetch = async () => {
+    n++;
+    if (n === 1) return { ok: true, status: 200, statusText: '200', headers: { get: () => null }, json: async () => ({ choices: [{ message: { content: story } }] }), text: async () => '' };
+    throw new TypeError('Failed to fetch'); // the follow-up choices call fails
+  };
+  localStorage.setItem('adv.cloudProvider', 'groq_qwen'); localStorage.setItem('adv.apiKey.api.groq.com', 'test');
+  try {
+    const { p } = fresh(); p.stats = { brave: 1, clever: 1, sneaky: 1, kind: 1 }; p.coins = 50;
+    gameState.currentChoices = [{ type: 'Reckless', stat: 'brave', text: 'Leap the gap' }];
+    pinRandom(0.99); // natural 20: a reward is applied before the story call
+    await AH.handlePlayerChoice('Reckless', 'Leap the gap'); unpinRandom();
+    check(p.coins > 50 && gameState.currentNarrative.includes('pile of coins') && gameState.currentChoices.length === 5,
+      `story told, then the choices call failed: the roll stands (coins 50 -> ${p.coins}) and plain choices appear (${gameState.currentChoices.length})`);
+  } finally { globalThis.fetch = window.fetch = offline; localStorage.removeItem('adv.apiKey.api.groq.com'); localStorage.removeItem('adv.cloudProvider'); }
+
+  // The button sends the text without markdown; the roll must still use that choice's approach.
+  const { p } = fresh(); p.stats = { brave: 0, clever: 0, sneaky: 5, kind: 0 };
+  gameState.currentChoices = [
+    { type: 'Bold', stat: 'luck', text: 'Juggle the lanterns' },
+    { type: 'Bold', stat: 'sneaky', text: '**Ghost Step** past the guard' }];
+  pinRandom(0.5);
+  await AH.handlePlayerChoice('Bold', 'Ghost Step past the guard'); unpinRandom();
+  const r = gameState.narrativeContext.lastOutcome?.roll;
+  check(r?.stat === 'sneaky', `a choice with **markdown** rolls its own approach (rolled ${r?.stat || 'luck'})`);
+});
+
 console.error = realError;
 out(`\nfetch attempts blocked: ${fetchCalls}; elapsed ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 out(failed ? `✗ ${failed} mechanics check(s) failed` : '✓ all mechanics checks passed');

@@ -519,12 +519,13 @@ Fight round ${gameState.combat?.round || 1}. Narrate this round so the fight CHA
                                 const fresh = await requestChoicesOnly(gameState.currentNarrative, false, getCurrentPlayer()?.name);
                                 gameState.currentChoices = fresh;
                                 UI.renderChoices(fresh);
+                                renderedChoices = true; // the fighter's choices below must not replace these
                             } catch (err) { log(`Post-fight choices for next hero failed: ${err.message}`); }
                         }
                     }
                     cbStep(12, `AI call returned, choices=${aiResponse?.choices?.length || 0}`);
                     const choices = aiResponse?.choices;
-                    if (Array.isArray(choices) && choices.length > 0) {
+                    if (!renderedChoices && Array.isArray(choices) && choices.length > 0) {
                         UI.renderChoices(choices);
                         renderedChoices = true;
                         cbStep(13, 'rendered AI choices');
@@ -577,7 +578,10 @@ Fight round ${gameState.combat?.round || 1}. Narrate this round so the fight CHA
             const checkType = validateAndMapActionType(actionType);
             Progression.ensureStats(currentPlayer);
             heroBeforeRoll = JSON.parse(JSON.stringify(currentPlayer));
-            const chosen = (gameState.currentChoices || []).find(c => c?.type === actionType && String(c.text || '').trim() === String(choiceText || '').trim())
+            // The button sends the text without markdown (ui.js); two choices can
+            // share a danger, so match the text, cleaned the same way.
+            const plainText = (t) => String(t || '').replace(/\*\*|__|`/g, '').trim();
+            const chosen = (gameState.currentChoices || []).find(c => c?.type === actionType && plainText(c.text) === plainText(choiceText))
                 || (gameState.currentChoices || []).find(c => c?.type === actionType);
             const roll = Progression.rollCheck(checkType, currentPlayer, Math.random, chosen?.stat);
             const result = Progression.outcomeFor(roll, currentPlayer);

@@ -258,7 +258,15 @@ ${buildDiffInstructions(pIdx)}`;
         try { choices = validateChoicesPayload(payload, nowInCombat); }
         catch (e) { log(`Turn choices unusable (${e.message}); asking for choices only.`); }
         const done = recentActionTexts(prompt);
-        if (!choices) choices = await requestChoicesOnly(cleanNarrative, nowInCombat, null, done);
+        if (!choices) {
+            // The story is already told and applied: a failure here must not
+            // fail the turn (that undid a roll the story had just described).
+            try { choices = await requestChoicesOnly(cleanNarrative, nowInCombat, null, done); }
+            catch (e) {
+                log(`Choices call failed after the story (${e.message}); using plain choices.`);
+                choices = nowInCombat ? validateAndFixChoices([], true) : Progression.fallbackChoices(gameState.choicePlan);
+            }
+        }
         // One fresh choices-only call when the set repeats a recent action;
         // keep whichever set is better.
         const flaws = (cs) => nowInCombat ? 0 : (cs || []).filter(c => isNearRepeat(c.text, done)).length * 2 + approachGaps(cs);
