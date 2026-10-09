@@ -82,8 +82,7 @@ export const storyTurnSchema = {
             type: 'array',
             items: {
                 type: 'object',
-                required: ['text'],
-                properties: { type: { type: 'string' }, danger: { type: 'string' }, text: { type: 'string', minLength: 1 }, stat: { type: 'string', enum: CHOICE_STATS } }
+                properties: { type: { type: 'string' }, text: { type: 'string' }, stat: { type: 'string', enum: CHOICE_STATS }, safe: { type: 'string' }, bold: { type: 'string' }, reckless: { type: 'string' } }
             }
         }
     }
@@ -149,11 +148,12 @@ export const explorationChoicesSchema = {
             items: {
                 type: 'object',
                 additionalProperties: false,
-                required: ['stat', 'danger', 'text'],
+                required: ['stat', 'safe', 'bold', 'reckless'],
                 properties: {
                     stat: { type: 'string', enum: CHOICE_STATS },
-                    danger: { type: 'string', enum: DANGERS },
-                    text: { type: 'string', minLength: 1, maxLength: 240 }
+                    safe: { type: 'string', minLength: 1, maxLength: 240 },
+                    bold: { type: 'string', minLength: 1, maxLength: 240 },
+                    reckless: { type: 'string', minLength: 1, maxLength: 240 }
                 }
             }
         }
@@ -312,9 +312,18 @@ export function validateChoicesPayload(payload, inCombat) {
     if (!inCombat) {
         if (choices.length !== 5) throw new Error(`Expected 5 choices, got ${choices.length}`);
         return choices.map(raw => {
-            if (!raw || typeof raw.text !== 'string' || !raw.text.trim()) throw new Error('Choice entry missing text');
-            const c = normalizeChoice({ type: raw.type, danger: raw.danger, stat: raw.stat, text: raw.text.trim() });
-            return c.stat ? { type: c.type, text: c.text, stat: c.stat } : { type: c.type, text: c.text };
+            // A danger ladder {stat, safe, bold, reckless} (aiHandler picks the
+            // version later) or a single {stat, danger, text} choice.
+            const key = (k) => Object.keys(raw || {}).find(x => x.toLowerCase() === k);
+            const ladder = {};
+            for (const d of DANGERS) { const v = raw?.[key(d.toLowerCase())]; if (typeof v === 'string' && v.trim()) ladder[d] = v.trim(); }
+            const rungs = Object.keys(ladder);
+            const text = typeof raw?.text === 'string' && raw.text.trim() ? raw.text.trim() : ladder[rungs[0]];
+            if (!text) throw new Error('Choice entry missing text');
+            const c = normalizeChoice({ type: raw.type, danger: raw.danger || (rungs.length && !raw.text ? rungs[0] : undefined), stat: raw.stat, text });
+            const out = c.stat ? { type: c.type, text: c.text, stat: c.stat } : { type: c.type, text: c.text };
+            if (rungs.length > 1) out.ladder = ladder;
+            return out;
         });
     }
     const validTypes = COMBAT_CHOICE_TYPES;

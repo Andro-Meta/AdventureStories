@@ -97,6 +97,30 @@ export function pickDangerPlan(history = [], rng = Math.random) {
     return Object.fromEntries(APPROACHES.map((a, i) => [a, best[i]]));
 }
 
+/**
+ * The storyteller writes each approach as a danger LADDER: three escalating
+ * versions of one idea ({ Safe, Bold, Reckless }). Written side by side the
+ * danger is relative, which models judge far better than an absolute label
+ * (a writer told "make this Reckless" missed ~1 in 6 times on the phone).
+ * Picks the version this round's plan wants; if a danger is still missing,
+ * switches a choice that has it from a danger shown more than once. Ladders
+ * are dropped from the result.
+ */
+export function pickFromLadders(choices, want = null) {
+    const out = (choices || []).map(c => ({ ...c }));
+    for (const c of out) {
+        if (!c.ladder) continue;
+        const d = (want?.[c.stat] && c.ladder[want[c.stat]]) ? want[c.stat] : (c.ladder[c.type] ? c.type : DANGERS.find(x => c.ladder[x]));
+        if (d) { c.type = d; c.text = c.ladder[d]; }
+    }
+    for (const d of DANGERS) {
+        if (out.some(c => c.type === d)) continue;
+        const i = out.findIndex(c => c.ladder?.[d] && out.filter(x => x.type === c.type).length > 1);
+        if (i >= 0) { out[i].type = d; out[i].text = out[i].ladder[d]; }
+    }
+    return out.map(({ ladder, ...c }) => c);
+}
+
 /** The plan a shown set actually has ({ stat: danger }), or null if it isn't a full set. */
 export function planOf(choices) {
     const plan = Object.fromEntries((choices || []).filter(c => APPROACHES.includes(c?.stat) && DANGERS.includes(c?.type)).map(c => [c.stat, c.type]));
