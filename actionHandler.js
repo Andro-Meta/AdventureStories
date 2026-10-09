@@ -160,7 +160,8 @@ export async function handlePlayerChoice(actionType, choiceText) {
             // INSTRUMENTED for smoke #6 — every step logs a [CB-N] marker so
             // we can see the exact line where the recurring Item-in-combat
             // hang happens. Remove these markers once the bug is identified.
-            const cbStep = (n, extra) => log(`[CB-${n}] ${actionType} ${extra || ''}`);
+            // Step markers only when something went wrong (each fight round wrote ~15 lines).
+            const cbStep = (n, extra) => { if (/caught|fail|error|timeout|not found|no valid/i.test(extra || '')) log(`[CB-${n}] ${actionType} ${extra}`); };
             cbStep(1, 'enter combat branch');
             // Keep the fight visible while the moves resolve (the dark loading
             // screen hid both actions, so they seemed to happen at once); it
@@ -613,7 +614,9 @@ Fight round ${gameState.combat?.round || 1}. Narrate this round so the fight CHA
                 else if (d < 0) { UI.showPopup(`Lost ${-d} coins!`, 'warning'); outcomeNotes.push(`lost ${-d} coins`); }
             } else if (result.note) outcomeNotes.push(`found ${result.note}`);
             if (result.item) {
-                const newItem = Items.generateThemedItem(gameState.adventureTheme, getRandomElement(result.item.tierPool), getRandomElement(result.item.typePool));
+                // Never below the tier for the party's level (finds were Low/Medium at any level).
+                const tier = Items.betterTier(getRandomElement(result.item.tierPool), Items.lootTierFor(Items.partyLevel()));
+                const newItem = Items.generateThemedItem(gameState.adventureTheme, tier, getRandomElement(result.item.typePool));
                 if (newItem) {
                     currentPlayer.inventory.push(newItem);
                     UI.showPopup(`Found ${newItem.name}!`, 'item');
@@ -1831,6 +1834,10 @@ export function buyShopItem(itemData) {
           UI.showPopup("Cannot buy item: Invalid data.", 'error');
           return;
      }
+     if (itemData.type !== 'Consumable' && (itemData.boughtBy || []).includes(player.id)) {
+         UI.showPopup(`${player.name} already has ${itemData.name}.`, 'info'); // one of each gear or charm per hero
+         return;
+     }
      if (player.coins >= modifiedPrice) {
          const oldCoins = player.coins;
          player.coins -= modifiedPrice;
@@ -1842,6 +1849,10 @@ export function buyShopItem(itemData) {
          if (newItem.type === 'Consumable' && newItem.quantity === undefined) { newItem.quantity = 1; }
          if (!player.inventory) player.inventory = [];
          player.inventory.push(newItem);
+         // One of each piece of gear or charm per hero: it leaves this hero's
+         // shop, the others can still buy their own (live 10-09: five copies
+         // of the same lucky charm). Consumables stay on sale.
+         if (itemData.type !== 'Consumable') itemData.boughtBy = [...new Set([...(itemData.boughtBy || []), player.id])];
          log(`Added new item instance to inventory: ${newItem.name} (New ID: ${newItem.id})`);
          UI.showPopup(`Bought ${newItem.name}!`, 'success');
          // Update UI

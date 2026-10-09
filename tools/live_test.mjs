@@ -133,6 +133,10 @@ if (TURNS) {
   const tag = args.includes('--tag') ? args[args.indexOf('--tag') + 1] : 'run';
   const story = await gs(g => ({ theme: g.adventureTheme, custom: g.customThemeDescription, location: g.currentLocation?.name, goal: g.adventureGoal, villain: g.questProgress?.villain, threads: g.storyThreads || [], names: Object.keys(g.entityMemory?.npcs || {}).concat(Object.keys(g.entityMemory?.locations || {})), usedBefore: JSON.parse(localStorage.getItem('adv.usedNames') || '[]'), log: g.storyLog }));
   fs.writeFileSync(`${ROOT}test-results/story_${tag}.json`, JSON.stringify(story, null, 2));
+  // Fight pacing: encounters the game called vs fights the storyteller started.
+  const pace = await page.evaluate(() => { const l = window.__advLog || []; return { called: l.filter(x => /Encounter due/.test(x)).length, ignored: l.filter(x => /Encounter was due but no fight started/.test(x)).length, foes: l.filter(x => /\+enemy "/.test(x)).map(x => x.replace(/.*\+enemy "([^"]+)".*\(HP (\d+)\/.*/, '$1 $2hp')) }; });
+  console.log(`encounters called ${pace.called}, ignored ${pace.ignored}, foes: ${pace.foes.join(', ') || 'none'}`);
+  fs.writeFileSync(`${ROOT}test-results/live_log_${tag}.txt`, (await page.evaluate(() => (window.__advLog || []).join('\n'))));
   console.log(`saved ${story.log.length} scenes -> test-results/story_${tag}.json | AI calls ${usage.calls} | tokens in ${usage.in} out ${usage.out}`);
   await browser.close(); server.kill(); process.exit(0);
 }

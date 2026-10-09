@@ -967,7 +967,6 @@ export function renderChoices(choices, handler = null) {
             .sort((a, b) => rank(a) - rank(b));
     }
     if (!handler && !gameState.inCombat && wantsStatPrompt(gameState.players)) setTimeout(() => promptStatPoints(), 700);
-    log(`UI: Rendering choices. Data type: ${typeof choices}, Is Array: ${Array.isArray(choices)}, Handler Mode: ${!!handler}`);
     
     if (!elements.choicesContainer) {
         log("ERROR: Choices container not found!");
@@ -982,61 +981,6 @@ export function renderChoices(choices, handler = null) {
         const who = gameState.players?.[gameState.currentPlayerIndex]?.name;
         head.textContent = gameState.inCombat ? `Battle${(gameState.players || []).length > 1 && who ? ` · ${who}'s move` : ''}: choose a move`
             : (gameState.players || []).length > 1 && who ? `${who}'s turn: choose an action` : 'Choose your action:';
-    }
-
-    // Add God Mode custom choice input if active
-    if (gameState.godModeManager?.isActive) {
-        const godModeInput = document.createElement('div');
-        godModeInput.className = 'god-mode-choice-input';
-        godModeInput.innerHTML = `
-            <div class="god-mode-header">
-                <span class="god-mode-icon">⚡</span>
-                <span class="god-mode-label">GOD MODE - Write Your Own Choice:</span>
-            </div>
-            <div class="god-mode-input-container">
-                <textarea 
-                    id="godModeCustomChoice" 
-                    placeholder="Write anything you want to do... Create worlds, summon creatures, rewrite reality, travel through time - your imagination is the only limit!"
-                    rows="3"
-                    maxlength="500"
-                ></textarea>
-                <button id="godModeSubmitBtn" class="god-mode-submit">Execute Divine Will</button>
-            </div>
-        `;
-        elements.choicesContainer.appendChild(godModeInput);
-        
-        // Add event listener for God Mode choice submission
-        const submitBtn = document.getElementById('godModeSubmitBtn');
-        const textarea = document.getElementById('godModeCustomChoice');
-        
-        if (submitBtn && textarea) {
-            submitBtn.addEventListener('click', async () => {
-                const customChoice = textarea.value.trim();
-                if (customChoice) {
-                    await handleGodModeChoice(customChoice);
-                    textarea.value = '';
-                }
-            });
-            
-            // Allow Enter to submit (with Shift+Enter for new lines)
-            textarea.addEventListener('keydown', async (e) => {
-                // Swipe/glide keyboards compose words; never act mid-composition.
-                if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
-                    e.preventDefault();
-                    const customChoice = textarea.value.trim();
-                    if (customChoice) {
-                        await handleGodModeChoice(customChoice);
-                        textarea.value = '';
-                    }
-                }
-            });
-        }
-        
-        // Add separator
-        const separator = document.createElement('div');
-        separator.className = 'god-mode-separator';
-        separator.innerHTML = '<hr><p class="separator-text">Or choose from standard options:</p>';
-        elements.choicesContainer.appendChild(separator);
     }
 
     // If no valid choices provided, show loading state
@@ -1096,7 +1040,32 @@ export function renderChoices(choices, handler = null) {
         elements.choicesContainer.appendChild(button);
     });
 
-    log(`UI: Successfully rendered ${choices.length} ${handler ? 'custom' : 'standard'} choices.`);
+    // God mode: write your own, below the choices and compact (Michael 10-09:
+    // it sat above them and took half the screen).
+    if (gameState.godModeManager?.isActive && !handler) appendGodModeInput();
+}
+
+function appendGodModeInput() {
+    const box = document.createElement('div');
+    box.className = 'god-mode-choice-input compact';
+    box.innerHTML = `
+        <p class="god-mode-or">Or write your own:</p>
+        <div class="god-mode-input-container">
+            <textarea id="godModeCustomChoice" placeholder="Anything at all: summon, travel, rewrite reality..." rows="2" maxlength="500"></textarea>
+            <button id="godModeSubmitBtn" class="god-mode-submit">⚡ Divine Will</button>
+        </div>`;
+    elements.choicesContainer.appendChild(box);
+    const submitBtn = box.querySelector('#godModeSubmitBtn');
+    const textarea = box.querySelector('#godModeCustomChoice');
+    const submit = async () => {
+        const customChoice = textarea.value.trim();
+        if (customChoice) { await handleGodModeChoice(customChoice); textarea.value = ''; }
+    };
+    submitBtn.addEventListener('click', submit);
+    // Enter submits (Shift+Enter for a new line); swipe keyboards compose words, so never mid-composition.
+    textarea.addEventListener('keydown', async (e) => {
+        if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); await submit(); }
+    });
 }
 
 /** Updates the enabled/disabled state and visibility of quick action buttons. */
@@ -1300,7 +1269,9 @@ export function renderShop() {
         return;
     }
      // Sort shop items? Optional (e.g., by cost or type)
-     const sortedShop = [...gameState.shopItems].sort((a, b) => {
+     // Gear and charms this hero already bought are gone from their shop.
+     const shopper = gameState.players?.[gameState.currentPlayerIndex];
+     const sortedShop = gameState.shopItems.filter(i => i && !(i.boughtBy || []).includes(shopper?.id)).sort((a, b) => {
           if (!a || !b) return 0;
           if ((a.cost ?? Infinity) !== (b.cost ?? Infinity)) return (a.cost ?? Infinity) - (b.cost ?? Infinity);
           if (a.type !== b.type) return a.type.localeCompare(b.type);

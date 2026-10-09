@@ -746,7 +746,7 @@ await block(async () => {
   check(p.isDowned === true, `engine HP 0 downs the hero (downed ${p.isDowned})`);
   Engine.applyDiff([{ op: 'add', path: '/enemies/-', value: { name: 'Bog Rat', hp: 10, atk: '7', def: '-3' } }]);
   const rat = gameState.enemies.find(e => e.name === 'Bog Rat');
-  check(rat?.atk === 7 && rat?.def === 0, `enemy atk "7" -> ${JSON.stringify(rat?.atk)}, def "-3" -> ${JSON.stringify(rat?.def)}`);
+  check(typeof rat?.atk === 'number' && rat.atk >= 7 && rat.atk <= 12 && typeof rat?.def === 'number' && rat.def >= 0, `enemy atk "7" -> ${JSON.stringify(rat?.atk)}, def "-3" -> ${JSON.stringify(rat?.def)} (numbers; level floor applies)`);
   p.level = 3; const lv = 3;
   Engine.applyDiff([{ op: 'replace', path: '/players/0/level', value: 2 }]);
   check(p.level === lv, `level cannot go down (${lv} -> ${p.level})`);
@@ -1640,15 +1640,15 @@ await block(async () => {
   check(!refused && !p.inventory.some(i => i.id === 'item_old_orb'), `an old save's "Artifact" item can be used (refused: ${refused})`);
 
   // 2. God mode set level 20 with every stat already 5: no points that can never be spent.
-  const g = fresh(); g.p.stats = { brave: 5, clever: 5, sneaky: 5, kind: 5 };
+  const M = Prog.STAT_MAX; const g = fresh(); g.p.stats = { brave: M, clever: M, sneaky: M, kind: M };
   gameState.isGoalComplete = true; // god mode
   Engine.applyDiff([{ op: 'replace', path: '/players/0/level', value: 20 }]);
-  check((g.p.statPoints || 0) === 0, `level 20 with all stats at 5: ${g.p.statPoints || 0} unspendable points handed out`);
-  const h = Prog.ensureStats({ stats: { brave: 5, clever: 5, sneaky: 4, kind: 5 }, statPoints: 16 });
+  check((g.p.statPoints || 0) === 0, `level 20 with all stats at the max (${M}): ${g.p.statPoints || 0} unspendable points handed out`);
+  const h = Prog.ensureStats({ stats: { brave: M, clever: M, sneaky: M - 1, kind: M }, statPoints: 16 });
   check(h.statPoints === 1, `a save holding 16 points with room for 1 keeps 1 (${h.statPoints})`);
-  const x = Prog.ensureStats({ stats: { brave: 5, clever: 5, sneaky: 5, kind: 5 }, level: 3, xp: 0 });
+  const x = Prog.ensureStats({ stats: { brave: M, clever: M, sneaky: M, kind: M }, level: 3, xp: 0 });
   Prog.gainXp(x, 500);
-  check(x.statPoints === 0 && x.level > 3, `levelling with every stat at 5 gives no stat points (level ${x.level}, points ${x.statPoints})`);
+  check(x.statPoints === 0 && x.level > 3, `levelling with every stat at the max gives no stat points (level ${x.level}, points ${x.statPoints})`);
 
   // 3. Cancel on the stat picker: it must not reopen until a new point is earned.
   const c = Prog.ensureStats({ stats: { brave: 1, clever: 1, sneaky: 1, kind: 1 }, statPoints: 2 });
@@ -1670,6 +1670,105 @@ await block(async () => {
   const ins = AIH.buildChoiceInstructions(['Attack', 'Special', 'Item', 'Run'], true, []);
   gameState.inCombat = false;
   check(/Whispering Pendulum/.test(ins) && /Ward of Ash/.test(ins), `combat prompt lists the hero's real specials (${(ins.match(/Special must use[^.]*/) || ['none'])[0]})`);
+});
+
+// =====================================================================
+section('Batch 24: more fights, foes and loot that keep pace (playtest 10-09)');
+await block(async () => {
+  const Prog = await import('../progression.js');
+  const Items = await import('../items.js');
+  // Pacing: never right after a fight, certain after four quiet turns, owed ones stay owed.
+  const rate = (t) => { let n = 0; for (let i = 0; i < 4000; i++) if (Prog.encounterDue(t, false)) n++; return n / 4000; };
+  check(rate(0) === 0 && rate(4) === 1 && rate(9) === 1 && Prog.encounterDue(0, true) && rate(2) > 0.2 && rate(2) < 0.4,
+    `encounter odds by quiet turns: 0 -> ${rate(0)}, 2 -> ${rate(2).toFixed(2)}, 4+ -> ${rate(4)}; an owed one -> always`);
+  let gaps = [], t = 0; for (let i = 0; i < 5000; i++) { if (Prog.encounterDue(t, false)) { gaps.push(t); t = 0; } else t++; }
+  const avg = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+  check(avg >= 2 && avg <= 3.5, `a fight every ${avg.toFixed(1)} exploration turns on average (the storyteller alone: about 1 in 15 scenes)`);
+
+  // Foes keep pace with the party's level; god mode keeps what it asked for.
+  const foeAt = (level, spec) => { const { p } = fresh(); p.level = level; gameState.enemies = []; gameState.isGoalComplete = false; Engine.applyDiff([{ op: 'add', path: '/enemies/-', value: spec }], { strict: false }); return gameState.enemies[0]; };
+  const f1 = foeAt(1, { name: 'Ghoul', hp: 30, atk: 7, def: 3 }), f10 = foeAt(10, { name: 'Ghoul', hp: 30, atk: 7, def: 3 });
+  check(f10.maxHp > f1.maxHp * 2 && f10.atk > f1.atk * 1.8 && f10.def > f1.def, `an ordinary foe at level 10 vs 1: HP ${f1.maxHp} -> ${f10.maxHp}, ATK ${f1.atk} -> ${f10.atk}, DEF ${f1.def} -> ${f10.def}`);
+  const b1 = foeAt(1, { name: 'Vance', hp: 60, atk: 9, def: 4, isBoss: true }), b10 = foeAt(10, { name: 'Vance', hp: 60, atk: 9, def: 4, isBoss: true });
+  check(b10.maxHp > b1.maxHp * 2 && b10.atk > b1.atk, `a boss at level 10 vs 1: HP ${b1.maxHp} -> ${b10.maxHp}, ATK ${b1.atk} -> ${b10.atk}`);
+  const tiny = foeAt(1, { name: 'Rat', hp: 5, atk: 2, def: 0 });
+  check(tiny.maxHp >= 15 && tiny.maxHp <= 25, `a tiny foe still makes a fight (HP ${tiny.maxHp}, within 60-100% of the level's size)`);
+  const brute = foeAt(1, { name: 'Ogre', hp: 30, atk: 40, def: 3 });
+  check(brute.atk <= 12, `a storyteller's ATK 40 at level 1 is capped (ATK ${brute.atk}), no one-shot heroes`);
+  { const { p } = fresh(); p.level = 10; gameState.enemies = []; gameState.isGoalComplete = true;
+    Engine.applyDiff([{ op: 'add', path: '/enemies/-', value: { name: 'Void Dragon', hp: 60, atk: 5, def: 2 } }], { strict: false });
+    check(gameState.enemies[0].maxHp === 60 && gameState.enemies[0].atk === 5, 'god mode foes keep the size asked for'); gameState.isGoalComplete = false; }
+
+  // Loot tier follows the level (it was Low for every level).
+  const tiers = (L, shift = 0) => { const c = {}; for (let i = 0; i < 2000; i++) { const x = Items.lootTierFor(L, shift); c[x] = (c[x] || 0) + 1; } return c; };
+  const t1 = tiers(1), t8 = tiers(8), boss8 = tiers(8, 1);
+  check((t1.Low || 0) > 1000 && !(t8.Low) && (t8.Special || 0) + (t8.Legendary || 0) > 300 && (boss8.Legendary || 0) >= (t8.Legendary || 0),
+    `loot tiers: level 1 ${JSON.stringify(t1)}; level 8 ${JSON.stringify(t8)}; a level-8 boss ${JSON.stringify(boss8)}`);
+  check(Items.betterTier('Low', 'High') === 'High' && Items.betterTier('Special', 'Medium') === 'Special', 'betterTier keeps the better tier');
+
+  // The turn prompt calls the encounter, the count resets when a fight starts, and an ignored call stays owed.
+  const offline = globalThis.fetch; let asked = '';
+  const reply = (fightStarts) => JSON.stringify({ narration: 'Something moves in the dark.', ops: fightStarts ? [{ op: 'add', path: '/enemies/-', value: { name: 'Grave Hound', hp: 30, atk: 7, def: 3 } }, { op: 'replace', path: '/inCombat', value: true }] : [],
+    choices: fightStarts ? ['Attack', 'Special', 'Item', 'Run'].map(type => ({ type, text: type === 'Attack' ? 'Strike the Grave Hound' : `${type} now` }))
+      : ['brave', 'clever', 'sneaky', 'kind', 'luck'].map(stat => ({ stat, safe: `${stat} s ${Math.random()}`, bold: `${stat} b ${Math.random()}`, reckless: `${stat} r ${Math.random()}` })) });
+  let starts = false;
+  globalThis.fetch = window.fetch = async (u, o) => { const m = JSON.parse(o.body).messages; if (/story game|text adventure/i.test(m[0].content) && m[1].content.includes('JUST DID')) asked = m[1].content; return { ok: true, status: 200, statusText: '200', headers: { get: () => null }, json: async () => ({ choices: [{ message: { content: reply(starts) } }] }), text: async () => '' }; };
+  localStorage.setItem('adv.cloudProvider', 'groq_qwen'); localStorage.setItem('adv.apiKey.api.groq.com', 'test');
+  try {
+    const { p } = fresh(); gameState.turnsSinceFight = 4; gameState.encounterOwed = false; gameState.foesMet = ['Spectral Butler'];
+    gameState.currentChoices = [{ type: 'Bold', stat: 'brave', text: 'Kick the door in' }];
+    starts = false; asked = '';
+    await AH.handlePlayerChoice('Bold', 'Kick the door in');
+    check(/ENCOUNTER THIS TURN/.test(asked) && /not one already met: Spectral Butler/.test(asked), 'after 4 quiet turns the prompt calls a fight with a new foe');
+    check(gameState.encounterOwed === true && gameState.turnsSinceFight === 5 && !gameState.inCombat, `the storyteller ignored it: still owed (quiet turns ${gameState.turnsSinceFight})`);
+    gameState.isLoading = false; starts = true; asked = '';
+    gameState.currentChoices = [{ type: 'Bold', stat: 'brave', text: 'Kick the next door in' }];
+    await AH.handlePlayerChoice('Bold', 'Kick the next door in');
+    check(/ENCOUNTER THIS TURN/.test(asked) && gameState.inCombat && gameState.turnsSinceFight === 0 && gameState.encounterOwed === false && gameState.foesMet.includes('Grave Hound'),
+      `owed fight called again, it starts: count reset, foe remembered (${gameState.foesMet.join(', ')})`);
+  } finally { globalThis.fetch = window.fetch = offline; localStorage.removeItem('adv.apiKey.api.groq.com'); localStorage.removeItem('adv.cloudProvider'); gameState.inCombat = false; }
+});
+
+// =====================================================================
+section('Batch 25: stats past 5; one of each gear or charm per hero in the shop (10-09)');
+await block(async () => {
+  const Prog = await import('../progression.js');
+  const { createNewPlayer } = await import('../state.js');
+  // Stats go to 10, in god mode too; Sneaky's dodge stays capped.
+  const h = Prog.ensureStats({ stats: { brave: 5, clever: 1, sneaky: 1, kind: 1 }, statPoints: 1 });
+  check(Prog.STAT_MAX === 10 && Prog.spendStatPoint(h, 'brave') && h.stats.brave === 6, `a stat can go past 5 (Brave ${h.stats.brave}, max ${Prog.STAT_MAX})`);
+  const { p } = fresh(); gameState.isGoalComplete = true;
+  Engine.applyDiff([{ op: 'replace', path: '/players/0/stats/brave', value: 9 }]);
+  check(p.stats.brave === 9, `god mode can set Brave 9 (${p.stats.brave})`); gameState.isGoalComplete = false;
+  check(Prog.sneakyDodge({ stats: { sneaky: 10 } }) === 0.25 && Prog.sneakyDodge({ stats: { sneaky: 5 } }) === 0.15, `Sneaky dodge: 5 -> ${Prog.sneakyDodge({ stats: { sneaky: 5 } })}, 10 -> ${Prog.sneakyDodge({ stats: { sneaky: 10 } })} (capped)`);
+
+  // Shop: a charm or weapon leaves the buyer's shop only; potions stay on sale.
+  const a = fresh().p; a.coins = 500;
+  const b = createNewPlayer('Ben', 10); b.coins = 500;
+  gameState.players = [a, b]; gameState.currentPlayerIndex = 0;
+  gameState.shopItems = [
+    { id: 'shop_charm', name: 'Blessed Candle Stub', type: 'Misc', tier: 'High', cost: 60, stats: { luck: 1 } },
+    { id: 'shop_sword', name: 'Iron Sword', type: 'Weapon', tier: 'Low', cost: 40, stats: { atk: 5 } },
+    { id: 'shop_potion', name: 'Healing Potion', type: 'Consumable', tier: 'Low', cost: 15, stats: { heal: 30 } }];
+  const shown = () => { const cards = []; const real = UI.elements.shopDisplay; UI.elements.shopDisplay = { innerHTML: '', appendChild(c) { if (c?.dataset?.itemId) cards.push(c.dataset.itemId); } }; try { UI.renderShop(); } finally { UI.elements.shopDisplay = real; } return cards; };
+  for (const id of ['shop_charm', 'shop_sword', 'shop_potion', 'shop_charm', 'shop_potion']) AH.buyShopItem(gameState.shopItems.find(i => i.id === id));
+  const charms = a.inventory.filter(i => i.name === 'Blessed Candle Stub').length, potions = a.inventory.filter(i => i.name === 'Healing Potion').length;
+  check(charms === 1 && potions === 2, `Ava buys the charm twice and the potion twice: ${charms} charm, ${potions} potions`);
+  const forAva = shown();
+  gameState.currentPlayerIndex = 1; const forBen = shown();
+  check(!forAva.includes('shop_charm') && !forAva.includes('shop_sword') && forAva.includes('shop_potion') && ['shop_charm', 'shop_sword', 'shop_potion'].every(id => forBen.includes(id)),
+    `Ava's shop: ${forAva.join(', ')}; Ben's shop: ${forBen.join(', ')}`);
+  AH.buyShopItem(gameState.shopItems.find(i => i.id === 'shop_charm'));
+  check(b.inventory.some(i => i.name === 'Blessed Candle Stub') && !shown().includes('shop_charm'), 'Ben gets his own charm, then it leaves his shop too');
+});
+
+await block(async () => {
+  // Live 10-09 log: "Special must use one of: Light, Light, ...": a spell learned twice.
+  const Battle = await import('../battle.js');
+  const { p } = fresh(); p.mp = 20;
+  p.spellcasting = { knownSpells: [{ name: 'Light', mpCost: 3 }, { name: 'Light', mpCost: 3 }, { name: 'Storm Shot', mpCost: 5 }] };
+  const labels = Battle.battleOptions('Special', p).map(o => o.label);
+  check(labels.filter(l => /^Light/.test(l)).length === 1, `a spell known twice shows once in the Special picker (${labels.join(', ')})`);
 });
 
 console.error = realError;

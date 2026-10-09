@@ -21,7 +21,7 @@ import { gameState, recordStoryBeat, recordWorldStateChange } from './state.js';
 import * as Combat from './combat.js';
 import * as Config from './config.js';
 import { levelUp } from './battle.js';
-import { gainXp, usableType, ensureStats } from './progression.js';
+import { gainXp, usableType, ensureStats, STAT_MAX } from './progression.js';
 
 /**
  * Phase 1.2: Look up a status effect from Config.STATUS_EFFECTS by name
@@ -138,7 +138,8 @@ const PATHS = [
                 return `${player.name} now has ${stack.quantity}x "${stack.name}"`;
             }
             player.inventory.push(item);
-            return `${player.name} gained item "${item.name}"`;
+            const st = Object.entries(item.stats || {}).map(([k, v]) => `${k} ${v}`).join(', ');
+            return `${player.name} gained item "${item.name}" (${item.tier} ${item.type}${st ? `; ${st}` : ''}${item.effect ? `; "${item.effect.slice(0, 60)}"` : ''})`;
         }
     },
 
@@ -227,20 +228,20 @@ const PATHS = [
         }
     },
 
-    // ---- Player stats Brave/Clever/Sneaky/Kind, 0-5 (god mode; progression.js) ----
+    // ---- Player stats Brave/Clever/Sneaky/Kind, 0-STAT_MAX (god mode; progression.js) ----
     {
         regex: /^\/players\/(\d+)\/stats\/(brave|clever|sneaky|kind)$/,
         ops: ['replace'],
         validate: (m, value, gs) => {
             if (!gs.players?.[Number(m[1])]) return `players[${m[1]}] does not exist`;
-            if (typeof value !== 'number' || !Number.isFinite(value)) return 'stat must be a number 0-5';
+            if (typeof value !== 'number' || !Number.isFinite(value)) return `stat must be a number 0-${STAT_MAX}`;
             if (!gs.isGoalComplete) return 'stats grow by play (levels and practice), not narration';
             return null;
         },
         apply: (m, value, gs) => {
             const p = gs.players[Number(m[1])];
             p.stats = p.stats || {};
-            p.stats[m[2]] = Math.max(0, Math.min(5, Math.round(value)));
+            p.stats[m[2]] = Math.max(0, Math.min(STAT_MAX, Math.round(value)));
             try { Combat.recalculateCharacterStats(p); } catch (_) {}
             return `${p.name}.${m[2]} = ${p.stats[m[2]]}`;
         }
@@ -530,18 +531,30 @@ const PATHS = [
                 // Fixed size, not "at least": the narrator's 75-HP magistrate took a
                 // solo hero 13 hits while hitting back for 10-20 (unwinnable).
                 // God mode keeps the size it asked for (a summoned Void Dragon was 60 HP).
+                const L = foeLevel(gs);
                 enemy.hp = enemy.maxHp = gs.isGoalComplete
                     ? Math.min(99999, Math.max(20, Math.round(Number(value.maxHp || value.hp)) || 300))
-                    : 40 + 20 * party;
-                enemy.atk = Math.max(enemy.atk, 9);
-                enemy.def = Math.max(enemy.def, 4);
+                    : Math.round((40 + 20 * party) * (1 + 0.3 * (L - 1))); // a gentler curve than ordinary foes (fight_sim: 46% wins at L12 on the steep one)
+                if (!gs.isGoalComplete) {
+                    enemy.atk = foeStat(enemy.atk, 10 + 1.6 * (L - 1));
+                    enemy.def = foeStat(enemy.def, 4 + 1.2 * (L - 1));
+                }
                 enemy.lootTier = 'High';
                 enemy.lootChance = 1;
                 if (!Array.isArray(value.abilities) || !value.abilities.length) enemy.abilities = ['Crushing Blow'];
             }
-            // Ordinary foes stay quick: live, a 45-HP commander needed 7+ hits.
-            if (!enemy.isBoss) enemy.hp = enemy.maxHp = Math.max(5, Math.min(Number(enemy.maxHp) || 20, 15 + 10 * Math.max(1, (gs.players || []).length)));
+            // Ordinary foes stay quick (live, a 45-HP commander needed 7+ hits) but
+            // keep pace with the party's level: they were the same 25 HP / atk 7
+            // at level 12 as at level 1, so a fight cost 1% of the hero's HP.
+            if (!enemy.isBoss && !gs.isGoalComplete) {
+                const L = foeLevel(gs);
+                const target = Math.round((15 + 10 * Math.max(1, (gs.players || []).length)) * foeScale(L));
+                enemy.hp = enemy.maxHp = Math.max(5, Math.round(Math.min(target, Math.max(target * 0.6, Number(enemy.maxHp) || target)))); // the storyteller's size, within 60-100% of the level's
+                enemy.atk = foeStat(enemy.atk, 8 + 1.8 * (L - 1));
+                enemy.def = foeStat(enemy.def, 3 + 1.0 * (L - 1));
+            }
             gs.enemies.push(enemy);
+            gs.foesMet = [...new Set([...(gs.foesMet || []), enemy.name])].slice(-12); // so new fights bring new foes
             // Joining a fight already in progress: give it a turn. Enemies added
             // mid-combat used to never act (they were missing from initiative).
             // A fight with no proper turn order yet (inCombat came first, or a
@@ -916,6 +929,12 @@ export function validateOp(op) {
 // Narrator items arrive typed "weapon", "potion" or not at all; the game
 // only uses Weapon/Armor/Consumable, so map them (live-like: an untyped
 // "Healing Potion" became Misc and could never be drunk).
+// Foe scaling with the party's average level (fight_sim.mjs measures it).
+const foeLevel = (gs) => { const ls = (gs.players || []).filter(Boolean).map(p => p.level || 1); return ls.length ? ls.reduce((a, b) => a + b, 0) / ls.length : 1; };
+const foeScale = (L) => 1 + 0.4 * (L - 1);
+// At least the level's value, at most 40% above it (a narrator's atk 30 one-shot level-1 heroes).
+const foeStat = (given, base) => Math.round(Math.min(Math.max(Number(given) || 0, base), base * 1.4));
+
 function itemType(value) {
     const t = String(value.type || '').trim().toLowerCase();
     const known = { weapon: 'Weapon', armor: 'Armor', armour: 'Armor', consumable: 'Consumable', potion: 'Consumable',
@@ -1065,7 +1084,7 @@ export function describeAllowedPaths() {
         '/players/0/atk       (replace, number) - attack stat',
         '/players/0/def       (replace, number) - defense stat',
         '/players/0/level     (replace, number)',
-        '/players/0/stats/brave|clever|sneaky|kind (replace, 0-5; god mode only)',
+        `/players/0/stats/brave|clever|sneaky|kind (replace, 0-${STAT_MAX}; god mode only)`,
         '/players/0/inventory/- (add, {name, type, tier, effect, stats})',
         '/players/0/inventory/<id> (remove)',
         '/players/0/equipment/weapon|armor (replace, item name or id, or null)',

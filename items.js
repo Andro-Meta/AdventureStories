@@ -780,6 +780,33 @@ const priceTag = (value) => Math.max(5, Math.round(value * (0.95 + Math.random()
  * still 23% of stock at level 6). Level 1 shops sell starter kit; by level 5
  * most stock is High, with the odd Special or Legendary.
  */
+const TIER_ORDER = ['Low', 'Medium', 'High', 'Special', 'Legendary', 'God'];
+
+/** The better of two tiers. */
+export function betterTier(a, b) {
+    return TIER_ORDER.indexOf(a) >= TIER_ORDER.indexOf(b) ? a : b;
+}
+
+/**
+ * The tier loot drops at for this level, rolled from the same odds as the
+ * shop. Before, every ordinary foe and exploration find dropped Low gear at
+ * any level (playtest 10-09: a level-20 hero's best weapon was ATK +38).
+ * `shift` moves it a level band up or down (a boss drops a band higher).
+ */
+export function lootTierFor(level, shift = 0, rng = Math.random) {
+    const odds = shopTierOdds(Math.max(1, Number(level) || 1));
+    let r = rng(), tier = Object.keys(odds).pop();
+    for (const [t, p] of Object.entries(odds)) { if ((r -= p) <= 0) { tier = t; break; } }
+    // A boss's drop is a tier better (the odds table tops out at level 6).
+    return TIER_ORDER[Math.min(TIER_ORDER.indexOf('Legendary'), TIER_ORDER.indexOf(tier) + shift)];
+}
+
+/** The party's average level (1 when there is no party yet). */
+export function partyLevel(players = gameState.players) {
+    const ls = (players || []).filter(Boolean).map(p => p.level || 1);
+    return ls.length ? ls.reduce((a, b) => a + b, 0) / ls.length : 1;
+}
+
 function shopTierOdds(level) {
     const table = [
         null,
