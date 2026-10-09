@@ -11,6 +11,7 @@ on:
     branches: [main]
   schedule:
     - cron: '17 6 * * 1'  # Mondays 06:17 UTC
+  workflow_dispatch:  # run by hand (Actions tab, or: gh workflow run CodeQL)
 
 jobs:
   analyze:
