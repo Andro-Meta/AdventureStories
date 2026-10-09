@@ -22,6 +22,7 @@ import * as Combat from './combat.js';
 import * as Config from './config.js';
 import { levelUp } from './battle.js';
 import { gainXp, usableType, ensureStats, STAT_MAX } from './progression.js';
+import * as Items from './items.js';
 
 /**
  * Phase 1.2: Look up a status effect from Config.STATUS_EFFECTS by name
@@ -130,6 +131,7 @@ const PATHS = [
                 quantity: Math.max(1, Math.floor(Number(value.quantity ?? 1) || 1))
             };
             player.inventory = player.inventory || [];
+            Items.inferItemEffects(item); // its words become real effects ("maxes out stats", "restores mana")
             // Consumables stack by name instead of filling the pack with copies.
             const stack = item.type === 'Consumable'
                 && player.inventory.find(i => i?.type === 'Consumable' && String(i.name).trim().toLowerCase() === item.name.trim().toLowerCase());

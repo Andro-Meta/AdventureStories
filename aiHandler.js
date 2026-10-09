@@ -8,6 +8,7 @@ import * as UI from './ui.js';
 import * as API from './api_new.js';
 import * as Progression from './progression.js';
 import * as Battle from './battle.js';
+import * as Items from './items.js';
 import * as AdaptiveAbilities from './adaptiveAbilities.js';
 import { getChoiceSchema, validateChoicesPayload, arcMemorySchema, validateArcMemoryPayload, storyTurnSchema, validateNarrativeTurnPayload, EXPLORATION_CHOICE_TYPES, COMBAT_CHOICE_TYPES } from './schemas.js';
 import { applyDiff, describeAllowedPaths } from './engine.js';
@@ -186,12 +187,32 @@ export async function processAIResponse(prompt) {
         ? `\n\nENCOUNTER THIS TURN: the heroes' action runs into trouble and a FIGHT STARTS. A new foe that fits this place and the ${getThemeName()} theme bursts in${met.length ? ` (not one already met: ${met.join(', ')})` : ''}; it may be a minion of the villain, never the villain unless this is the climax. In "ops" add it with /enemies/- (name, hp, atk, def, abilities) AND replace /inCombat true, then write four fight choices (Attack, Special, Item, Run). Let the action the hero chose still matter: it decides how the fight begins.`
         : '';
     if (encounter) log(`Encounter due (quiet turns ${gameState.turnsSinceFight || 0}${wasOwed ? ', owed' : ''}).`);
+    // No fight this turn: maybe a rest spot, a treasure, a trap, a stranger or a puzzle.
+    const heroes = (gameState.players || []).filter(Boolean);
+    const frac = (k, m) => Math.min(...heroes.map(h => (h[k] || 0) / Math.max(1, h[m] || 1)));
+    const beat = (!encounter && !inCombat && !isInitialSetup && !prompt.startsWith('[God mode]') && heroes.length)
+        ? Progression.pickBeat({ hpFrac: frac('hp', 'maxHp'), mpFrac: frac('mp', 'maxMp'), sinceRest: (gameState.turn || 0) - (gameState.lastRestTurn ?? -99) })
+        : null;
+    let treasure = null;
+    if (beat === 'treasure') {
+        const type = ['Weapon', 'Armor', 'Consumable', 'Consumable'][Math.floor(Math.random() * 4)];
+        treasure = Items.generateThemedItem(gameState.adventureTheme, Items.lootTierFor(Items.partyLevel()), type);
+    }
+    const BEAT_LINES = {
+        rest: 'A SAFE PLACE THIS TURN: the heroes come upon somewhere to recover (a spring, a camp, a kindly healer, a quiet inn, a hidden nook) that fits this place. Show them resting and recovering; the game restores their HP and MP. No fight this turn.',
+        treasure: treasure ? `A TREASURE THIS TURN: the hero who acted finds ${treasure.name} (${treasure.type}); show where it was hidden. The game puts it in their pack: do not add it in "ops".` : '',
+        trap: 'A TRAP THIS TURN: a hidden danger (a snare, a collapsing floor, a cursed object) springs; the hero\'s action decides whether they dodge it. No fight.',
+        stranger: 'A STRANGER THIS TURN: someone new appears who needs help, offers a deal, or knows a secret about the quest. Give them a name.',
+        puzzle: 'A PUZZLE THIS TURN: a riddle, lock, mechanism or strange sign blocks the way; clever thinking or a lucky guess could solve it.'
+    };
+    const beatLine = beat && BEAT_LINES[beat] ? `\n\n${BEAT_LINES[beat]}` : '';
+    if (beatLine) log(`Story moment: ${beat}${treasure ? ` (${treasure.name})` : ''}.`);
     const recent = (gameState.recentTurns || []).slice(-3);
     const scene = isInitialSetup ? prompt : `${recent.length ? `RECENT TURNS (oldest first):\n${recent.join('\n')}\n\n` : ''}PREVIOUS SCENE:
 ${gameState.currentNarrative || '(the story is just beginning)'}
 
 WHAT ${actor.toUpperCase()} JUST DID:
-${prompt}${encounterLine}`;
+${prompt}${encounterLine}${beatLine}`;
 
     const userPrompt = `${scene}
 
@@ -267,6 +288,28 @@ ${buildDiffInstructions(pIdx)}`;
         }
         // The diff may have started or ended a fight; choices must match the mode now.
         const nowInCombat = !!gameState.inCombat;
+        // The game's side of the story moment (only once the story is told).
+        if (beatLine && !nowInCombat) {
+            if (beat === 'rest') {
+                gameState.lastRestTurn = gameState.turn || 0;
+                for (const h of heroes) {
+                    const hp0 = h.hp, mp0 = h.mp || 0;
+                    if (h.isDowned) { h.isDowned = false; h.hp = 0; } // a rest wakes a downed hero
+                    h.hp = Math.min(h.maxHp, Math.max(h.hp, 0) + Math.round(h.maxHp * 0.5));
+                    h.mp = Math.min(h.maxMp || 0, mp0 + Math.round((h.maxMp || 0) * 0.5));
+                    log(`Rest: ${h.name} +${h.hp - Math.max(0, hp0)} HP, +${h.mp - mp0} MP`);
+                }
+                UI.showPopup('A safe place to rest: HP and MP restored.', 'healing', 3000);
+            } else if (beat === 'treasure' && treasure) {
+                const finder = gameState.players?.[gameState.currentPlayerIndex] || heroes[0];
+                finder.inventory = finder.inventory || [];
+                finder.inventory.push(treasure);
+                Progression.fuseCharms(finder);
+                UI.showPopup(`💎 ${finder.name} found ${treasure.name}!`, 'item', 3000);
+                log(`Treasure: ${finder.name} gained "${treasure.name}" (${treasure.tier} ${treasure.type})`);
+            }
+            UI.renderPlayerCards();
+        }
         // Pacing count: quiet exploration turns since the last fight.
         if (!inCombat && !isInitialSetup) {
             if (nowInCombat) { gameState.turnsSinceFight = 0; gameState.encounterOwed = false; }

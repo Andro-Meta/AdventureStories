@@ -782,6 +782,52 @@ const priceTag = (value) => Math.max(5, Math.round(value * (0.95 + Math.random()
  */
 const TIER_ORDER = ['Low', 'Medium', 'High', 'Special', 'Legendary', 'God'];
 
+// What a usable item actually does, read from its words (Michael 10-09: "we
+// need real effects"; the storyteller's "Orb of Zenith - maxes out stats"
+// did nothing but talk). Only for consumables with no real stats yet.
+const EFFECT_RULES = [
+    { re: /max(es|ed)? out|all (of )?(your |his |her |their )?(stats|abilities|skills)|transcend|ascend/, add: { statUp: { brave: 1, clever: 1, sneaky: 1, kind: 1 } } },
+    { re: /(permanent|forever|raises?|increases?|boosts?|grants?).{0,30}(strength|brav|courage)/, add: { statUp: { brave: 1 } } },
+    { re: /(permanent|forever|raises?|increases?|boosts?|grants?).{0,30}(wisdom|intellect|mind|clever|cunning)/, add: { statUp: { clever: 1 } } },
+    { re: /(permanent|forever|raises?|increases?|boosts?|grants?).{0,30}(agility|stealth|shadow|sneak)/, add: { statUp: { sneaky: 1 } } },
+    { re: /(permanent|forever|raises?|increases?|boosts?|grants?).{0,30}(heart|kindness|charm|compassion)/, add: { statUp: { kind: 1 } } },
+    { re: /mana|\bmp\b|magic|energy|focus|arcane|stamina/, add: { mpPercent: 0.4 } },
+    // ("restores" alone is not healing: "restores your arcane focus" is MP)
+    { re: /heal|mend|health|vital|wound|bandage|\bhp\b|\blife\b|recover/, add: { healPercent: 0.35 } },
+    { re: /antidote|cure|purif|cleans|curse|poison/, add: { cure: 'All' } },
+    { re: /ward|protect|shield|barrier|armou?r|guard/, add: { applyStatus: 'Shield' } },
+    { re: /strength|power|rage|fury|might|courage/, add: { applyStatus: 'Berserk' } },
+    { re: /speed|swift|haste|quick/, add: { applyStatus: 'Haste' } },
+    { re: /regenerat|renew|soothing|over time/, add: { applyStatus: 'Regen' } },
+];
+const REAL_EFFECTS = ['heal', 'healPercent', 'mp', 'mpPercent', 'cure', 'applyStatus', 'statUp', 'throwStatus', 'revive', 'luck'];
+
+/**
+ * Give a consumable real effects from its name and description when it has
+ * none (an exact "restores 27 HP" becomes heal 27). Anything unrecognised
+ * refreshes a little HP and MP rather than doing nothing. Mutates and returns item.
+ */
+export function inferItemEffects(item) {
+    if (!item || item.type !== 'Consumable') return item;
+    const st = item.stats || {};
+    if (REAL_EFFECTS.some(k => st[k])) return item;
+    const text = `${item.name || ''} ${item.effect || ''}`.toLowerCase();
+    const out = {};
+    for (const r of EFFECT_RULES) {
+        if (!r.re.test(text)) continue;
+        for (const [k, v] of Object.entries(r.add)) {
+            if (k === 'statUp') out.statUp = { ...(out.statUp || {}), ...v };
+            else if (k === 'applyStatus') out.applyStatus = [...new Set([].concat(out.applyStatus || [], v))];
+            else if (out[k] == null) out[k] = v;
+        }
+    }
+    const hp = text.match(/(\d+)\s*(hp|health|hit points)/);
+    if (hp && out.healPercent) { out.heal = Number(hp[1]); delete out.healPercent; }
+    if (!Object.keys(out).length) { out.healPercent = 0.15; out.mpPercent = 0.15; } // unknown: a small refresh, never nothing
+    item.stats = { ...st, ...out };
+    return item;
+}
+
 /** The better of two tiers. */
 export function betterTier(a, b) {
     return TIER_ORDER.indexOf(a) >= TIER_ORDER.indexOf(b) ? a : b;

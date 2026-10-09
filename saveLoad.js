@@ -290,6 +290,54 @@ function pruneAutosaves(keep, exceptKey = null) {
     } catch (_) { /* storage unavailable: nothing to prune */ }
 }
 
+/**
+ * Every save in one file (Michael 10-09: a phone reset or reinstall must not
+ * lose a game). On the phone the Android share sheet sends it anywhere (Drive,
+ * email, Files); in a browser it downloads.
+ */
+export async function exportSaves() {
+    const saves = {};
+    for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith(Config.SAVE_GAME_PREFIX)) saves[k] = localStorage.getItem(k);
+    }
+    const count = Object.keys(saves).length;
+    if (!count) { UI.showPopup('No saves to export yet.', 'info'); return; }
+    const json = JSON.stringify({ app: 'adventure-stories', version: Config.APP_VERSION, exportedAt: new Date().toISOString(), saves });
+    const name = `adventure-stories-saves-${new Date().toISOString().slice(0, 10)}.json`;
+    const cap = globalThis.Capacitor;
+    try {
+        if (cap?.isNativePlatform?.() && cap.Plugins?.Filesystem && cap.Plugins?.Share) {
+            const { uri } = await cap.Plugins.Filesystem.writeFile({ path: name, data: json, directory: 'CACHE', encoding: 'utf8' });
+            await cap.Plugins.Share.share({ title: 'Adventure Stories saves', files: [uri] });
+        } else {
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+            a.download = name; document.body.appendChild(a); a.click(); a.remove();
+            setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+        }
+        UI.showPopup(`Exported ${count} save${count > 1 ? 's' : ''}.`, 'success');
+    } catch (e) {
+        (window.displayVisualError || console.log)(`Export failed: ${e.message}`);
+        UI.showPopup(`Export failed: ${e.message}`, 'error');
+    }
+}
+
+/** Saves from an exported file; a save with the same name is replaced. Returns how many were imported. */
+export async function importSaves(text) {
+    let data;
+    try { data = JSON.parse(text); } catch (_) { UI.showPopup('That file is not an Adventure Stories save file.', 'error'); return 0; }
+    const saves = data?.saves && typeof data.saves === 'object' ? data.saves : null;
+    if (data?.app !== 'adventure-stories' || !saves) { UI.showPopup('That file is not an Adventure Stories save file.', 'error'); return 0; }
+    let n = 0;
+    for (const [k, v] of Object.entries(saves)) {
+        if (!k.startsWith(Config.SAVE_GAME_PREFIX) || typeof v !== 'string') continue;
+        try { JSON.parse(v); localStorage.setItem(k, v); n++; } catch (_) { /* skip a broken or oversized save */ }
+    }
+    UI.showPopup(n ? `Imported ${n} save${n > 1 ? 's' : ''}.` : 'No saves could be imported.', n ? 'success' : 'error');
+    return n;
+}
+
 export async function continueLastGame() {
     const log = window.displayVisualError || console.log;
     log("SaveLoad: Looking for most recent save to continue...");

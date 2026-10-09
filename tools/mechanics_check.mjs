@@ -62,6 +62,7 @@ function fresh({ enemy = {}, player = {} } = {}) {
   resetGameState();
   gameState.adventureTheme = 'fantasy';
   gameState.turn = 3;
+  gameState.lastRestTurn = 3; // no surprise rest-spot healing in mechanics checks (Batch 26 covers rests)
   const p = createNewPlayer('Ava', 10);
   p.stats = { brave: 0, clever: 0, sneaky: 0, kind: 0 }; // base rules; stat effects are checked on their own
   Object.assign(p, player);
@@ -1769,6 +1770,81 @@ await block(async () => {
   p.spellcasting = { knownSpells: [{ name: 'Light', mpCost: 3 }, { name: 'Light', mpCost: 3 }, { name: 'Storm Shot', mpCost: 5 }] };
   const labels = Battle.battleOptions('Special', p).map(o => o.label);
   check(labels.filter(l => /^Light/.test(l)).length === 1, `a spell known twice shows once in the Special picker (${labels.join(', ')})`);
+});
+
+// =====================================================================
+section('Batch 26: fused charms, real item effects, rests and treasure (10-09)');
+await block(async () => {
+  const Prog = await import('../progression.js');
+  const Items = await import('../items.js');
+  // Michael's example: a 4-luck charm and a 2-luck charm fuse into 4.4.
+  const h = { inventory: [{ id: 'c1', name: 'Big Clover', type: 'Misc', stats: { luck: 4 } }, { id: 'c2', name: 'Small Clover', type: 'Misc', stats: { luck: 2 } }] };
+  const f = Prog.fuseCharms(h);
+  check(f?.luck === 4.4 && h.inventory.length === 1 && h.inventory[0].name === 'Big Clover' && Prog.luckOf(h) === 4.4, `4 + 2 fuse into one charm with luck ${f?.luck}`);
+  // The mansion save: five candle stubs (2, 2, 2, 2, 3) become one.
+  const m = Prog.ensureStats({ stats: {}, inventory: [2, 2, 2, 2, 3].map((l, i) => ({ id: `s${i}`, name: 'Blessed Candle Stub', type: 'Misc', stats: { luck: l } })) });
+  check(m.inventory.length === 1 && m.inventory[0].stats.luck === 4.6, `five candle stubs fuse into one: luck ${m.inventory[0].stats.luck}`);
+  const big = { inventory: [6, 5, 5].map((l, i) => ({ id: `b${i}`, name: 'C', type: 'Misc', stats: { luck: l } })) };
+  Prog.fuseCharms(big);
+  check(Prog.luckOf(big) === Prog.LUCK_MAX, `fused luck is capped at ${Prog.LUCK_MAX} (${Prog.luckOf(big)})`);
+  const r = Prog.rollCheck('Bold', h, () => 0.75, null); // die 16 + luck 4.4 vs 14 (luck = long shot +3)
+  check(r.band === 'crit' && /🍀\+4\.4/.test(Prog.describeRoll(r)), `luck 4.4: a natural 16 is a crit (crit range 16-20): ${Prog.describeRoll(r)}`);
+
+  // Real effects: the orb raises every stat; mana restores MP; in battle too.
+  const { p } = fresh(); p.stats = { brave: 2, clever: 2, sneaky: 2, kind: 2 }; p.mp = 5; p.maxMp = 30;
+  Engine.applyDiff([{ op: 'add', path: '/players/0/inventory/-', value: { name: 'Luminous Orb of Zenith', type: 'Artifact', effect: 'Maxes out stats and radiates radiant energy', stats: {} } }]);
+  const orb = p.inventory.find(i => i.name === 'Luminous Orb of Zenith');
+  await AH.useInventoryItem(orb.id).catch(() => {});
+  check(p.stats.brave === 3 && p.stats.kind === 3 && p.mp > 5 && !p.inventory.some(i => i.id === orb.id), `using the orb: stats ${JSON.stringify(p.stats)}, MP 5 -> ${p.mp}, orb used up`);
+  const b = fresh(); b.p.mp = 2; b.p.maxMp = 30; b.p.inventory.push({ id: 'item_mana', name: 'Mana Draught', type: 'Consumable', effect: 'Restores your arcane focus', stats: {}, quantity: 1 });
+  startFight(); pinRandom(0.5);
+  await AH.handlePlayerChoice('Item', 'Use Mana Draught'); unpinRandom();
+  check(b.p.mp >= 12, `Mana Draught in a fight restores MP (2 -> ${b.p.mp})`);
+  const odd = Items.inferItemEffects({ type: 'Consumable', name: 'Odd Pebble', effect: 'It hums softly', stats: {} });
+  check(odd.stats.healPercent > 0 && odd.stats.mpPercent > 0, 'an item with no recognisable effect still refreshes a little HP and MP');
+
+  // Story moments: rests are likelier when hurt, never back to back.
+  const rate = (o) => { let n = 0; for (let i = 0; i < 4000; i++) if (Prog.pickBeat(o) === 'rest') n++; return n / 4000; };
+  const healthy = rate({ hpFrac: 1, mpFrac: 1, sinceRest: 9 }), hurt = rate({ hpFrac: 0.3, mpFrac: 0.2, sinceRest: 9 }), recent = rate({ hpFrac: 0.3, mpFrac: 0.2, sinceRest: 1 });
+  check(hurt > healthy * 3 && recent === 0, `rest-spot chance: healthy ${healthy.toFixed(2)}, hurt and low on MP ${hurt.toFixed(2)}, just rested ${recent}`);
+
+  // A rest-spot turn heals through the real turn; a treasure turn puts the item in the pack.
+  const offline = globalThis.fetch; let asked = '';
+  globalThis.fetch = window.fetch = async (u, o) => { const msgs = JSON.parse(o.body).messages; if (msgs[1].content.includes('JUST DID')) asked = msgs[1].content;
+    return { ok: true, status: 200, statusText: '200', headers: { get: () => null }, json: async () => ({ choices: [{ message: { content: JSON.stringify({ narration: 'They find a quiet spring.', ops: [], choices: ['brave', 'clever', 'sneaky', 'kind', 'luck'].map(stat => ({ stat, safe: `${stat} s ${Math.random()}`, bold: `${stat} b ${Math.random()}`, reckless: `${stat} r ${Math.random()}` })) }) } }] }), text: async () => '' }; };
+  localStorage.setItem('adv.cloudProvider', 'groq_qwen'); localStorage.setItem('adv.apiKey.api.groq.com', 'test');
+  try {
+    const t = fresh(); t.p.hp = 30; t.p.mp = 2; t.p.maxMp = 30; gameState.lastRestTurn = -99; gameState.turnsSinceFight = 0;
+    gameState.currentChoices = [{ type: 'Safe', stat: 'kind', text: 'Rest a while' }];
+    pinRandom(0.05); // 0.05: no fight (0 quiet turns), and the first story moment: a rest
+    await AH.handlePlayerChoice('Safe', 'Rest a while'); unpinRandom();
+    check(/A SAFE PLACE THIS TURN/.test(asked) && t.p.hp >= 80 && t.p.mp >= 15, `a rest-spot turn: the prompt asks for it and HP 30 -> ${t.p.hp}, MP 2 -> ${t.p.mp}`);
+    const u = fresh(); gameState.lastRestTurn = gameState.turn; gameState.turnsSinceFight = 0; const n0 = u.p.inventory.length;
+    gameState.currentChoices = [{ type: 'Safe', stat: 'clever', text: 'Search the shelves' }];
+    pinRandom(0.05); // rest blocked (just rested), so 0.05 lands on the next moment: treasure
+    await AH.handlePlayerChoice('Safe', 'Search the shelves'); unpinRandom();
+    check(/A TREASURE THIS TURN: the hero who acted finds/.test(asked) && u.p.inventory.length > n0, `a treasure turn: the prompt names it and the pack grows (${n0} -> ${u.p.inventory.length})`);
+  } finally { globalThis.fetch = window.fetch = offline; localStorage.removeItem('adv.apiKey.api.groq.com'); localStorage.removeItem('adv.cloudProvider'); }
+
+  // Winning a fight gives a breather.
+  const w = fresh({ enemy: { hp: 1, maxHp: 30, def: 0 } }); w.p.hp = 50; w.p.mp = 0; w.p.maxMp = 30;
+  startFight(); gameState.inCombat = true;
+  await Combat.handleEnemyDefeat('enemy_test1');
+  check(w.p.hp > 50 && w.p.mp > 0, `after a win: HP 50 -> ${w.p.hp}, MP 0 -> ${w.p.mp}`);
+});
+
+await block(async () => {
+  // Save backup (10-09): an exported file imports back; other files are refused.
+  const SL = await import('../saveLoad.js');
+  const Config = await import('../config.js');
+  const key = Config.SAVE_GAME_PREFIX + 'Autosave Test (pirate) zz1';
+  const file = JSON.stringify({ app: 'adventure-stories', version: '1.2.2', saves: { [key]: JSON.stringify({ gameState: { turn: 7 } }), 'adv.apiKey.x': 'nope' } });
+  localStorage.removeItem(key);
+  const n = await SL.importSaves(file);
+  check(n === 1 && JSON.parse(localStorage.getItem(key)).gameState.turn === 7 && localStorage.getItem('adv.apiKey.x') === null, `an exported file imports its save (${n}) and nothing else (no keys)`);
+  const bad = await SL.importSaves('{"hello":1}');
+  check(bad === 0, 'a file that is not an Adventure Stories save file is refused');
+  localStorage.removeItem(key);
 });
 
 console.error = realError;

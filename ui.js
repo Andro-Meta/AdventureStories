@@ -9,6 +9,7 @@ import { loadPlayerAges, loadPlayerNames } from './inputCache.js';
 import * as Spells from './spells.js';
 import * as AdaptiveAbilities from './adaptiveAbilities.js';
 import * as Progression from './progression.js';
+import * as Media from './media.js';
 // Import specific utils needed
 import { sanitizeText } from './utils.js';
 import { describeQuestStep, friendlyMilestone } from './questDefinitions.js';
@@ -178,6 +179,7 @@ export const elements = {
 export function showPopup(message, type = 'info', duration = 3000) {
     const log = window.displayVisualError || console.log;
     log(`Showing popup: ${message} (${type})`);
+    try { Media.cue(type, String(message)); } catch (_) {} // coin, heal, hurt, crit and level-up sounds
 
     // God-mode tutorial passed a whole HTML panel, shown as raw markup in a toast.
     if (type === 'god_mode_tutorial' || /<\/?div/i.test(String(message))) {
@@ -873,6 +875,7 @@ export function updateNarrative(text) {
         // A new scene: bring the top of the story into view (players were left
         // looking at the choices or the party card after picking).
         const changed = recordStoryScene(cleanText);
+        if (changed && Media.settings.readAloud) Media.speak(cleanText); // read each new scene aloud
         if (changed && gameState.currentScreen === 'gameScreen') {
             const card = document.getElementById('storyCard');
             requestAnimationFrame(() => card?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }));

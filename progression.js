@@ -136,6 +136,23 @@ export function encounterDue(turnsSinceFight = 0, owed = false, rng = Math.rando
     return !!owed || rng() < ENCOUNTER_ODDS[Math.min(ENCOUNTER_ODDS.length - 1, Math.max(0, turnsSinceFight))];
 }
 
+// Story moments between fights (Michael 10-09: "more opportunities to heal
+// and replenish health and MP", plus variety). Base chance per quiet turn.
+export const BEATS = { rest: 0.12, treasure: 0.08, trap: 0.07, stranger: 0.07, puzzle: 0.06 };
+
+/**
+ * This turn's story moment when no fight is due, or null. A rest spot is far
+ * likelier when the party is hurt or low on MP, and never within 3 turns of
+ * the last one. `party` = { hpFrac, mpFrac } (lowest hero), `sinceRest` turns.
+ */
+export function pickBeat({ hpFrac = 1, mpFrac = 1, sinceRest = 99 } = {}, rng = Math.random) {
+    const restBoost = (hpFrac < 0.5 ? 0.35 : hpFrac < 0.75 ? 0.15 : 0) + (mpFrac < 0.4 ? 0.15 : 0);
+    const odds = { ...BEATS, rest: sinceRest < 3 ? 0 : BEATS.rest + restBoost };
+    let r = rng();
+    for (const [beat, p] of Object.entries(odds)) { if ((r -= p) < 0) return beat; }
+    return null;
+}
+
 /** The plan a shown set actually has ({ stat: danger }), or null if it isn't a full set. */
 export function planOf(choices) {
     const plan = Object.fromEntries((choices || []).filter(c => APPROACHES.includes(c?.stat) && DANGERS.includes(c?.type)).map(c => [c.stat, c.type]));
@@ -218,12 +235,35 @@ function checkOf(type, stat) {
 }
 
 /**
- * Lucky charms: the best one carried counts (cap 3). Luck adds to luck rolls
- * (choices tagged luck) and widens the critical range: with luck 1
- * a natural 19 is a crit too. (Fighting Fantasy's Luck, as an item.)
+ * Lucky charms: the best one carried counts (cap LUCK_MAX). Luck adds to luck
+ * rolls (choices tagged luck) and widens the critical range by its whole
+ * points: with luck 1 a natural 19 is a crit too. (Fighting Fantasy's Luck,
+ * as an item.) Charms fuse (fuseCharms), so luck can be fractional (4.4).
  */
+export const LUCK_MAX = 6;
 export function luckOf(hero) {
-    return Math.min(3, Math.max(0, ...(hero?.inventory || []).map(i => Number(i?.stats?.luck) || 0)));
+    return Math.min(LUCK_MAX, Math.max(0, ...(hero?.inventory || []).map(i => Number(i?.stats?.luck) || 0)));
+}
+const critFrom = (hero) => 20 - Math.min(5, Math.floor(luckOf(hero))); // a natural 15+ at most
+
+/**
+ * Charms fuse (Michael 10-09): the best charm stays and every other one adds
+ * a fifth of its luck (4 + 2 -> 4.4), so a second charm is never dead weight
+ * (live: five identical candle stubs, only one of which counted). Returns
+ * { name, luck, fused } when something fused, else null.
+ */
+export function fuseCharms(hero) {
+    const inv = hero?.inventory || [];
+    const charms = inv.filter(i => Number(i?.stats?.luck) > 0 && !i.equippedSlot);
+    if (charms.length < 2) return null;
+    charms.sort((a, b) => Number(b.stats.luck) - Number(a.stats.luck));
+    const [top, ...rest] = charms;
+    const luck = Math.min(LUCK_MAX, Math.round((Number(top.stats.luck) + 0.2 * rest.reduce((n, c) => n + Number(c.stats.luck), 0)) * 10) / 10);
+    top.stats = { ...top.stats, luck };
+    top.fused = (top.fused || 0) + rest.length;
+    top.effect = `Fused lucky charm: luck +${luck} (helps 🍀 rolls; a natural ${critFrom(hero) === 20 ? 20 : `${20 - Math.min(5, Math.floor(luck))}+`} is a critical success).`;
+    hero.inventory = inv.filter(i => !rest.includes(i));
+    return { name: top.name, luck, fused: rest.length };
 }
 
 /** Give older saves and new heroes their stats (all 1 to start). */
@@ -235,6 +275,7 @@ export function ensureStats(hero) {
     // Points beyond what the stats can still take can never be spent (live
     // 10-09: god mode set level 20 with every stat at 5 -> 16 stuck points).
     hero.statPoints = Math.min(hero.statPoints || 0, statRoom(hero));
+    fuseCharms(hero); // charms gained by any path (loot, shop, story) fuse into one
     hero.level = hero.level || 1;
     hero.xp = hero.xp || 0;
     return hero;
@@ -249,9 +290,8 @@ const flusterPenalty = (hero) => (hero?.statusEffects || []).some(e => e?.name =
 export function chanceFor(type, hero, statOverride = undefined) {
     const { c, stat } = checkOf(type, statOverride);
     const bonus = stat ? statOf(hero, stat) : luckOf(hero);
-    const need = c.dc - bonus + flusterPenalty(hero); // roll needed on the die
-    const critFrom = 20 - luckOf(hero);                // these always succeed
-    return Math.max((21 - critFrom) / 20, Math.min(0.95, (21 - need) / 20));
+    const need = Math.ceil(c.dc - bonus + flusterPenalty(hero)); // roll needed on the die
+    return Math.max((21 - critFrom(hero)) / 20, Math.min(0.95, (21 - need) / 20)); // a crit always succeeds
 }
 
 /** Roll the check. rng() returns [0,1). */
@@ -261,7 +301,7 @@ export function rollCheck(type, hero, rng = Math.random, statOverride = undefine
     const bonus = (stat ? statOf(hero, stat) : luckOf(hero)) - flusterPenalty(hero);
     const total = die + bonus;
     let band;
-    if (die >= 20 - luckOf(hero)) band = 'crit';
+    if (die >= critFrom(hero)) band = 'crit';
     else if (die === 1) band = 'fumble';
     else if (total >= c.dc) band = 'success';
     else if (total >= c.dc - 3) band = 'partial';
@@ -301,7 +341,7 @@ export function outcomeFor(roll, hero, rng = Math.random) {
             const r = rng();
             if (r < 0.5) { o.jackpot = true; o.coins = coins(k.crit); }
             else if (r < 0.8) o.item = { tierPool: roll.type === 'Safe' ? ['Medium'] : ['High'], typePool: ['Weapon', 'Armor', 'Consumable'] };
-            else if (roll.type !== 'Safe' && luckOf(hero) < 3) o.charm = luckOf(hero) + 1; // a better lucky charm (not for a safe silly move)
+            else if (roll.type !== 'Safe') o.charm = roll.type === 'Reckless' ? 3 : 2; // a lucky charm; it fuses with any already carried (not for a safe silly move)
             else { o.jackpot = true; o.coins = coins(k.crit); }
             if (roll.band === 'crit') { o.jackpot = true; o.coins += coins(k.crit) * 2; o.note = 'a ridiculous stroke of luck nobody will ever believe'; }
         } else if (approach === 'clever') { // figuring it out: a stash, gear, a charm, or a clue
@@ -311,7 +351,7 @@ export function outcomeFor(roll, hero, rng = Math.random) {
                 o.coins = rare ? coins([80, 120]) : coins(k.coins);
                 o.jackpot = rare; o.note = rare ? 'a rare treasure chest' : 'a hidden stash';
             } else if (r < 0.65) o.item = { tierPool: k.items, typePool: ['Consumable', 'Weapon', 'Armor'] };
-            else if (r < 0.70 && luckOf(hero) < 1) o.charm = 1; // a lucky charm
+            else if (r < 0.70) o.charm = 1; // a small lucky charm (fuses with any already carried)
             else o.note = 'a useful clue';
         } else if (roll.type !== 'Safe' || rng() < 0.6) { // a Safe win pays something 60% of the time
             if (approach === 'kind' && rng() < 0.5) o.heal = pctHp(hero, 8, 15, rng); // someone grateful patches them up
@@ -405,7 +445,8 @@ export const innPrice = (hero) => 10 + 5 * ((hero?.level || 1) - 1);
 
 /** One readable line for the result toast and the storyteller. */
 export function describeRoll(roll) {
-    const st = roll.stat ? `${STATS[roll.stat].icon}${roll.bonus >= 0 ? '+' : ''}${roll.bonus}` : `🍀${roll.bonus >= 0 ? '+' : ''}${roll.bonus}`;
+    const n = (x) => Math.round(x * 10) / 10; // fused luck is fractional (4.4)
+    const st = roll.stat ? `${STATS[roll.stat].icon}${roll.bonus >= 0 ? '+' : ''}${n(roll.bonus)}` : `🍀${roll.bonus >= 0 ? '+' : ''}${n(roll.bonus)}`;
     const word = { crit: 'Critical success!', success: 'Success', partial: 'Success, at a cost', fail: 'Setback', fumble: 'Fumble!' }[roll.band];
-    return `${roll.die}${roll.stat || roll.bonus ? ` ${st}` : ''} = ${roll.total} vs ${roll.dc}: ${word}`;
+    return `${roll.die}${roll.stat || roll.bonus ? ` ${st}` : ''} = ${n(roll.total)} vs ${roll.dc}: ${word}`;
 }

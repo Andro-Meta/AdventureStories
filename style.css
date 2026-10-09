@@ -1960,6 +1960,13 @@ footer { margin-top: 2rem; text-align: center; }
     color: rgba(255,255,255,0.65);
     font-style: italic;
 }
+.story-head { display: flex; align-items: center; justify-content: space-between; }
+.read-aloud-btn { background: none; border: 1px solid var(--border-color); border-radius: 999px; padding: 0.15rem 0.6rem; font-size: 1.1rem; min-height: 36px; box-shadow: none; }
+.sound-settings .toggle-row { display: flex; align-items: center; gap: 0.6rem; padding: 0.6rem 0; font-size: 1.05rem; }
+.sound-settings .toggle-row input { width: 1.4rem; height: 1.4rem; }
+.guide-content h3 { margin: 1rem 0 0.3rem; }
+.guide-content p, .guide-content li { line-height: 1.5; }
+.guide-content ul { padding-left: 1.1rem; margin: 0.3rem 0; }
 .ai-health { list-style: none; padding: 0; font-style: normal; }
 .ai-health:empty { display: none; }
 .api-key-row {

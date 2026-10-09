@@ -1022,6 +1022,7 @@ export async function handleEnemyDefeat(enemyId) {
          if (!lootItem) continue;
          if (!lootRecipient.inventory) lootRecipient.inventory = [];
          lootRecipient.inventory.push(lootItem);
+         Progression.fuseCharms(lootRecipient); // a charm drop fuses with one already carried
          showPopup(`${lootRecipient.name} found: ${lootItem.name}!`, 'item');
          log(` -> Loot ${lootItem.name} given to ${lootRecipient.name}`);
      }
@@ -1067,6 +1068,20 @@ export async function handleEnemyDefeat(enemyId) {
      }
 
      renderEnemyCards();
+
+     // A won fight ends with a breather (Michael 10-09: more chances to heal
+     // and recover MP): each hero still standing gets some HP and MP back.
+     if (areAllEnemiesDefeated() && !gameState.combat?.breathTaken) {
+         if (gameState.combat) gameState.combat.breathTaken = true;
+         for (const p of looters) {
+             const hp0 = p.hp, mp0 = p.mp || 0;
+             p.hp = Math.min(p.maxHp, p.hp + Math.round(p.maxHp * 0.15));
+             p.mp = Math.min(p.maxMp || 0, mp0 + Math.round((p.maxMp || 0) * 0.25));
+             log(` -> ${p.name} catches a breath: +${p.hp - hp0} HP, +${p.mp - mp0} MP`);
+         }
+         if (looters.length) showPopup(`You catch your breath: some HP and MP come back.`, 'healing', 2500);
+         renderPlayerCards();
+     }
 
      // Check if this was the last enemy and trigger combat victory if so
      // During a player's combat round actionHandler narrates the victory
