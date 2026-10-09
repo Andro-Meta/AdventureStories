@@ -1330,8 +1330,8 @@ await block(async () => {
   const good = ['brave', 'clever', 'sneaky', 'kind', 'luck'].map(stat => ({ stat }));
   check(AIH.approachGaps(phone) === 2 && AIH.approachGaps(good) === 0, `approach gaps: phone set ${AIH.approachGaps(phone)} (no kind, no sneaky), balanced set ${AIH.approachGaps(good)}`);
   const ins = AIH.buildChoiceInstructions(Prog.DANGERS, false, []);
-  check(/one for each APPROACH/.test(ins) && ['brave', 'clever', 'sneaky', 'kind', 'luck'].every(a => ins.includes(`- ${a}:`)) && /Safe = little/.test(ins) && /Reckless = likely/.test(ins) && /DANGER for this turn/.test(ins) && /guard dog is a Reckless brave action/.test(ins) && /luck: something ABSURD/.test(ins),
-    'choice instructions: one per approach, plus a danger (Safe / Bold / Reckless) that fits the action');
+  check(/one for each APPROACH/.test(ins) && ['brave', 'clever', 'sneaky', 'kind', 'luck'].every(a => ins.includes(`- ${a}:`)) && /danger ladder/.test(ins) && /"safe": little/.test(ins) && /"reckless": likely/.test(ins) && /Kick the snarling guard dog/.test(ins) && /luck: something ABSURD/.test(ins),
+    'choice instructions: one per approach, each written as a safe / bold / reckless ladder');
 });
 
 // =====================================================================
@@ -1481,32 +1481,56 @@ await block(async () => {
   const firsts = new Set(Array.from({ length: 40 }, () => JSON.stringify(Prog.pickDangerPlan([]))));
   check(firsts.size >= 10, `a new game's first round varies too (${firsts.size} different plans in 40 games)`);
 
-  // End to end through requestChoicesOnly: the prompt carries the plan, a reply
-  // that ignores it (all Safe) still shows the planned dangers, every round.
+  // End to end through requestChoicesOnly: the storyteller writes a danger
+  // ladder per approach; the game shows the version this round's plan wants.
   const AIH = await import('../aiHandler.js');
   const offline = globalThis.fetch; let asked = '';
+  const ladderReply = (drop = null) => JSON.stringify({ choices: ALL.map(stat => {
+    const o = { stat, safe: `Carefully ${stat} ${Math.random().toString(36).slice(2, 6)}`, bold: `Boldly ${stat} ${Math.random().toString(36).slice(2, 6)}`, reckless: `Recklessly ${stat} ${Math.random().toString(36).slice(2, 6)}` };
+    if (drop && drop[stat]) delete o[drop[stat]];
+    return o;
+  }) });
+  let reply = () => ladderReply();
   globalThis.fetch = window.fetch = async (u, o) => {
     asked = JSON.parse(o.body).messages[1].content;
-    const content = JSON.stringify({ choices: ALL.map((stat, i) => ({ stat, danger: 'Safe', text: `Do the ${stat} thing number ${Math.random().toString(36).slice(2, 7)}` })) });
-    return { ok: true, status: 200, statusText: '200', headers: { get: () => null }, json: async () => ({ choices: [{ message: { content } }] }), text: async () => '' };
+    return { ok: true, status: 200, statusText: '200', headers: { get: () => null }, json: async () => ({ choices: [{ message: { content: reply() } }] }), text: async () => '' };
   };
   localStorage.setItem('adv.cloudProvider', 'groq_qwen'); localStorage.setItem('adv.apiKey.api.groq.com', 'test');
   try {
     fresh(); gameState.inCombat = false; gameState.choiceMixHistory = [];
-    const shown = []; let promptOk = true, labelOk = true;
+    const shown = []; let promptOk = true, pickOk = true, textOk = true;
     for (let r = 0; r < 12; r++) {
       const cs = await AIH.requestChoicesOnly('A market square at dusk.', false);
       const plan = gameState.choicePlan;
-      if (!ALL.every(a => asked.includes(`{"stat":"${a}","danger":"${plan[a]}"`))) promptOk = false;
-      if (!ALL.every(a => cs.find(c => c.stat === a)?.type === plan[a])) labelOk = false;
+      if (!ALL.every(a => asked.includes(`{"stat":"${a}","safe":"...","bold":"...","reckless":"..."}`)) || !/danger ladder/.test(asked)) promptOk = false;
+      if (!ALL.every(a => cs.find(c => c.stat === a)?.type === plan[a])) pickOk = false;
+      // the text shown is the version written for that danger, and no ladder is kept
+      if (!cs.every(c => c.text.startsWith({ Safe: 'Carefully', Bold: 'Boldly', Reckless: 'Recklessly' }[c.type]) && !c.ladder)) textOk = false;
       UI.renderChoices(cs); UI.renderChoices(gameState.currentChoices); // a re-render must not count twice
       shown.push(Prog.planOf(gameState.currentChoices));
     }
     const m = measure(shown);
-    check(promptOk, 'every round the prompt asks for this round\'s danger per approach');
-    check(labelOk, 'a reply that ignores the plan (all Safe) still gets the planned dangers');
+    check(promptOk, 'every round the prompt asks for a danger ladder (safe / bold / reckless) per approach');
+    check(pickOk && textOk, 'each approach shows the version written for this round\'s planned danger (text and label match)');
     check(gameState.choiceMixHistory.length === 8 && m.minChange >= 3 && m.maxStreak <= 2, `12 rounds on screen: >=3 approaches change each round (min ${m.minChange}), same danger at most ${m.maxStreak} running, history ${gameState.choiceMixHistory.length}/8 (no double count)`);
+
+    // A ladder missing the planned rung: another rung is used and the set still has all three dangers.
+    reply = () => ladderReply(Object.fromEntries(ALL.map(a => [a, gameState.choicePlan[a].toLowerCase()])));
+    const gap = await AIH.requestChoicesOnly('A market square at dusk.', false);
+    check(Prog.DANGERS.every(d => gap.some(c => c.type === d)) && gap.every(c => c.text.startsWith({ Safe: 'Carefully', Bold: 'Boldly', Reckless: 'Recklessly' }[c.type])),
+      `every planned rung missing: other written rungs fill in, still all three dangers, labels still match (${gap.map(c => c.type).join(', ')})`);
+
+    // An old-style single reply (one text each, all labelled Safe): its labels are kept, and the mix repair adds the missing dangers.
+    reply = () => JSON.stringify({ choices: ALL.map(stat => ({ stat, danger: 'Safe', text: `Gently try the ${stat} way ${Math.random().toString(36).slice(2, 6)}` })) });
+    const single = await AIH.requestChoicesOnly('A market square at dusk.', false);
+    check(Prog.DANGERS.every(d => single.some(c => c.type === d)), `single-version reply: still ends with all three dangers (${single.map(c => c.type).join(', ')})`);
   } finally { globalThis.fetch = window.fetch = offline; localStorage.removeItem('adv.apiKey.api.groq.com'); localStorage.removeItem('adv.cloudProvider'); }
+
+  // Pure picker.
+  const lad = (stat, type) => ({ stat, type, text: 'x', ladder: { Safe: `${stat} s`, Bold: `${stat} b`, Reckless: `${stat} r` } });
+  const picked = Prog.pickFromLadders(ALL.map(a => lad(a, 'Safe')), { brave: 'Reckless', clever: 'Safe', sneaky: 'Bold', kind: 'Safe', luck: 'Bold' });
+  check(picked.map(c => `${c.stat}:${c.type}:${c.text}`).join(',') === 'brave:Reckless:brave r,clever:Safe:clever s,sneaky:Bold:sneaky b,kind:Safe:kind s,luck:Bold:luck b' && picked.every(c => !('ladder' in c)),
+    `pickFromLadders follows the plan and drops the ladders (${picked.map(c => c.type).join(', ')})`);
 });
 
 console.error = realError;

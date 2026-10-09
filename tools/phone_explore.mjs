@@ -59,7 +59,7 @@ shot('main_menu'); await displayCheck('main menu');
 await page.click('#newGameBtn'); await page.click('.playerCountBtn[data-count="1"]');
 await page.selectOption('#adventureTypeSelect', 'fantasy'); await page.click('#adventureTypeNextBtn');
 await (await page.$('#ageInputsContainer input')).fill('40'); await page.click('#ageInputNextBtn');
-await (await page.$('#nameInputsContainer input')).fill('Michael');
+await (await page.$('#nameInputsContainer input')).fill(process.env.HERO || 'Michael');
 let m = await errMark(); const t0 = Date.now();
 await page.click('#nameInputStartBtn');
 await page.waitForTimeout(2500); shot('loading');
@@ -96,12 +96,17 @@ for (let t = 0; t < TURNS; t++) {
   console.log(`turn ${t + 1} ${type}: ${(ms / 1000).toFixed(1)} s | HP ${s.hp}->${after.hp}${after.combat ? ' | FIGHT ' + after.foe : ''} | ${after.recap}`);
   // Five choices should be five approaches (brave, clever, sneaky, kind, luck).
   const mix = await gs(g => g.inCombat ? null : g.currentChoices.map(c => `${c.stat || '-'}/${c.type}`));
+  if (process.env.SHOWTEXT) (await gs(g => g.inCombat ? [] : g.currentChoices.map(c => `${c.stat}/${c.type}: ${c.text}`))).forEach(t => console.log(`    ${t}`));
+  // Raw storyteller mix: did the code have to repair it this turn?
+  const fix = await page.evaluate((m) => (window.__advLog || []).slice(m).filter(l => /Choice mix needs|Choice mix fix failed/.test(l)).map(l => l.replace(/^\[[^\]]*\] /, '').slice(0, 120)), m);
+  if (mix) { globalThis.__raw = globalThis.__raw || { sets: 0, repaired: 0 }; __raw.sets++; if (fix.length) __raw.repaired++; fix.forEach(f => console.log(`  repair: ${f}`)); }
   if (mix) { const gaps = ['brave', 'clever', 'sneaky', 'kind', 'luck'].filter(x => !mix.some(m => m.startsWith(x + '/'))).length; globalThis.__mix = globalThis.__mix || { sets: 0, balanced: 0 }; __mix.sets++; if (!gaps) __mix.balanced++; console.log(`  approaches: ${mix.join(', ')}${gaps ? `  (${gaps} missing)` : '  ✓'}`); }
   if (ms < 0) note(`turn ${t + 1} (${type}) never finished`);
   if (after.heroes !== 1) note(`solo game has ${after.heroes} heroes`);
   if (s.combat !== after.combat || t < 2 || (after.combat && t % 3 === 0)) shot(`turn${t + 1}_${type}${after.combat ? '_fight' : ''}`);
   (await errsSince(m)).forEach(e => note(`turn ${t + 1} error: ${e}`));
 }
+if (globalThis.__raw) console.log(`storyteller got the mix right by itself: ${__raw.sets - __raw.repaired}/${__raw.sets} sets (rest repaired in code)`);
 if (globalThis.__mix) console.log(`approach balance: ${__mix.balanced}/${__mix.sets} exploration sets had all five approaches`);
 console.log(`choice types used: ${[...used].join(', ')}`);
 

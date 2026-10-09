@@ -95,16 +95,15 @@ Each choice: under 160 characters, starts with a verb, names something specific 
 - kind: helping, talking, calming, making friends
 - luck: something ABSURD and ridiculous, laugh-out-loud funny for this age group, that only pure luck could make work (challenge the troll to a dance-off, disguise yourself as a potted plant, ask the dragon for directions). A long shot, but spectacular if it works.
 The action must truly be that approach: kicking a guard dog is brave, slipping past it sneaky, sweet-talking it kind, studying its collar clever.
-Each approach comes with its DANGER for this turn, given in the reply format below: write an action that is truly that approach AND that danger. Safe = little can go wrong; Bold = could get hurt; Reckless = likely to get hurt if it fails, but a big payoff. Kicking a guard dog is a Reckless brave action, sweet-talking it a Safe kind one; a Reckless kind action puts the hero in harm's way to help, a Safe brave one stands firm and keeps watch.
+For EACH approach write a danger ladder: three versions of one idea that clearly escalate. "safe": little can go wrong. "bold": a real risk of getting hurt. "reckless": likely to get hurt if it fails, but a big payoff, and the words name what could hurt the hero. Example, brave near a guard dog: safe "Stand guard at the gate and keep the dog in sight", bold "Step out and face the growling dog", reckless "Kick the snarling guard dog aside and charge through". A safe brave version is courage with little risk; a reckless clever one acts on an untested idea in the middle of danger, not just studying; a reckless kind one puts the hero in harm's way to help.
 Each choice: under 160 characters, starts with a verb, names something specific from the narration, and never states its approach or danger (no "safely", "sneakily", "risky"). Make the five genuinely different from each other. If your ops START a fight, write four fight choices instead, types Attack, Special, Item, Run.${noRepeat}`;
 }
 
-/** The JSON shape the choices are asked for in: exploration carries this round's dangers. */
+/** The JSON shape the choices are asked for in: exploration asks for a danger ladder per approach. */
 function choiceFormat(inCombat) {
-    const plan = gameState.choicePlan || Progression.DEFAULT_DANGER;
     return inCombat
         ? COMBAT_CHOICE_TYPES.map(t => `{"type":"${t}","text":"..."}`).join(',')
-        : Progression.APPROACHES.map(s => `{"stat":"${s}","danger":"${plan[s]}","text":"..."}`).join(',');
+        : Progression.APPROACHES.map(s => `{"stat":"${s}","safe":"...","bold":"...","reckless":"..."}`).join(',');
 }
 
 /** Pick this round's approach -> danger pairing (before the choices are asked for). */
@@ -288,9 +287,9 @@ ${buildDiffInstructions(pIdx)}`;
  */
 export async function ensureChoiceMix(choices, narrative, avoid = []) {
     const log = window.displayVisualError || console.log;
-    // The round's planned danger wins over whatever label came back.
+    // This round's version of each approach from its danger ladder.
     const want = gameState.choicePlan || null;
-    if (want) choices = choices.map(c => (want[c?.stat] ? { ...c, type: want[c.stat] } : c));
+    choices = Progression.pickFromLadders(choices, want);
     const plan = Progression.mixPlan(choices, want);
     if (!plan.length) return choices;
     const out = choices.map(c => ({ ...c }));
@@ -404,7 +403,7 @@ export async function requestChoicesOnly(narrative, inCombat, forHero = null, av
     const payload = await API.getAIResponseJSON([
         { role: 'system', content: `You write the player choices for a ${getThemeName()} text adventure. Reply with one JSON object only.` },
         { role: 'user', content: `SCENE:\n${narrative}${enemies}\n\n${forHero ? `Write the choices for ${forHero}, who acts next.\n` : ''}${buildChoiceInstructions(types, inCombat, avoid)}\n\nReply exactly as {"choices":[${choiceFormat(inCombat)}]}` }
-    ], getChoiceSchema(inCombat), { jsonSchemaName: inCombat ? 'combat_choices' : 'exploration_choices', max_tokens: 600, temperature: 0.7 });
+    ], getChoiceSchema(inCombat), { jsonSchemaName: inCombat ? 'combat_choices' : 'exploration_choices', max_tokens: 1000, temperature: 0.7 });
     const choices = validateChoicesPayload(payload, inCombat);
     return inCombat ? choices : ensureChoiceMix(choices, narrative, avoid);
 }
