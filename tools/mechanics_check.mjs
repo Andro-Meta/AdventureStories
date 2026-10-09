@@ -1566,6 +1566,61 @@ await block(async () => {
   check(r?.stat === 'sneaky', `a choice with **markdown** rolls its own approach (rolled ${r?.stat || 'luck'})`);
 });
 
+// =====================================================================
+section('Batch 22: review 10-08 leftovers (history per game; fight commands outside a fight)');
+await block(async () => {
+  const Prog = await import('../progression.js');
+  const S = await import('../state.js');
+  // #4: a new or loaded game starts with no danger history from the last one.
+  gameState.choiceMixHistory = [{ brave: 'Safe', clever: 'Bold', sneaky: 'Reckless', kind: 'Safe', luck: 'Bold' }];
+  gameState.choicePlan = { brave: 'Safe', clever: 'Bold', sneaky: 'Reckless', kind: 'Safe', luck: 'Bold' };
+  S.resetGameState();
+  check(gameState.choiceMixHistory === undefined && gameState.choicePlan === undefined, 'starting a new game clears the danger history and plan');
+  const oldSave = { turn: 4, adventureTheme: 'pirate', players: [S.createNewPlayer('Ava', 10)] }; // a save from before the history existed
+  S.resetGameState(); Object.assign(gameState, oldSave); // what saveLoad.loadGame does
+  check(gameState.choiceMixHistory === undefined, 'loading an older save brings no history along');
+
+  // #5: a leftover set of fight commands shown outside a fight becomes plain story choices, not luck choices.
+  fresh(); gameState.inCombat = false;
+  UI.renderChoices([{ type: 'Attack', text: 'Strike the goblin' }, { type: 'Special', text: 'Use a move' }, { type: 'Item', text: 'Use an item' }, { type: 'Run', text: 'Flee' }]);
+  const cs = gameState.currentChoices;
+  check(cs.length === 5 && new Set(cs.map(c => c.stat)).size === 5 && Prog.DANGERS.every(d => cs.some(c => c.type === d)) && !cs.some(c => /goblin/.test(c.text)),
+    `fight commands outside a fight: five plain story choices instead (${cs.map(c => `${c.stat}/${c.type}`).join(', ')})`);
+});
+
+await block(async () => {
+  // After a multiplayer fight that the STORYTELLER ends (here: the foe is
+  // driven off by its ops), the turn passes to the next hero and choices are
+  // written for them; they were then replaced by the fighter's. (When the
+  // attack itself wins, the story call already writes for the next hero.)
+  const { createNewPlayer } = await import('../state.js');
+  const offline = globalThis.fetch;
+  globalThis.fetch = window.fetch = async (u, o) => {
+    const msgs = JSON.parse(o.body).messages;
+    const forNext = /write the player choices/i.test(msgs[0].content);
+    const content = forNext
+      ? JSON.stringify({ choices: ['brave', 'clever', 'sneaky', 'kind', 'luck'].map(stat => ({ stat, safe: `NEXT ${stat} safe`, bold: `NEXT ${stat} bold`, reckless: `NEXT ${stat} reckless` })) })
+      : JSON.stringify({ narration: 'The goblin turns and flees into the hills.', ops: [{ op: 'replace', path: '/inCombat', value: false }],
+          choices: ['brave', 'clever', 'sneaky', 'kind', 'luck'].map(stat => ({ stat, safe: `FIGHTER ${stat} safe`, bold: `FIGHTER ${stat} bold`, reckless: `FIGHTER ${stat} reckless` })) });
+    return { ok: true, status: 200, statusText: '200', headers: { get: () => null }, json: async () => ({ choices: [{ message: { content } }] }), text: async () => '' };
+  };
+  localStorage.setItem('adv.cloudProvider', 'groq_qwen'); localStorage.setItem('adv.apiKey.api.groq.com', 'test');
+  // The test page has no real buttons; tell the turn's last-resort check that some are on screen.
+  const realGet = document.getElementById.bind(document);
+  document.getElementById = (id) => id === 'choicesContainer' ? { querySelectorAll: () => [{}] } : realGet(id);
+  try {
+    const { p } = fresh({ enemy: { hp: 200, maxHp: 200 } });
+    const b = createNewPlayer('Ben', 10);
+    gameState.players = [p, b]; gameState.currentPlayerIndex = 0;
+    startFight();
+    pinRandom(0.5);
+    await AH.handlePlayerChoice('Attack', 'Strike the goblin'); unpinRandom();
+    const texts = (gameState.currentChoices || []).map(c => c.text);
+    check(!gameState.inCombat && gameState.currentPlayerIndex === 1 && texts.length === 5 && texts.every(t => t.startsWith('NEXT')),
+      `after a 2-hero fight the story ends, Ben gets choices written for him (${texts[0] || 'none'}; hero ${gameState.currentPlayerIndex}, inCombat ${gameState.inCombat})`);
+  } finally { document.getElementById = realGet; globalThis.fetch = window.fetch = offline; localStorage.removeItem('adv.apiKey.api.groq.com'); localStorage.removeItem('adv.cloudProvider'); }
+});
+
 console.error = realError;
 out(`\nfetch attempts blocked: ${fetchCalls}; elapsed ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 out(failed ? `✗ ${failed} mechanics check(s) failed` : '✓ all mechanics checks passed');
