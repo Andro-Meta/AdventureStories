@@ -96,6 +96,7 @@ for (let t = 0; t < TURNS; t++) {
   console.log(`turn ${t + 1} ${type}: ${(ms / 1000).toFixed(1)} s | HP ${s.hp}->${after.hp}${after.combat ? ' | FIGHT ' + after.foe : ''} | ${after.recap}`);
   // Five choices should be five approaches (brave, clever, sneaky, kind, luck).
   const mix = await gs(g => g.inCombat ? null : g.currentChoices.map(c => `${c.stat || '-'}/${c.type}`));
+  if (process.env.SHOWLADDERS) (await page.evaluate((m) => (window.__advLog || []).slice(m).filter(l => l.includes('Ladders: ')).map(l => l.slice(l.indexOf('Ladders: ') + 9)), m)).forEach(l => { for (const [st, s, b, r] of JSON.parse(l)) console.log(`    ${st}: SAFE ${s} | BOLD ${b} | RECKLESS ${r}`); });
   if (process.env.SHOWTEXT) (await gs(g => g.inCombat ? [] : g.currentChoices.map(c => `${c.stat}/${c.type}: ${c.text}`))).forEach(t => console.log(`    ${t}`));
   // Raw storyteller mix: did the code have to repair it this turn?
   const fix = await page.evaluate((m) => (window.__advLog || []).slice(m).filter(l => /Choice mix needs|Choice mix fix failed/.test(l)).map(l => l.replace(/^\[[^\]]*\] /, '').slice(0, 120)), m);
