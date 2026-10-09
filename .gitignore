@@ -67,3 +67,7 @@ mobile/android/app/src/main/assets/
 mobile/offline-models/
 # Built APKs are artifacts, not source
 *.apk
+
+# Local test output (screenshots, phone save backups, story dumps): never publish
+test-results/*
+!test-results/.last-run.json

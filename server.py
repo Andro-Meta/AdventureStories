@@ -134,6 +134,8 @@ def main():
             # Open browser automatically after a short delay
             def open_browser():
                 time.sleep(1)  # Give server time to start
+                if os.environ.get('NO_BROWSER'):  # tests / headless runs
+                    return
                 try:
                     webbrowser.open(url)
                     print(f"Browser opened to {url}")
