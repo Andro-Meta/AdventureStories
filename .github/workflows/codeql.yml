@@ -35,6 +35,12 @@ jobs:
         uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
+          # mobile/www and the Android assets are copies of the root files
+          # (node mobile/sync-web.mjs): scanning them doubled every alert.
+          config: |
+            paths-ignore:
+              - mobile/www
+              - mobile/android/app/src/main/assets
           # Default queries cover the most useful security + correctness rules.
           # `security-and-quality` adds maintainability lints on top.
           queries: security-and-quality
