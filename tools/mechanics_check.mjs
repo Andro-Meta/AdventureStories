@@ -1152,7 +1152,7 @@ const Prog = await import('../progression.js');
 await block(async () => {
   const h = Prog.ensureStats({ stats: {} });
   const pct = (t, st) => Math.round(Prog.chanceFor(t, h, st) * 100);
-  check(pct('Safe', 'brave') === 70 && pct('Bold', 'brave') === 55 && pct('Reckless', 'brave') === 40 && pct('Bold', null) === 50, `odds at stat 1: Safe ${pct('Safe', 'brave')}% Bold ${pct('Bold', 'brave')}% Reckless ${pct('Reckless', 'brave')}%, a Bold luck move ${pct('Bold', null)}%`);
+  check(pct('Safe', 'brave') === 70 && pct('Bold', 'brave') === 55 && pct('Reckless', 'brave') === 40 && pct('Bold', null) === 35, `odds at stat 1: Safe ${pct('Safe', 'brave')}% Bold ${pct('Bold', 'brave')}% Reckless ${pct('Reckless', 'brave')}%, a Bold 🍀 long shot ${pct('Bold', null)}% (+3 harder)`);
   h.stats.sneaky = 5;
   check(pct('Reckless', 'sneaky') === 60 && pct('Reckless', 'brave') === 40, `Sneaky 5 raises a Reckless sneaky move 40% -> ${pct('Reckless', 'sneaky')}%, not a brave one (${pct('Reckless', 'brave')}%)`);
   const seq = (v) => () => v;
@@ -1191,8 +1191,19 @@ await block(async () => {
   const fail = Prog.outcomeFor({ type: 'Reckless', band: 'fail', die: 3, stat: 'brave', dc: 14, total: 4 }, h, () => 0.5);
   const fum = Prog.outcomeFor({ type: 'Reckless', band: 'fumble', die: 1, stat: 'brave', dc: 14, total: 2 }, h, () => 0.5);
   check(fail.hpLoss >= 14 && fum.coins < 0 && fum.hpLoss >= 18, `a failed Reckless move hurts; a fumble also drops coins (fumble ${fum.coins}) (${fail.hpLoss} HP, ${fail.coins} coins)`);
-  const jack = Prog.outcomeFor({ type: 'Bold', band: 'success', die: 19, stat: null, dc: 11, total: 19 }, h, () => 0.5);
-  check(jack.jackpot && jack.coins >= 25, `a luck move's natural 19 is a jackpot (${jack.coins} coins)`);
+  // 🍀 long shots: every win is spectacular (jackpot, top gear or a better
+  // charm) and worth more than a normal win at the same danger.
+  let dull = 0; const val = (o) => Math.max(0, o.coins) + (o.item ? (o.item.tierPool.includes('High') ? 60 : 30) : 0) + (o.charm ? 60 : 0);
+  const avg = { luck: 0, brave: 0 };
+  for (let i = 0; i < 2000; i++) {
+    const lw = Prog.outcomeFor({ type: 'Bold', band: 'success', die: 15, stat: null, dc: 14, total: 15 }, h);
+    if (!(lw.jackpot || lw.item?.tierPool.includes('High') || lw.charm)) dull++;
+    avg.luck += val(lw) / 2000;
+    avg.brave += val(Prog.outcomeFor({ type: 'Bold', band: 'success', die: 15, stat: 'brave', dc: 11, total: 16 }, h)) / 2000;
+  }
+  check(dull === 0 && avg.luck > avg.brave * 1.5, `every 🍀 win is spectacular (${dull} dull of 2000); worth ${avg.luck.toFixed(0)} vs a brave win ${avg.brave.toFixed(0)}`);
+  const jack = Prog.outcomeFor({ type: 'Bold', band: 'crit', die: 20, stat: null, dc: 14, total: 20 }, h, () => 0.3);
+  check(jack.jackpot && jack.coins >= 75, `a 🍀 natural 20 is a huge jackpot (${jack.coins} coins: ${jack.note})`);
 });
 await block(async () => {
   // Levels: 100 XP to level 2 with a stat point; 6 successes with a stat raise it.
@@ -1319,7 +1330,7 @@ await block(async () => {
   const good = ['brave', 'clever', 'sneaky', 'kind', 'luck'].map(stat => ({ stat }));
   check(AIH.approachGaps(phone) === 2 && AIH.approachGaps(good) === 0, `approach gaps: phone set ${AIH.approachGaps(phone)} (no kind, no sneaky), balanced set ${AIH.approachGaps(good)}`);
   const ins = AIH.buildChoiceInstructions(Prog.DANGERS, false, []);
-  check(/one for each APPROACH/.test(ins) && ['brave', 'clever', 'sneaky', 'kind', 'luck'].every(a => ins.includes(`- ${a}:`)) && /Safe \(/.test(ins) && /Reckless \(/.test(ins) && /kicking a guard dog is Reckless/i.test(ins),
+  check(/one for each APPROACH/.test(ins) && ['brave', 'clever', 'sneaky', 'kind', 'luck'].every(a => ins.includes(`- ${a}:`)) && /Safe \(/.test(ins) && /Reckless \(/.test(ins) && /kicking a guard dog is Reckless/i.test(ins) && /luck: something ABSURD/.test(ins),
     'choice instructions: one per approach, plus a danger (Safe / Bold / Reckless) that fits the action');
 });
 

@@ -736,7 +736,10 @@ Already applied by the game (show these in the story; do not emit ops for them):
             : '';
         const lastRoll = gameState.narrativeContext.lastOutcome?.roll;
         const actionLog = `${currentPlayer.name} chose (${lastRoll ? `${lastRoll.stat ? Progression.STATS[lastRoll.stat].name : 'Luck'}, ${lastRoll.type}` : actionType}): "${choiceText}"
-Result: ${{ crit: 'a brilliant success', success: 'it works out', partial: 'it works, but at a cost (show the cost)' }[gameState.narrativeContext.lastOutcome?.band] || (gameState.narrativeContext.lastOutcome?.success ? 'it works out' : 'it goes wrong: the story turns against them (a complication, not a dead end)')}.${outcomeText}`;
+Result: ${(lastRoll && !lastRoll.stat
+            // 🍀 an absurd long shot: spectacular when it works, a funny flop when not
+            ? { crit: 'the absurd plan works so spectacularly that nobody will ever believe it', success: 'the absurd plan works spectacularly, better than anyone could have imagined', partial: 'the absurd plan sort of works, in a ridiculous way (show the cost)' }
+            : { crit: 'a brilliant success', success: 'it works out', partial: 'it works, but at a cost (show the cost)' })[gameState.narrativeContext.lastOutcome?.band] || (gameState.narrativeContext.lastOutcome?.success ? 'it works out' : lastRoll && !lastRoll.stat ? 'it goes hilariously wrong: a funny complication, not a dead end' : 'it goes wrong: the story turns against them (a complication, not a dead end)')}.${outcomeText}`;
         gameState.lastActionMeta = { actor: currentPlayer.name, action: choiceText, success: !!gameState.narrativeContext.lastOutcome?.success, notes: outcomeNotes.join('; ') };
 
         log(`Constructed AI prompt with enhanced context: ${actionLog}`);
