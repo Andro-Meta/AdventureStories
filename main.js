@@ -603,7 +603,7 @@ function updateCloudProviderNotes(providerKey) {
     document.getElementById('googleKeyBlock')?.classList.toggle('hidden', !auto);
     const label = document.getElementById('cloudKeyLabel');
     if (label) label.textContent = auto ? 'OpenRouter Key (used when Google runs out):' : 'API Key:';
-    const saved = (k) => Config.keyForProvider(Config.CLOUD_PROVIDERS[k]) ? '✓ Key saved (paste a new key to replace it)' : null;
+    const saved = (k) => Config.keyForProvider(Config.CLOUD_PROVIDERS[k]) ? '✓ Key saved' : null;
     const keyInput = document.getElementById('cloudApiKeyInput');
     if (keyInput) { keyInput.value = ''; keyInput.placeholder = saved(mainKeyProvider(providerKey)) || 'Paste your free API key here'; }
     const gInput = document.getElementById('googleApiKeyInput');

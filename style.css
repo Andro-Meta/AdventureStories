@@ -2144,3 +2144,9 @@ button.primary { background: var(--accent-color, #6c5ce7); color: #fff; border-c
 
 .shop-note { grid-column: 1 / -1; margin: 0 0 6px; color: var(--text-muted-color, #aaa); font-size: 0.9rem; }
 
+/* Android 15+ draws the page edge to edge: scrolled story text ran under the
+   clock and the navigation bar (phone 10-08). Solid strips in the page colour
+   sit over both bars; modals, the battle picker and popups (z 1002+) stay above. */
+body::before, body::after { content: ''; position: fixed; left: 0; right: 0; z-index: 1000; pointer-events: none; background: var(--bg-color); }
+body::before { top: 0; height: env(safe-area-inset-top); }
+body::after { bottom: 0; height: env(safe-area-inset-bottom); }
