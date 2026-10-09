@@ -428,6 +428,7 @@ function setupEventListeners(UI, setup, actionHandler, saveLoad) { // Added acti
             return; // Exit if not a standard choice button
         }
 
+        import('./media.js').then(M => M.play('tap', 0.35)).catch(() => {}); // a soft click
         // Disable all choice buttons immediately to prevent double clicks
         document.querySelectorAll('#choicesContainer .choice-btn').forEach(btn => btn.disabled = true);
 

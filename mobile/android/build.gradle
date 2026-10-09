@@ -28,16 +28,5 @@ task clean(type: Delete) {
     delete rootProject.buildDir
 }
 
-// Allow building with JDK 17 even though capacitor-android requests source level 21.
-// Capacitor 8.x doesn't use actual Java 21 language features; this overrides the
-// compileOptions in every subproject after the subproject's build.gradle is evaluated.
-subprojects {
-    afterEvaluate { proj ->
-        if (proj.plugins.hasPlugin('com.android.library') || proj.plugins.hasPlugin('com.android.application')) {
-            proj.android.compileOptions {
-                sourceCompatibility = JavaVersion.VERSION_17
-                targetCompatibility = JavaVersion.VERSION_17
-            }
-        }
-    }
-}
+// (A JDK-17 override of every module's Java level lived here; the app now builds
+// with JDK 21 as Capacitor 8 expects, and the override broke the Kotlin plugins.)

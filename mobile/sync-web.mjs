@@ -15,7 +15,7 @@ const GAME_JS = (await readdir(ROOT)).filter(f => f.endsWith('.js') && f !== 'pl
 const INCLUDE_FILES = [...GAME_JS,
   'index.html', 'style.css', 'manifest.json', 'sw.js', 'mobile-bootstrap.js', 'icon-192.png', 'icon-512.png',
   'main.js', 'setup.js', 'state.js', 'engine.js', 'config.js', 'ui.js', 'fx.js', 'battle.js',
-  'aiHandler.js', 'actionHandler.js', 'gameLoop.js', 'turnManager.js',
+  'aiHandler.js', 'actionHandler.js', 'turnManager.js',
   'combat.js', 'resolution.js', 'questProgress.js', 'questDefinitions.js',
   'storyHooks.js',
   'godMode.js', 'memoryRetriever.js', 'schemas.js', 'localAI.js',
@@ -42,7 +42,13 @@ for (const rel of new Set(INCLUDE_FILES)) {
 
 // Remove files that are no longer part of the game, so deleted modules can't
 // linger in www/ and get packaged into the APK (liteRTBridge.js did).
-const keep = new Set(INCLUDE_FILES);
+// Sound effects (media.js): the whole sfx/ folder, kept in step the same way.
+await mkdir(join(WWW, 'sfx'), { recursive: true });
+const SFX = await readdir(resolve(ROOT, 'sfx')).catch(() => []);
+for (const f of SFX) { await copyFile(resolve(ROOT, 'sfx', f), join(WWW, 'sfx', f)); copied++; }
+for (const f of await readdir(join(WWW, 'sfx'))) if (!SFX.includes(f)) await unlink(join(WWW, 'sfx', f));
+
+const keep = new Set([...INCLUDE_FILES, 'sfx']);
 let removed = 0;
 for (const f of await readdir(WWW)) {
   if (!keep.has(f)) { await unlink(join(WWW, f)); removed++; }
