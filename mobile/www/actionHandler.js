@@ -8,6 +8,7 @@ import * as UI from './ui.js';
 import * as Combat from './combat.js';
 import * as Items from './items.js';
 import * as Progression from './progression.js';
+import * as Media from './media.js';
 import { levelUp } from './battle.js';
  // May not be needed if all calls go through aiHandler
 import { generateId, getRandomElement, clamp } from './utils.js';
@@ -250,6 +251,7 @@ export async function handlePlayerChoice(actionType, choiceText) {
                         break;
                     case 'Attack': {
                         const r = Combat.executeWeaponAttack(currentPlayer, target);
+                        if (r.missed || r.blocked) Media.play('miss'); // a hit is heard from fx.js (every HP change)
                         if (r.missed) combatLog = `${currentPlayer.name} swings at ${target.name} and misses.`;
                         else if (r.blocked) combatLog = `${target.name} blocks ${currentPlayer.name}'s strike.`;
                         else combatLog = `${currentPlayer.name} hits ${target.name} for ${r.actualDamage} ${r.element || ''} damage.`;
@@ -326,6 +328,7 @@ export async function handlePlayerChoice(actionType, choiceText) {
                             currentPlayer.hp = Math.min(currentPlayer.maxHp, currentPlayer.hp + Math.max(4, Math.round((currentPlayer.maxHp || 100) * 0.08)));
                             combatLog = `${currentPlayer.name} finds no usable items and catches a breath (+${currentPlayer.hp - before} HP).`;
                         } else {
+                            Items.inferItemEffects(item); // an older item with only words gets real effects
                             const heal = item.stats?.heal || 0;
                             const healPct = item.stats?.healPercent || 0;
                             const totalHeal = Math.round((heal + (currentPlayer.maxHp || 100) * healPct) * Progression.kindHealing(currentPlayer)); // Kind: +10% per point
@@ -352,6 +355,7 @@ export async function handlePlayerChoice(actionType, choiceText) {
                                 currentPlayer.statusEffects = (currentPlayer.statusEffects || []).filter(fx => cure !== 'All' && ![].concat(cure).includes(fx.name));
                                 if (n0 !== currentPlayer.statusEffects.length) parts.push(`is cured`);
                             }
+                            parts.push(...applyItemExtras(currentPlayer, item));
                             combatLog = `${currentPlayer.name} ${parts.length ? parts.join(', ') : `uses ${item.name}`}.`;
                             // Decrement / remove
                             if (item.quantity != null) {
@@ -592,6 +596,9 @@ Fight round ${gameState.combat?.round || 1}. Narrate this round so the fight CHA
             gameState.narrativeContext.lastOutcome = { success, band: roll.band, roll, context };
             const statName = roll.stat ? Progression.STATS[roll.stat].name : 'Luck';
             UI.showPopup(`🎲 ${statName}: ${Progression.describeRoll(roll)}`, won ? 'success' : roll.band === 'partial' ? 'info' : 'warning', 3500);
+            Media.play('dice');
+            if (roll.band === 'crit') setTimeout(() => { Media.play('crit'); Media.buzz([30, 40, 60]); }, 450);
+            else if (roll.band === 'fumble') setTimeout(() => { Media.play('fumble'); Media.buzz(80); }, 450);
             outcomeNotes.push(`${statName} check ${Progression.describeRoll(roll)}`);
 
             if (result.hpLoss > 0) {
@@ -626,8 +633,9 @@ Fight round ${gameState.combat?.round || 1}. Narrate this round so the fight CHA
             if (result.charm) {
                 const charm = Items.makeLuckyCharm(gameState.adventureTheme, result.charm);
                 currentPlayer.inventory.push(charm);
-                UI.showPopup(`🍀 Found ${charm.name}! Luck +${result.charm}`, 'legendary', 3500);
-                outcomeNotes.push(`found ${charm.name}, a lucky charm (already in the inventory)`);
+                const fused = Progression.fuseCharms(currentPlayer);
+                UI.showPopup(fused ? `🍀 Found ${charm.name}: it fuses into ${fused.name}, luck ${fused.luck}!` : `🍀 Found ${charm.name}! Luck +${result.charm}`, 'legendary', 3500);
+                outcomeNotes.push(`found ${charm.name}, a lucky charm${fused ? ` that fused into ${fused.name} (luck ${fused.luck})` : ''} (already in the inventory)`);
             }
             if (result.fluster) {
                 Combat.applyStatusEffect(currentPlayer, 'Flustered', 3, {}, 'fumble');
@@ -863,6 +871,27 @@ Result: ${(lastRoll && !lastRoll.stat
     }
 }
 
+
+/** An item's MP and permanent-stat effects (inventory and battle use). Returns what happened, for the story. */
+function applyItemExtras(hero, item) {
+    const parts = [];
+    const st = item?.stats || {};
+    const mp = Math.round((Number(st.mp) || 0) + (hero.maxMp || 0) * (Number(st.mpPercent) || 0));
+    if (mp > 0) {
+        const before = hero.mp || 0;
+        hero.mp = Math.min(hero.maxMp || before + mp, before + mp);
+        if (hero.mp > before) parts.push(`restores ${hero.mp - before} MP`);
+    }
+    for (const [stat, n] of Object.entries(st.statUp || {})) {
+        if (!Progression.STATS[stat]) continue;
+        Progression.ensureStats(hero);
+        const before = hero.stats[stat];
+        hero.stats[stat] = Math.min(Progression.STAT_MAX, before + (Number(n) || 0));
+        if (hero.stats[stat] > before) parts.push(`${Progression.STATS[stat].name} rises to ${hero.stats[stat]}`);
+    }
+    if (st.statUp) { try { Combat.recalculateCharacterStats(hero); } catch (_) {} }
+    return parts;
+}
 
 /**
  * Calculates the significance of a player choice for compression
@@ -1403,6 +1432,7 @@ export async function useInventoryItem(itemId) {
      }
      const item = player.inventory[itemIndex];
      item.type = Progression.usableType(item); // an invented type ("Artifact") from an older save
+     Items.inferItemEffects(item); // words become real effects
      log(`Found item: ${item.name} (${item.type})`);
 
      // In a fight, drinking from the pack is the battle Item action: it costs
@@ -1564,6 +1594,16 @@ export async function useInventoryItem(itemId) {
          return; // Do not consume or advance turn
      }
 
+     // MP and permanent stat effects come on top of the main effect.
+     if (item.type === 'Consumable' && (consumed || requiresAICall || turnAdvanced)) {
+         const extras = applyItemExtras(player, item);
+         if (extras.length) {
+             consumed = true;
+             UI.showPopup(`${item.name}: ${extras.join(', ')}!`, 'healing', 3000);
+             actionLog = `${actionLog || `${player.name} uses ${item.name}.`} Also: ${extras.join(', ')}.`;
+             UI.renderPlayerCards();
+         }
+     }
      // Remove Consumed Item
      if (consumed) {
          // One from a stack (before, drinking one of 3 potions deleted all 3).
@@ -1849,6 +1889,8 @@ export function buyShopItem(itemData) {
          if (newItem.type === 'Consumable' && newItem.quantity === undefined) { newItem.quantity = 1; }
          if (!player.inventory) player.inventory = [];
          player.inventory.push(newItem);
+         const fused = Progression.fuseCharms(player);
+         if (fused) UI.showPopup(`🍀 Your charms fuse: ${fused.name}, luck ${fused.luck}!`, 'legendary', 3500);
          // One of each piece of gear or charm per hero: it leaves this hero's
          // shop, the others can still buy their own (live 10-09: five copies
          // of the same lucky charm). Consumables stay on sale.

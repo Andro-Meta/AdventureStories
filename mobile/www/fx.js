@@ -1,10 +1,13 @@
 // fx.js - hit / heal feedback. Called by ui.js after cards render: compares
 // each character's HP with the last value it saw, so every HP change shows
 // (combat, potions, poison ticks, narrator events) without hooks in each system.
-//   hero hurt  : screen shake + red edge flash + short buzz + floating -N
-//   hero healed: green glow on the card + floating +N
-//   foe hurt   : card jolt + red flash + floating -N (bigger on big hits)
+//   hero hurt  : screen shake + red edge flash + short buzz + hurt sound + floating -N
+//   hero healed: green glow on the card + heal sound + floating +N
+//   foe hurt   : card jolt + red flash + hit sound + floating -N (bigger on big hits)
+// Sounds and buzz follow the Sound & Voice settings (media.js).
 // Respects prefers-reduced-motion (flash and numbers only, no shake).
+
+import * as Media from './media.js';
 
 const lastHp = new Map();
 const reduceMotion = () => globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -51,13 +54,14 @@ function heroHurt(card, amount, maxHp) {
     if (!edge) { edge = document.createElement('div'); edge.id = 'fxDamageEdge'; document.body.appendChild(edge); }
     restart(edge, 'fx-on');
     restart(card, 'fx-hurt');
-    try { navigator.vibrate?.(heavy ? [40, 30, 60] : 35); } catch (_) {}
+    Media.play('hurt'); Media.buzz(heavy ? [40, 30, 60] : 35);
 }
 
-function healed(card) { restart(card, 'fx-heal'); }
+function healed(card) { restart(card, 'fx-heal'); Media.play('heal'); }
 
 function foeHurt(card, amount, maxHp) {
     restart(card, amount >= maxHp * 0.3 ? 'fx-foe-crit' : 'fx-foe-hit');
+    Media.play('hit');
 }
 
 function killNumber(diff) {

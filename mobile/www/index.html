@@ -32,11 +32,13 @@
                     <button id="continueGameBtn" class="hidden">Continue Last Game</button>
                     <button id="loadGameBtn">Load Game</button>
                     <button id="localAIBtn">⚙️ AI Settings</button>
+                    <button id="howToPlayBtn">📘 How to Play</button>
+                    <button id="soundSettingsBtn">🔊 Sound &amp; Voice</button>
                     <button id="aboutBtn">About</button>
                 </div>
             </div>
             <footer>
-                <p class="version-info">v1.0</p>
+                <p class="version-info" id="versionInfo">v1.2.2</p>
             </footer>
         </div>
 
@@ -237,7 +239,7 @@
 
             <!-- Story Card -->
             <section id="storyCard" class="card">
-                <h3>Story</h3>
+                <h3 class="story-head">Story <button id="readAloudBtn" class="read-aloud-btn" aria-label="Read the story aloud" title="Read aloud">🔊</button></h3>
                 <div id="storyText">
                     The adventure begins...
                 </div>
@@ -318,6 +320,8 @@
                     <button id="resumeBtn">Resume Game</button>
                     <button id="readStoryBtn" class="btn-secondary">📖 Read the Story So Far</button>
                     <button id="saveGameBtn" class="btn-secondary">💾 Save Game</button>
+                    <button id="menuHowToPlayBtn" class="btn-secondary">📘 How to Play</button>
+                    <button id="menuSoundSettingsBtn" class="btn-secondary">🔊 Sound &amp; Voice</button>
                     <button id="menuAISettingsBtn" class="btn-secondary">⚙️ AI Settings</button>
                     <button id="exitToMainMenuBtn" class="btn-secondary">Save and Exit to Main Menu</button>
                     <button id="exitWithoutSavingBtn">Exit Without Saving</button>
@@ -418,7 +422,64 @@
                  <p id="loadError" class="error-message hidden"></p>
                  <p id="noSavesMessage" class="info-message hidden">No saved games found.</p>
                 <div class="button-container">
+                    <button id="exportSavesBtn" class="btn-secondary">⬇️ Export saves</button>
+                    <button id="importSavesBtn" class="btn-secondary">⬆️ Import saves</button>
+                    <input type="file" id="importSavesInput" accept=".json,application/json" class="hidden">
+                </div>
+                <div class="button-container">
                     <button class="backBtn" data-target="mainMenuScreen">Back</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- How to Play: a guide to read any time (Michael 10-09: in the menu, not a walkthrough) -->
+        <div id="howToPlayScreen" class="screen hidden">
+            <h1>How to Play</h1>
+            <div class="card guide-content">
+                <h3>Your turn</h3>
+                <p>Each turn you get five choices, one for each way of doing things. The icon shows the stat the action uses and the % is your chance:</p>
+                <ul>
+                    <li>💪 <b>Brave</b>: fight, climb, face danger</li>
+                    <li>🧠 <b>Clever</b>: search, solve, figure things out</li>
+                    <li>🥷 <b>Sneaky</b>: hide, trick, slip past</li>
+                    <li>💛 <b>Kind</b>: help, talk, make friends</li>
+                    <li>🍀 <b>Luck</b>: something wild and silly. A long shot, but spectacular when it works!</li>
+                </ul>
+                <h3>Danger</h3>
+                <p>No mark = <b>Safe</b>: if it fails, nothing hurts. <b>⚠ Bold</b>: failing can hurt. <b>⚠⚠ Reckless</b>: failing will hurt, but it pays the most.</p>
+                <h3>Rolls</h3>
+                <p>Every choice rolls a 20-sided die plus your stat. A natural 20 is a <b>critical success</b>; a 1 is a <b>fumble</b>. Even a setback gives XP.</p>
+                <h3>Stats and levels</h3>
+                <p>Stats go from 0 to 10. Use a stat successfully 6 times and it grows. Each level gives a point to spend: tap ⭐ on your hero card.</p>
+                <h3>Fights</h3>
+                <p><b>Attack</b> hits a foe. <b>Special</b> uses a move or spell (spells cost MP). <b>Item</b> uses something from your bag. <b>Defend</b> halves damage until your next turn. <b>Run</b> tries to escape. Foes get tougher as you level, and so does the loot.</p>
+                <h3>Healing</h3>
+                <p>Potions and other items, Kind choices, rest spots on your journey, the inn in the Shop, and a breather after every won fight all bring back HP and MP.</p>
+                <h3>Items and lucky charms</h3>
+                <p>Equip weapons and armor from your Bag; use potions and other items. Lucky charms help 🍀 choices and make critical successes more likely. Two charms <b>fuse</b>: the best one keeps its luck and adds a fifth of the other's.</p>
+                <h3>The Shop</h3>
+                <p>New stock every 5 turns. Each hero can buy one of each piece of gear or charm; potions stay on sale. Sell from your Bag for half price.</p>
+                <h3>After you win</h3>
+                <p>Beat the villain to unlock <b>god mode</b>: write anything you want to happen, below the usual choices.</p>
+                <h3>Saves</h3>
+                <p>The game saves itself every turn. On the Load Game screen you can export your saves to a file and import them again.</p>
+                <nav class="button-container">
+                    <button id="howToPlayBackBtn">Back</button>
+                </nav>
+            </div>
+        </div>
+
+        <!-- Sound & Voice -->
+        <div id="soundSettingsScreen" class="screen hidden">
+            <h1>Sound &amp; Voice</h1>
+            <div class="card sound-settings">
+                <label class="toggle-row"><input type="checkbox" id="optReadAloud"> <span>📖 Read each new scene aloud</span></label>
+                <label class="toggle-row"><input type="checkbox" id="optSfx"> <span>🔔 Sound effects</span></label>
+                <label class="toggle-row"><input type="checkbox" id="optVibrate"> <span>📳 Vibration</span></label>
+                <p class="api-key-hint" id="voiceNote">Tap 🔊 on the story at any time to hear the current scene.</p>
+                <div class="button-container">
+                    <button id="testVoiceBtn" class="btn-secondary">▶️ Test the voice</button>
+                    <button id="soundSettingsBackBtn">Back</button>
                 </div>
             </div>
         </div>
@@ -428,8 +489,8 @@
             <h1>About Adventure Stories</h1>
             <div class="card about-content">
                  <p>Adventure Stories is an AI-powered, text-based RPG where your choices shape the narrative, guided by an AI storyteller.</p>
-                 <p>Create characters, explore themed worlds, battle monsters, find items, and complete your adventure goal! The storyteller is a free online AI (OpenRouter or Google AI Studio key, set once in AI Settings).</p>
-                 <p><strong>Features:</strong> Multiple themes, dynamic goals, combat, status effects, item tiers, AI-generated choices mapped to fixed action types (Good, Bad, Risky, Silly, Investigative) with implicit consequences, expandable story display, local saves, faction reputation system with trust-based difficulty.</p>
+                 <p>Create characters, explore themed worlds, battle monsters, find items, and complete your adventure goal! The storyteller is a free online AI (Google, Groq or OpenRouter keys, set once in AI Settings; the smart switcher picks whichever is working).</p>
+                 <p><strong>Features:</strong> 13 themes plus your own, five approaches with Safe / Bold / Reckless danger each turn, stats and levels, fights that keep pace with you, rest spots and treasure, lucky charms that fuse, a shop, god mode after victory, and local saves you can export.</p>
                  <hr>
                  <p><em>Made with ❤️ for Brookston, Vincent, Toby, and Katie by their Dad.</em></p>
                  <hr>

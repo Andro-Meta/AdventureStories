@@ -289,6 +289,49 @@ function setupEventListeners(UI, setup, actionHandler, saveLoad) { // Added acti
     // Phase 0: cloud backend selection + API key save
     setupCloudBackendListeners();
     safeAddListener('aboutBtn', 'click', () => UI.showScreen('aboutScreen'), 'aboutBtn');
+    // How to Play: from the main menu or the in-game menu; Back returns to where you came from.
+    let guideReturn = 'mainMenuScreen';
+    safeAddListener('howToPlayBtn', 'click', () => { guideReturn = 'mainMenuScreen'; UI.showScreen('howToPlayScreen'); }, 'howToPlayBtn');
+    safeAddListener('menuHowToPlayBtn', 'click', () => { guideReturn = 'menuScreen'; UI.showScreen('howToPlayScreen'); }, 'menuHowToPlayBtn');
+    safeAddListener('howToPlayBackBtn', 'click', () => UI.showScreen(guideReturn), 'howToPlayBackBtn');
+    // Sound & Voice settings (both menus) and the story card's read-aloud button.
+    import('./media.js').then((Media) => {
+    let soundReturn = 'mainMenuScreen';
+    const openSound = (from) => {
+        soundReturn = from;
+        const set = (id, on) => { const el = document.getElementById(id); if (el) el.checked = on; };
+        set('optReadAloud', Media.settings.readAloud); set('optSfx', Media.settings.sfx); set('optVibrate', Media.settings.vibrate);
+        const note = document.getElementById('voiceNote');
+        if (note && !Media.canSpeak()) note.textContent = 'Read-aloud is not available on this device yet.';
+        UI.showScreen('soundSettingsScreen');
+    };
+    safeAddListener('soundSettingsBtn', 'click', () => openSound('mainMenuScreen'), 'soundSettingsBtn');
+    safeAddListener('menuSoundSettingsBtn', 'click', () => openSound('menuScreen'), 'menuSoundSettingsBtn');
+    safeAddListener('soundSettingsBackBtn', 'click', () => UI.showScreen(soundReturn), 'soundSettingsBackBtn');
+    for (const [id, key] of [['optReadAloud', 'readAloud'], ['optSfx', 'sfx'], ['optVibrate', 'vibrate']]) {
+        document.getElementById(id)?.addEventListener('change', (e) => {
+            Media.settings.set(key, e.target.checked);
+            if (key === 'sfx' && e.target.checked) Media.play('coin');
+            if (key === 'vibrate' && e.target.checked) Media.buzz(60);
+            if (key === 'readAloud' && !e.target.checked) Media.stopSpeaking();
+        });
+    }
+    safeAddListener('testVoiceBtn', 'click', () => Media.speak('Once upon a time, a brave hero set out on an adventure.'), 'testVoiceBtn');
+    let reading = false;
+    safeAddListener('readAloudBtn', 'click', () => {
+        if (reading) { Media.stopSpeaking(); reading = false; return; }
+        reading = true; Media.speak(gameState.currentNarrative || document.getElementById('storyText')?.textContent || '');
+        setTimeout(() => { reading = false; }, 60000); // a second tap within a minute stops it
+    }, 'readAloudBtn');
+    }).catch(e => displayVisualError(`Sound & Voice setup failed: ${e.message}`));
+    { const v = document.getElementById('versionInfo'); if (v) v.textContent = `v${Config.APP_VERSION}`; }
+    // Save backup: export every save to a file, import them again.
+    safeAddListener('exportSavesBtn', 'click', () => saveLoad.exportSaves(), 'exportSavesBtn');
+    safeAddListener('importSavesBtn', 'click', () => document.getElementById('importSavesInput')?.click(), 'importSavesBtn');
+    document.getElementById('importSavesInput')?.addEventListener('change', async (e) => {
+        const file = e.target.files?.[0]; e.target.value = '';
+        if (file) { await saveLoad.importSaves(await file.text()); saveLoad.listSaves(); }
+    });
     // saveApiKeyBtn removed - using local AI exclusively
     safeAddListener('adventureTypeNextBtn', 'click', setup.proceedToAgeInput, 'adventureTypeNextBtn');
     safeAddListener('ageInputNextBtn', 'click', setup.proceedToNameInput, 'ageInputNextBtn');
@@ -385,6 +428,7 @@ function setupEventListeners(UI, setup, actionHandler, saveLoad) { // Added acti
             return; // Exit if not a standard choice button
         }
 
+        import('./media.js').then(M => M.play('tap', 0.35)).catch(() => {}); // a soft click
         // Disable all choice buttons immediately to prevent double clicks
         document.querySelectorAll('#choicesContainer .choice-btn').forEach(btn => btn.disabled = true);
 
