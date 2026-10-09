@@ -929,6 +929,9 @@ export function renderChoices(choices, handler = null) {
     if (Array.isArray(choices) && !handler) choices = choices.filter(c => c?.type !== 'Defend');
     // Exploration: five different approaches, always (the storyteller is asked
     // and repaired in aiHandler; this is the last line for every other path).
+    // Fight commands left over after a fight would turn into luck choices
+    // below: show plain story choices instead.
+    if (Array.isArray(choices) && !handler && !gameState.inCombat && choices.length && choices.every(c => ['Attack', 'Special', 'Item', 'Run', 'Defend', 'Spell'].includes(c?.type))) choices = Progression.fallbackChoices(gameState.choicePlan);
     if (Array.isArray(choices) && !handler && !gameState.inCombat) choices = choices.map(Progression.normalizeChoice);
     if (Array.isArray(choices) && !handler && !gameState.inCombat && choices.length === 5) choices = Progression.fillMix(choices, gameState.choicePlan);
     if (Array.isArray(choices) && choices.length > 1 && !handler) {

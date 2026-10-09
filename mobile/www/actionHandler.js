@@ -506,7 +506,11 @@ Fight round ${gameState.combat?.round || 1}. Narrate this round so the fight CHA
                     if (inCombatBeforeCall && (!gameState.inCombat || Combat.areAllEnemiesDefeated())) {
                         gameState.inCombat = false;
                         if (gameState.combat) gameState.combat.isActive = false;
-                        const fighter = gameState.currentPlayerIndex;
+                        // The hero who just fought: the combat turn order may already
+                        // have passed the turn on, and advancing from there skipped
+                        // the next hero (Ava attacked, Ben was up, the turn went back to Ava).
+                        const fighter = Math.max(0, gameState.players.indexOf(currentPlayer));
+                        gameState.currentPlayerIndex = fighter;
                         // Skip the round tick only if this hero's combat turn already ticked
                         // (the storyteller ended the fight after the enemy phase); a killing
                         // blow ends it before any combat tick, so that round still ticks once.
