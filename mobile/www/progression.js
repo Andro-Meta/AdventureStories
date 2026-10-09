@@ -55,8 +55,53 @@ export const PLAIN_CHOICE = {
     luck:   { Safe: 'Ask the nearest small creature for advice, very politely.', Bold: 'Challenge whoever is in charge to a dance-off.', Reckless: 'Disguise yourself as a piece of furniture and stroll right past.' }
 };
 
-/** A full fallback set: one plain choice per approach, all three dangers. */
-export const fallbackChoices = () => APPROACHES.map(stat => ({ type: DEFAULT_DANGER[stat], stat, text: PLAIN_CHOICE[stat][DEFAULT_DANGER[stat]] }));
+/** A full fallback set: one plain choice per approach, at this round's dangers. */
+export const fallbackChoices = (plan = DEFAULT_DANGER) => APPROACHES.map(stat => ({ type: plan[stat], stat, text: PLAIN_CHOICE[stat][plan[stat]] }));
+
+// Every way to give the five approaches a danger each that uses all three (150).
+const ALL_PLANS = (() => {
+    const out = [];
+    const rec = (pre) => {
+        if (pre.length === APPROACHES.length) { if (DANGERS.every(d => pre.includes(d))) out.push(pre); return; }
+        for (const d of DANGERS) rec([...pre, d]);
+    };
+    rec([]);
+    return out;
+})();
+
+/**
+ * This round's danger for each approach, so the pairing shuffles in a
+ * meaningful way (Michael 10-08). Left to itself the storyteller fell into
+ * habits (phone: Clever Safe, Kind Safe and Luck Reckless 4 of 5 rounds).
+ * Hard rules, over every plan that uses all three dangers: at least 3 of the
+ * 5 approaches change danger from last round, and no approach keeps the same
+ * danger 3 rounds running. Then, softly: each approach leans toward the
+ * dangers it had least in the last 6 rounds, 2-2-1 spreads are preferred, and
+ * a random weight keeps it from settling into a loop (a strict "least recent"
+ * rule cycled through just 3 plans forever). `history` = earlier plans.
+ */
+export function pickDangerPlan(history = [], rng = Math.random) {
+    const recent = (history || []).slice(-6);
+    const last = recent[recent.length - 1], prev = recent[recent.length - 2];
+    let best = null, bestScore = Infinity;
+    for (const p of ALL_PLANS) {
+        let score = rng() * 6;
+        APPROACHES.forEach((a, i) => {
+            score += recent.filter(h => h?.[a] === p[i]).length;                       // balance over 6 rounds
+            if (last && prev && last[a] === p[i] && prev[a] === p[i]) score += 1000;    // never 3 in a row
+        });
+        if (Math.max(...DANGERS.map(d => p.filter(x => x === d).length)) > 2) score += 2;
+        if (last && APPROACHES.filter((a, i) => last[a] !== p[i]).length < 3) score += 1000;
+        if (score < bestScore) { bestScore = score; best = p; }
+    }
+    return Object.fromEntries(APPROACHES.map((a, i) => [a, best[i]]));
+}
+
+/** The plan a shown set actually has ({ stat: danger }), or null if it isn't a full set. */
+export function planOf(choices) {
+    const plan = Object.fromEntries((choices || []).filter(c => APPROACHES.includes(c?.stat) && DANGERS.includes(c?.type)).map(c => [c.stat, c.type]));
+    return Object.keys(plan).length === APPROACHES.length ? plan : null;
+}
 
 /** Any choice in the current shape { type: danger, stat, text } (old saves and loose model output converted). */
 export function normalizeChoice(c) {
@@ -91,14 +136,15 @@ export function approachPlan(choices) {
  * appears more than once. A text is never just relabelled. Empty = fine.
  */
 const dangerOf = (c) => (DANGERS.includes(c?.type) ? c.type : DEFAULT_DANGER[c?.stat] || 'Bold');
-export function mixPlan(choices) {
+export function mixPlan(choices, want = null) {
     const list = choices || [];
-    const slots = approachPlan(list).map(p => ({ ...p, danger: null }));
+    const slots = approachPlan(list).map(p => ({ ...p, danger: want?.[p.stat] || null }));
     const isSlot = (i) => slots.some(p => p.index === i);
     const count = Object.fromEntries(DANGERS.map(d => [d, 0]));
     list.forEach((c, i) => { if (!isSlot(i)) count[dangerOf(c)]++; });
+    slots.forEach(p => { if (p.danger) count[p.danger]++; });
     const missing = DANGERS.filter(d => !count[d]);
-    for (const p of slots) { p.danger = missing.shift() || DEFAULT_DANGER[p.stat]; count[p.danger]++; }
+    for (const p of slots.filter(p => !p.danger)) { p.danger = missing.shift() || DEFAULT_DANGER[p.stat]; count[p.danger]++; }
     while (missing.length) {
         const d = missing.shift();
         const donor = list.findIndex((c, i) => !isSlot(i) && count[dangerOf(c)] > 1);
@@ -110,8 +156,8 @@ export function mixPlan(choices) {
 }
 
 /** Apply mixPlan with the plain texts (sync; the render-time guarantee). */
-export function fillMix(choices) {
-    const plan = mixPlan(choices);
+export function fillMix(choices, want = null) {
+    const plan = mixPlan(choices, want);
     const out = choices.map(c => ({ ...c, type: dangerOf(c) })); // a missing or junk danger gets the usual one
     for (const { index, stat, danger } of plan) out[index] = { ...out[index], type: danger, stat, text: PLAIN_CHOICE[stat][danger] };
     return out;

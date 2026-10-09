@@ -561,7 +561,7 @@ Fight round ${gameState.combat?.round || 1}. Narrate this round so the fight CHA
                             { type: 'Item',    text: 'Use an item from your pack.' },
                             { type: 'Run',     text: 'Try to break off and flee.' }
                         ]
-                        : Progression.fallbackChoices();
+                        : Progression.fallbackChoices(gameState.choicePlan);
                     UI.renderChoices(fallback);
                     cbStep(14, `rendered ${fallback.length} fallback choices`);
                 }
@@ -795,7 +795,7 @@ Result: ${(lastRoll && !lastRoll.stat
         // the UI never hangs.
         if (!aiResponse?.choices || !Array.isArray(aiResponse.choices) || aiResponse.choices.length === 0) {
             log('Rendered fallback exploration choices (timeout or null response).');
-            UI.renderChoices(Progression.fallbackChoices());
+            UI.renderChoices(Progression.fallbackChoices(gameState.choicePlan));
         }
 
     } catch (error) {
@@ -851,7 +851,7 @@ Result: ${(lastRoll && !lastRoll.stat
                         { type: 'Item',    text: 'Use an item from your pack.' },
                         { type: 'Run',     text: 'Try to break off and flee.' }
                     ]
-                    : Progression.fallbackChoices();
+                    : Progression.fallbackChoices(gameState.choicePlan);
                 UI.renderChoices(fallback);
                 document.querySelectorAll('#choicesContainer .choice-btn').forEach(b => { b.disabled = false; });
                 log('Final safety net: rendered fallback choices because none were enabled.');

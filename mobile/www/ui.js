@@ -930,7 +930,7 @@ export function renderChoices(choices, handler = null) {
     // Exploration: five different approaches, always (the storyteller is asked
     // and repaired in aiHandler; this is the last line for every other path).
     if (Array.isArray(choices) && !handler && !gameState.inCombat) choices = choices.map(Progression.normalizeChoice);
-    if (Array.isArray(choices) && !handler && !gameState.inCombat && choices.length === 5) choices = Progression.fillMix(choices);
+    if (Array.isArray(choices) && !handler && !gameState.inCombat && choices.length === 5) choices = Progression.fillMix(choices, gameState.choicePlan);
     if (Array.isArray(choices) && choices.length > 1 && !handler) {
         choices = [...choices];
         for (let i = choices.length - 1; i > 0; i--) {
@@ -938,6 +938,12 @@ export function renderChoices(choices, handler = null) {
             [choices[i], choices[j]] = [choices[j], choices[i]];
         }
         gameState.currentChoices = choices;
+        // Remember this round's approach -> danger pairing so the next one differs.
+        const shown = !gameState.inCombat && Progression.planOf(choices);
+        if (shown) {
+            const h = gameState.choiceMixHistory || (gameState.choiceMixHistory = []);
+            if (!Progression.APPROACHES.every(a => h[h.length - 1]?.[a] === shown[a])) { h.push(shown); if (h.length > 8) h.shift(); }
+        }
     }
     // Battle menu in a fixed order (Michael): Attack, Special, Item, Defend,
     // Run. Defend is a fixed command added here at render time (never
