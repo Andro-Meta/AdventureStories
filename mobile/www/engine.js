@@ -342,7 +342,6 @@ const PATHS = [
             gs.entityMemory = gs.entityMemory || { npcs: {}, locations: {}, items: {} };
             gs.entityMemory[category] = gs.entityMemory[category] || {};
             gs.entityMemory[category][key] = {
-                name: key,
                 description: value.description || '',
                 traits: value.traits || [],
                 relationship: value.relationship || (category === 'npcs' ? 'neutral' : undefined),

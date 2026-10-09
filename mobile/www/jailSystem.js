@@ -360,7 +360,6 @@ if (typeof window !== 'undefined') {
     window.__jailSystem = {
         buildJailSystemPromptAddon,
         tryApplyJailMilestone,
-        tryApplyJailMilestone,
         tryAutoCompleteEscape,
         getJailForTheme
     };

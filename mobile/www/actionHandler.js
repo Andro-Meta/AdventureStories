@@ -149,8 +149,6 @@ export async function handlePlayerChoice(actionType, choiceText) {
         // Get current context for outcome determination
         const context = determineContext(currentPlayer);
         
-        // Declare outcomeSet in the proper scope
-        let outcomeSet;
         let success;
         // What the game already rolled this turn, told to the narrator so the
         // prose matches the popups (it used to see only "Success: Yes/No").
@@ -653,7 +651,7 @@ Fight round ${gameState.combat?.round || 1}. Narrate this round so the fight CHA
         UI.updateContextHeaders();
 
         // Record player choice for intelligent compression
-        const choiceSignificance = calculateChoiceSignificance(actionType, outcomeSet);
+        const choiceSignificance = calculateChoiceSignificance(actionType);
         recordPlayerChoice(currentPlayer.id, actionType, choiceText, gameState.narrativeContext.lastOutcome, choiceSignificance);
         
         // Record story beat if significant
@@ -872,10 +870,9 @@ Result: ${(lastRoll && !lastRoll.stat
 /**
  * Calculates the significance of a player choice for compression
  * @param {string} actionType - The type of action taken
- * @param {Object} outcomeSet - The outcome configuration
  * @returns {number} Significance score (0.0 to 1.0)
  */
-function calculateChoiceSignificance(actionType, outcomeSet) {
+function calculateChoiceSignificance(actionType) {
     let significance = 0.3; // Base significance
     
     // Increase significance based on action type
@@ -886,32 +883,6 @@ function calculateChoiceSignificance(actionType, outcomeSet) {
         case 'Bold':
             significance += 0.1;
             break;
-    }
-    
-    // Increase significance based on outcomes
-    if (outcomeSet?.outcomes) {
-        const outcomes = outcomeSet.outcomes;
-        
-        // Combat outcomes are significant
-        if (outcomes.combat) {
-            significance += 0.2;
-        }
-        
-        // Large HP changes are significant
-        if (outcomes.hp && Math.abs(outcomes.hp) >= 10) {
-            significance += 0.2;
-        }
-        
-        // Large coin changes are significant
-        if (outcomes.coins && Math.abs(outcomes.coins) >= 20) {
-            significance += 0.1;
-        }
-        
-        // Narrative outcomes are significant
-        if (outcomes.narrative) {
-            if (outcomes.narrative.informationGain) significance += 0.2;
-            if (outcomes.narrative.specialAbility) significance += 0.3;
-        }
     }
     
     return Math.min(significance, 1.0);
