@@ -69,7 +69,7 @@ ALREADY HANDLED BY THE GAME (do not emit): anything listed under "Already applie
 YOURS TO EMIT when the story makes them happen:
 - A named new place the players enter: replace /currentLocation AND add /entityMemory/locations/<Name>.
 - New named NPCs or notable items: add /entityMemory/npcs/<Name> or /entityMemory/items/<Name>; items the hero picks up: add ${P}/inventory/-.
-- When someone joins or leaves the heroes, turns friend or enemy, is captured or dies: replace /entityMemory/npcs/<Name> with {"status":"with you|away|captured|missing|dead","relationship":"friend|ally|neutral|enemy","fate":"how they died"}. The dead stay dead.
+- When someone joins or leaves the heroes, turns friend or enemy, is captured or dies: replace /entityMemory/npcs/<Name> with {"status":"with you|away|captured|missing|dead","relationship":"friend|ally|neutral|enemy","fate":"how they died"} ("with you" = a companion travelling with the heroes). The dead stay dead.
 - A fight starts: add /enemies/- (hp, maxHp, atk, def, abilities) AND replace /inCombat true. During a fight the game handles enemy HP and defeat itself: never emit /enemies/<n>/hp or /isDefeated, and never re-add an enemy that is already there or was defeated.
 - Status effects with narrative weight (Poison, Burn, Stun, Fear, Regen, Shield...): add ${P}/statusEffects/- {name, duration}.
 - Setups (Chekhov's gun): sparingly (about one every few turns), when the story makes a point of a clue, object, promise or mystery, add /storyThreads/- {text}. When one pays off, replace /storyThreads/<n>/resolved true. Never plant something you won't use.
@@ -837,7 +837,7 @@ export async function refreshArcMemory() {
 {
   "summary": "1-2 sentences capturing WHO did WHAT and the LASTING CONSEQUENCE.",${actChanged ? `
   "storySoFar": "the WHOLE story so far in at most 80 words (previous: ${String(gameState.arcMemory.storySoFar || 'none').slice(0, 500)})",` : ''}
-  "people": [{"name": "...", "status": "with you|away|captured|missing|dead", "relationship": "friend|ally|neutral|enemy", "fate": "how they died, only if they did"}] (only people whose place or loyalty CHANGED in these turns),
+  "people": [{"name": "...", "status": "with you|away|captured|missing|dead", "relationship": "friend|ally|neutral|enemy", "fate": "how they died, only if they did"}] (only people whose place or loyalty CHANGED in these turns; "with you" = travelling with the heroes as a companion),
   "newNpcs":     [{"name": "...", "description": "..."}],
   "newLocations":[{"name": "...", "description": "..."}],
   "newItems":    [{"name": "...", "description": "..."}]

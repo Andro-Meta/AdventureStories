@@ -37,8 +37,10 @@ Adventure Stories started as a dad's bedtime-story machine and grew into a full 
    - **Lucky charms** help luck rolls; two charms fuse into a stronger one.
    - **The shop** restocks as you play. Gear and charms are one per hero, so everyone in a group gets a shot.
 5. **Breathers.** Rest spots, treasure, traps, strangers and puzzles show up between fights. You also catch your breath after every win.
-6. **Win.** Every game has a goal and a 3-act quest that ends with a boss. The header shows the chapter and your next step.
-7. **God mode.** Beat the main quest and the story is yours: type anything ("I summon a phoenix", "Face me, Hollow King!") and it happens.
+6. **A story that builds to its ending.** The quest follows 14 story beats in order: a glimpse of the shadow behind it all, a midpoint twist, the villain revealed (and escaping), the darkest hour, the way to their stronghold, the journey there, the guardian at the gate, and only then the final confrontation. Loose ends get paid off first. The header shows the chapter and your next step.
+7. **A cast that remembers.** Friends and foes are remembered: who travels with you, who turned against you, who was captured, and who died and how. The dead stay dead.
+8. **A real ending.** After the boss: how the world changed, what became of everyone you met (the fallen too), and **the story noticed**: a few warm lines about what your choices said about you, each tied to a real moment, with a title like *The Lantern-Bearer*. (On by default; a parent can turn it off in Sound & Voice.)
+9. **The next chapter.** Choose from three new quests grown from your story, or write your own with **Divine Will**: type anything ("I summon a phoenix", "we step through a portal into a haunted mansion") and it happens.
 
 Every game autosaves after each turn. You can also save named copies, export all your saves to a file and import them again (Load Game screen).
 

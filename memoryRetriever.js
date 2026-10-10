@@ -42,6 +42,8 @@ export function mergePerson(old, incoming, gs = gameState) {
     // No quiet resurrections: the dead stay dead and the defeated stay defeated
     // (defeated may become dead). Only Divine Will can undo it; winning the
     // quest does not (live 10-10: a later summary turned the beaten villain "away").
+    // An enemy is never "with the heroes" (live 10-10: a customs officer tailing them was).
+    if (next.status === 'with you' && next.bond < 0) next.status = 'away';
     const final = (s) => s === 'dead' || s === 'defeated';
     if (final(prev.status) && !gs.divineTurn && !(next.status === 'dead' || next.status === prev.status)) {
         next.status = prev.status; next.fate = prev.fate; next.fateTurn = prev.fateTurn;

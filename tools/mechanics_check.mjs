@@ -2433,6 +2433,8 @@ await block(async () => {
   v = MR.mergePerson(v, { name: 'Blackwake', status: 'dead', fate: 'fell into the sea' });
   const died = v.status;
   gameState.divineTurn = true; v = MR.mergePerson(v, { name: 'Blackwake', status: 'with you' }); gameState.divineTurn = false;
+  const tail = MR.mergePerson(undefined, { name: 'Officer Vale', status: 'with you', relationship: 'enemy' });
+  check(tail.status === 'away', `an enemy tailing the heroes is not "with the heroes" (${tail.status})`);
   check(kept === 'defeated' && died === 'dead' && v.status === 'with you', `after the win the defeated stay defeated (${kept}), may still die (${died}), and only Divine Will brings them back (${v.status})`);
 });
 
