@@ -317,11 +317,14 @@ ${buildDiffInstructions(pIdx)}`;
             if (encounter && !nowInCombat) log('Encounter was due but no fight started; it stays owed.');
         }
         let choices = null;
-        // Accept the reply's choices whenever they fit the mode now: a turn that
-        // starts a fight may already carry Attack/Special/Item/Run (asked for
-        // below); before, every fight start/end cost a choices-only call.
-        try { choices = validateChoicesPayload(payload, nowInCombat); }
-        catch (e) { log(`Turn choices unusable (${e.message}); asking for choices only.`); }
+        // A turn that starts a fight opens the fixed battle menu (classic rounds,
+        // 10-09). Before, it asked the storyteller for four written combat choices,
+        // often with a second call when the reply still had five exploration ones.
+        if (nowInCombat) choices = Battle.battleMenu(gameState.players?.[gameState.currentPlayerIndex] || gameState.players?.[0]);
+        else {
+            try { choices = validateChoicesPayload(payload, false); }
+            catch (e) { log(`Turn choices unusable (${e.message}); asking for choices only.`); }
+        }
         const done = recentActionTexts(prompt);
         if (!choices) {
             // The story is already told and applied: a failure here must not

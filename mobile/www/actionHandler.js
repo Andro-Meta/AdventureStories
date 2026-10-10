@@ -69,7 +69,7 @@ if (typeof window !== 'undefined') {
 /** HP, coins and item names per player, to diff before/after a turn. */
 function snapshotParty() {
     return (gameState.players || []).map(p => ({
-        name: p.name, hp: p.hp ?? 0, coins: p.coins ?? 0,
+        name: p.name, hp: p.hp ?? 0, coins: p.coins ?? 0, level: p.level || 1, levelHeal: p.levelHealTotal || 0,
         items: (p.inventory || []).map(i => i?.name).filter(Boolean)
     }));
 }
@@ -83,8 +83,12 @@ export function formatTurnRecap(before, after, actorName) {
     after.forEach((a, i) => {
         const b = before[i] || { hp: a.hp, coins: a.coins, items: a.items };
         const bits = [];
-        const dHp = a.hp - b.hp, dCoins = a.coins - b.coins;
+        // A level-up heal is shown on its own: live 10-09 a setback cost 17 HP,
+        // the level-up healed 27, and the recap said "+10 HP".
+        const lvlHeal = (a.levelHeal || 0) - (b.levelHeal || 0);
+        const dHp = a.hp - b.hp - lvlHeal, dCoins = a.coins - b.coins;
         if (dHp) bits.push(`${dHp > 0 ? '+' : '\u2212'}${Math.abs(dHp)} HP`);
+        if ((a.level || 1) > (b.level || 1)) bits.push(`\u2b50 level ${a.level}${lvlHeal ? ` (+${lvlHeal} HP)` : ''}`);
         if (dCoins) bits.push(`${dCoins > 0 ? '+' : '\u2212'}${Math.abs(dCoins)} coins`);
         const remaining = [...b.items];
         const gained = a.items.filter(n => { const k = remaining.indexOf(n); if (k >= 0) { remaining.splice(k, 1); return false; } return true; });

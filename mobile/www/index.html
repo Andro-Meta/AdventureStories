@@ -482,7 +482,11 @@
                 <label class="toggle-row"><input type="checkbox" id="optReadAloud"> <span>📖 Read each new scene aloud</span></label>
                 <label class="toggle-row"><input type="checkbox" id="optSfx"> <span>🔔 Sound effects</span></label>
                 <label class="toggle-row"><input type="checkbox" id="optVibrate"> <span>📳 Vibration</span></label>
-                <p class="api-key-hint" id="voiceNote">Tap 🔊 on the story at any time to hear the current scene.</p>
+                <label class="voice-row">🗣️ Voice
+                    <select id="optVoice" class="cloud-provider-select"><option value="">Automatic (best voice)</option></select>
+                </label>
+                <label class="voice-row">🐢 Speed <input type="range" id="optVoiceRate" min="0.6" max="1.4" step="0.05" value="0.95"> 🐇</label>
+                <p class="api-key-hint" id="voiceNote">Pick a voice and tap Test to hear it. Tap 🔊 on the story at any time to hear the current scene. More voices: Android Settings → Text-to-speech → install voice data.</p>
                 <div class="button-container">
                     <button id="testVoiceBtn" class="btn-secondary">▶️ Test the voice</button>
                     <button id="soundSettingsBackBtn">Back</button>

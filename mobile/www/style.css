@@ -2129,3 +2129,8 @@ body::after { bottom: 0; height: env(safe-area-inset-bottom); }
 .update-banner .update-btn { width: 100%; }
 .update-banner .update-help { margin: 8px 0 0; opacity: 0.75; }
 .link-btn { background: none; border: 0; padding: 0; color: inherit; text-decoration: underline; font: inherit; cursor: pointer; box-shadow: none; width: auto; }
+
+/* Sound & Voice: voice picker and speed */
+.voice-row { display: flex; align-items: center; gap: 10px; margin: 10px 0; flex-wrap: wrap; }
+.voice-row select { flex: 1 1 180px; min-width: 0; }
+.voice-row input[type=range] { flex: 1 1 120px; }

@@ -303,6 +303,14 @@ function setupEventListeners(UI, setup, actionHandler, saveLoad) { // Added acti
         set('optReadAloud', Media.settings.readAloud); set('optSfx', Media.settings.sfx); set('optVibrate', Media.settings.vibrate);
         const note = document.getElementById('voiceNote');
         if (note && !Media.canSpeak()) note.textContent = 'Read-aloud is not available on this device yet.';
+        const rate = document.getElementById('optVoiceRate'); if (rate) rate.value = Media.voiceRate();
+        Media.listVoices().then(vs => {
+            const sel = document.getElementById('optVoice'); if (!sel) return;
+            sel.innerHTML = '';
+            let saved = ''; try { saved = localStorage.getItem('adv.voice') || ''; } catch (_) {}
+            for (const v of vs) { const o = document.createElement('option'); o.value = v.id; o.textContent = v.label; sel.appendChild(o); }
+            sel.value = vs.some(v => v.id === saved) ? saved : '';
+        }).catch(() => {});
         UI.showScreen('soundSettingsScreen');
     };
     safeAddListener('soundSettingsBtn', 'click', () => openSound('mainMenuScreen'), 'soundSettingsBtn');
@@ -316,7 +324,11 @@ function setupEventListeners(UI, setup, actionHandler, saveLoad) { // Added acti
             if (key === 'readAloud' && !e.target.checked) Media.stopSpeaking();
         });
     }
-    safeAddListener('testVoiceBtn', 'click', () => Media.speak('Once upon a time, a brave hero set out on an adventure.'), 'testVoiceBtn');
+    const sample = () => Media.speak('Once upon a time, a brave hero set out on an adventure. Behind a creaking door, something was waiting.');
+    safeAddListener('testVoiceBtn', 'click', sample, 'testVoiceBtn');
+    // Choosing a voice or a speed plays the sample, so players can compare quickly.
+    document.getElementById('optVoice')?.addEventListener('change', (e) => { Media.setVoice(e.target.value, null); sample(); });
+    document.getElementById('optVoiceRate')?.addEventListener('change', (e) => { Media.setVoice(null, e.target.value); sample(); });
     let reading = false;
     safeAddListener('readAloudBtn', 'click', () => {
         if (reading) { Media.stopSpeaking(); reading = false; return; }
