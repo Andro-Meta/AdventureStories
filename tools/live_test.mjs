@@ -61,7 +61,7 @@ async function settle(timeoutMs = 120000) {
   await page.waitForTimeout(400);
   while (Date.now() - t0 < timeoutMs) {
     // Level-up: the game asks which stat to raise; take the first open one (and count it).
-    const raised = await page.evaluate(() => { const t = document.querySelector('#battlePicker .bp-title')?.textContent || ''; if (!/raise a stat/.test(t)) return null; const o = document.querySelector('#battlePicker .bp-option:not([disabled])'); o?.click(); return o?.querySelector('.bp-label')?.textContent || null; });
+    const raised = await page.evaluate(() => { const t = document.querySelector('#battlePicker .bp-title')?.textContent || ''; if (!/raise a stat|learn a new special/.test(t)) return null; const o = document.querySelector('#battlePicker .bp-option:not([disabled])'); o?.click(); return o?.querySelector('.bp-label')?.textContent || null; });
     if (raised) { globalThis.__statPicks = (globalThis.__statPicks || 0) + 1; console.log(`  level-up -> ${raised}`); await page.waitForTimeout(300); continue; }
     const ready = await gs(g => !g.isLoading && !g.combatRoundInProgress && document.querySelectorAll('#choicesContainer .choice-btn:not(.disabled):not([disabled])').length > 0);
     if (ready) return true;
@@ -164,7 +164,9 @@ if (FULL) {
   // The story spine refuses beats in a burst: place the quest at the stronghold directly.
   await page.evaluate(async (villain) => {
     const { gameState: g } = await import('/state.js'); const { BEATS } = await import('/questDefinitions.js');
-    g.questProgress.milestones = BEATS.slice(0, BEATS.findIndex(b => b.name === 'final_confrontation')).map(b => ({ name: b.name, description: 'test jump', turn: -10 }));
+    // The stronghold reached 2 rounds ago: the live Act 3 turn builds toward the
+    // confrontation (no boss yet); one round later the fight may begin.
+    g.questProgress.milestones = BEATS.slice(0, BEATS.findIndex(b => b.name === 'final_confrontation')).map(b => ({ name: b.name, description: 'test jump', turn: (g.turn || 1) - 2 }));
     Object.assign(g.questProgress, { villain, lair: 'the Drowned Citadel', completionPercentage: 85 });
   }, VILLAIN);
   for (let p = 0; p < PLAYERS; p++) await op([
@@ -186,20 +188,26 @@ if (FULL) {
   const r3 = await playTurn(2);
   check(r3.ok, `live Act 3 turn: ${r3.picked}`);
   const brief = fs.readdirSync(`${ROOT}test-results`).filter(f => /^play_call_\d+\.json$/.test(f)).map(f => fs.readFileSync(`${ROOT}test-results/${f}`, 'utf8')).join(' ');
-  check(brief.includes(`MAIN VILLAIN: ${VILLAIN}`), 'storyteller is told who the villain is');
-  const afterTurn = await gs(g => ({ hp: g.players[0].hp, poison: g.players[0].statusEffects.find(s => s.name === 'Poison')?.duration }));
-  note(`Poison outside combat: HP ${hp0} -> ${afterTurn.hp}, Poison turns left ${afterTurn.poison}`);
-  check(afterTurn.poison < 4, `Poison ticks down outside combat (4 -> ${afterTurn.poison})`);
+  check(brief.includes(`VILLAIN: ${VILLAIN}`), 'storyteller is told who the villain is');
+  const afterTurn = await gs(g => ({ hp: g.players[0].hp, poison: g.players[0].statusEffects.find(s => s.name === 'Poison')?.duration, combat: g.inCombat,
+    boss: (g.enemies || []).find(e => e.isBoss)?.name, foes: (g.enemies || []).map(e => e.name) }));
+  note(`after the live Act 3 turn: ${afterTurn.combat ? `a fight began (${afterTurn.foes.join(', ')})` : 'no fight'}; Poison ${afterTurn.poison}`);
+  // At the stronghold the storyteller may start the guardian fight (or the confrontation) itself.
+  if (!afterTurn.combat) check(afterTurn.poison < 4, `Poison ticks down outside combat (4 -> ${afterTurn.poison})`);
+  check(!afterTurn.boss || afterTurn.boss === VILLAIN, `no boss but the villain (${afterTurn.boss || 'none yet'})`);
 
   // The villain shows up (the op the narrator sends when the fight starts),
-  // first a minion, then the villain himself.
-  await op([{ op: 'add', path: '/enemies/-', value: { name: 'Bilge Rat Deckhand', hp: 18, maxHp: 18, atk: 5, def: 1 } },
+  // with a minion; the confrontation is open now (gap passed).
+  // Loose ends paid off and the gap passed (what the storyteller's last beats would do).
+  const loose = await page.evaluate(async () => { const { gameState: g } = await import('/state.js'); g.questProgress.milestones.forEach(m => { m.turn = (g.turn || 1) - 4; }); const n = (g.storyThreads || []).filter(t => !t.resolved).length; (g.storyThreads || []).forEach(t => { t.resolved = true; }); return n; });
+  note(`loose ends open before the climax: ${loose}`);
+  if (!afterTurn.boss) await op([{ op: 'add', path: '/enemies/-', value: { name: 'Bilge Rat Deckhand', hp: 18, maxHp: 18, atk: 5, def: 1 } },
             { op: 'add', path: '/enemies/-', value: { name: VILLAIN, hp: 30, maxHp: 30, atk: 7, def: 3, abilities: ['Cutlass Flurry'] } },
-            { op: 'replace', path: '/inCombat', value: true },
-            // Everyone starts the fight hurt, so the potion gets drunk.
-            ...Array.from({ length: PLAYERS }, (_, p) => ({ op: 'replace', path: `/players/${p}/hp`, value: 45 }))]);
+            { op: 'replace', path: '/inCombat', value: true }]);
+  // Everyone starts the fight hurt, so the potion gets drunk.
+  await op(Array.from({ length: PLAYERS }, (_, p) => ({ op: 'replace', path: `/players/${p}/hp`, value: 45 })));
   const foes = await gs(g => g.enemies.map(e => ({ name: e.name, boss: !!e.isBoss, hp: e.maxHp })));
-  check(!foes[0].boss && foes[1].boss && foes[1].hp >= 60, `villain is the boss, minion is not (${foes.map(f => `${f.name}${f.boss ? '*' : ''} ${f.hp}`).join(', ')})`);
+  check(foes.filter(f => f.boss).length === 1 && foes.find(f => f.boss).name === VILLAIN && foes.find(f => f.boss).hp >= 60 && foes.some(f => !f.boss), `villain is the boss, minion is not (${foes.map(f => `${f.name}${f.boss ? '*' : ''} ${f.hp}`).join(', ')})`);
   // Fresh combat choices for whoever acts first (live call).
   await page.evaluate(async () => {
     const AI = await import('/aiHandler.js'); const UI = await import('/ui.js'); const { gameState: g } = await import('/state.js');
@@ -249,16 +257,32 @@ if (FULL) {
 // --- after the win -------------------------------------------------------------
 await page.waitForTimeout(1500);
 for (let i = 0; i < 60; i++) { if (await gs(g => !g.isLoading)) break; await page.waitForTimeout(1000); }
-const win = await gs(g => ({ epi: (g.epilogue || '').length, coins: g.players.map(p => p.coins), legendary: g.players.every(p => p.inventory.some(i => i.questReward)), god: !!g.isGoalComplete, log: g.storyLog.length, lastHasEpi: (g.storyLog.at(-1) || '').includes('Epilogue') }));
+const win = await gs(g => ({ epi: (g.ending?.text || '').length, coins: g.players.map(p => p.coins), legendary: g.players.every(p => p.inventory.some(i => i.questReward)), god: !!g.isGoalComplete, log: g.storyLog.length,
+  lastHasEpi: (g.storyLog.at(-1) || '').includes('— The End of the Quest —'), chapters: (g.currentChoices || []).filter(c => c.type === 'NewChapter').map(c => c.text),
+  freed: g.questProgress?.lair ? (g.entityMemory?.locations?.[g.questProgress.lair]?.traits || []).includes('freed') : true, villainStatus: (Object.entries(g.entityMemory?.npcs || {}).find(([n]) => n.toLowerCase() === String(g.questProgress?.villain || '').toLowerCase()) || [])[1]?.status,
+  sections: ['— What became of them —', '— The world —', '— What comes next? —'].filter(h => (g.ending?.text || '').includes(h)).length, divineBox: !!document.getElementById('godModeCustomChoice') }));
 fs.writeFileSync(`${ROOT}test-results/story_${args.includes('--tag') ? args[args.indexOf('--tag') + 1] : 'boss'}.json`, JSON.stringify(await gs(g => ({ villain: g.questProgress?.villain, threads: g.storyThreads, log: g.storyLog })), null, 2));
-check(win.epi > 100, `epilogue written (${win.epi} chars)`);
+check(win.epi > 300 && win.sections >= 2, `closing sequence written (${win.epi} chars, ${win.sections} sections)`);
+check(['defeated', 'dead'].includes(win.villainStatus) && win.freed, `the world changed: villain ${win.villainStatus}, stronghold freed (${win.freed})`);
+check(win.chapters.length === 3 && win.divineBox, `three next chapters offered, Divine Will still there: ${win.chapters.join(' | ').slice(0, 200)}`);
+note(`ending: ${(await gs(g => g.ending?.text || '')).replace(/\n+/g, ' / ').slice(0, 600)}`);
 check(win.legendary && win.coins.every(c => c >= 1000), `rewards: 1000+ coins (${win.coins.join('/')}) and a legendary item each`);
-check(win.lastHasEpi, `story book holds ${win.log} scenes ending with the epilogue`);
+check(win.lastHasEpi, `story book holds ${win.log} entries ending with the closing sequence`);
+await settle(5000); // a level-up picker (stat or new special) may be open after the win
 await page.click('#menuBtn'); await page.click('#readStoryBtn');
-const book = await page.$eval('#storyBookText', el => el.textContent.length);
-check(book > 1000, `Story Book screen shows the tale (${book} chars)`);
+const bookText = await page.$eval('#storyBookText', el => el.textContent);
+check(bookText.length > 1000 && /ACT \d/.test(bookText) && /THE END OF THE QUEST/i.test(bookText), `Story Book has chapters and the ending (${bookText.length} chars)`);
 await page.screenshot({ path: `${ROOT}test-results/live_test_storybook.png` });
-await page.click('#closeStoryBtn');
+// The next chapter: pick the first one; a new three-act quest begins and the storyteller opens it.
+await page.click('#closeStoryBtn').catch(() => {});
+await page.evaluate(async () => (await import('/ui.js')).showScreen('gameScreen')); // closing the book returns to the menu
+const firstChapter = win.chapters[0] || '';
+await settle(20000); // level-up pickers (stat, new special) answered first
+await page.click(`#choicesContainer .choice-btn[data-action-type="NewChapter"]`, { timeout: 10000 }).catch(e => note(`chapter click failed: ${e.message.split(String.fromCharCode(10))[0]}`));
+await settle();
+const next = await gs(g => ({ won: !!g.isGoalComplete, goal: g.adventureGoal, act: document.getElementById('questChapter')?.textContent || '', god: !!g.godModeManager?.isActive, choices: (g.currentChoices || []).length, scene: (g.currentNarrative || '').slice(0, 200) }));
+check(!next.won && firstChapter.includes(next.goal) && /Act 1/.test(next.act) && next.god && next.choices >= 4, `new chapter: "${next.goal}" (${next.act}), Divine Will kept, ${next.choices} choices`);
+note(`chapter opens: ${next.scene}`);
 
 // Save/continue: autosave exists and reloads with the villain and story intact.
 const slot = await page.evaluate(() => Object.keys(localStorage).find(k => k.includes('Autosave')));
@@ -267,9 +291,9 @@ const reloaded = await page.evaluate(async (slot) => {
   const SL = await import('/saveLoad.js'); const C = await import('/config.js');
   await SL.loadGame(slot.slice(C.SAVE_GAME_PREFIX.length));
   const { gameState: g } = await import('/state.js');
-  return { villain: g.questProgress?.villain, log: g.storyLog?.length, won: !!g.isGoalComplete };
+  return { goal: g.adventureGoal, log: g.storyLog?.length, won: !!g.isGoalComplete, ending: !!g.ending };
 }, slot);
-check(!!slot && reloaded.won && reloaded.log === win.log, `autosave reloads (won=${reloaded.won}, ${reloaded.log} scenes, villain ${reloaded.villain || 'n/a'})`);
+check(!!slot && !reloaded.won && reloaded.goal === next.goal && reloaded.log > win.log && reloaded.ending, `autosave reloads the new chapter (goal "${reloaded.goal}", ${reloaded.log} entries, the ending kept)`);
 
 check(errors.length === 0, `no script errors in the page${errors.length ? ': ' + [...new Set(errors)].slice(0, 3).join(' | ') : ''}`);
 const mins = ((Date.now() - tStart) / 60000).toFixed(1);

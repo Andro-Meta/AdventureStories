@@ -123,7 +123,7 @@ Engine.applyDiff([{ op: 'add', path: '/enemies/-', value: { name: 'Deckhand Brut
 check(!gameState.enemies[0]?.isBoss, 'a minion at the climax is not made the boss when the villain is known');
 Engine.applyDiff([{ op: 'add', path: '/enemies/-', value: { name: 'The Admiral Grimtide', hp: 30 } }], { strict: false });
 check(gameState.enemies[1]?.isBoss === true, 'the named villain becomes the boss');
-check(typeof AI.writeEpilogue === 'function', 'epilogue writer exists');
+check(typeof AI.writeEnding === 'function' && typeof AI.composeEnding === 'function', 'the ending writer exists');
 
 // Choice order: every render path shuffles, so no type owns a slot.
 {
@@ -147,8 +147,10 @@ check(Engine.describeAllowedPaths().includes('/storyThreads/-'), 'narrator is to
 // The spine: beats in order and spaced; the climax waits for open threads.
 check(Q.BEATS.every(b => b.beat && b.says) && Q.MAIN_QUEST_ARC.every(a => a.targetMilestones.length), 'every story beat has an instruction and a player-facing step');
 {
-  const g = { turn: 30, storyThreads: [{ text: 'a' }, { text: 'b' }], questProgress: { milestones: AT_LAIR() } };
+  const g = { turn: 30, storyThreads: [{ text: 'a' }, { text: 'b' }], questProgress: { milestones: AT_LAIR().map(m => ({ ...m, turn: 30 - Q.BEAT_GAP })) } };
   check(/pay off open threads/.test(Q.beatBlocked(g, 'final_confrontation') || '') && /BEFORE THE FINAL CONFRONTATION/.test(Q.buildQuestStageHint(g)), 'two open threads hold back the final confrontation');
+  const stuck = { ...g, turn: 30, questProgress: { milestones: AT_LAIR().map(m => ({ ...m, turn: 30 - Q.BEAT_GAP - Q.THREAD_GRACE })) } };
+  check(!Q.beatBlocked(stuck, 'final_confrontation'), `loose ends never stall the ending: after ${Q.THREAD_GRACE} rounds of asking, the confrontation may begin`);
   g.storyThreads[0].resolved = true;
   check(!Q.beatBlocked(g, 'final_confrontation'), 'with at most one open thread the confrontation may begin');
   const early = { turn: 5, questProgress: { milestones: [{ name: 'call_to_adventure', turn: 4 }] } };

@@ -2305,6 +2305,137 @@ await block(async () => {
   check(r?.success && (e.statusEffects || []).some(fx => fx.name === 'Frost'), `Frost Bite casts and leaves the foe frozen (${r?.success ? 'ok' : r?.reason || r?.error})`);
 });
 
+section('Batch 31: the cast remembers who is with you, who turned, and who died (10-10)');
+
+await block(async () => {
+  const MR = await import('../memoryRetriever.js');
+  const S = await import('../schemas.js');
+  const ops = (o) => Engine.applyDiff(o, { strict: false });
+  fresh(); gameState.turn = 10; gameState.storyBeats = [];
+  gameState.questProgress = { milestones: [], villain: 'Director Halcyon' };
+  ops([{ op: 'add', path: '/entityMemory/npcs/Vesper', value: { name: 'Vesper', description: 'A scarred rebel engineer who knows the tunnels.' } }]);
+  ops([{ op: 'replace', path: '/entityMemory/npcs/Vesper', value: { name: 'Vesper', status: 'joins the party', relationship: 'friend' } }]);
+  let v = gameState.entityMemory.npcs.Vesper;
+  check(v.status === 'with you' && v.bond === 2 && /tunnels/.test(v.description), `a friend joins and keeps her story (status ${v.status}, bond ${v.bond}, description kept ${/tunnels/.test(v.description)})`);
+  let block = MR.castBlock('Rain on the neon.');
+  check(/WITH THE HEROES: Vesper \(friend\)/.test(block) && /VILLAIN: Director Halcyon/.test(block), `companions and the villain are always in the brief (${block.trim().replace(/\n/g, ' | ')})`);
+
+  // A betrayal and a death, then the storyteller tries to bring the dead back.
+  ops([{ op: 'add', path: '/entityMemory/npcs/Kade', value: { name: 'Kade', description: 'A smuggler.', relationship: 'ally', status: 'with you' } }]);
+  gameState.turn = 14;
+  ops([{ op: 'replace', path: '/entityMemory/npcs/Kade', value: { name: 'Kade', relationship: 'enemy', status: 'away' } }]);
+  gameState.turn = 18;
+  ops([{ op: 'replace', path: '/entityMemory/npcs/Vesper', value: { name: 'Vesper', status: 'dead', fate: 'held the bridge so the heroes could escape' } }]);
+  gameState.turn = 20;
+  ops([{ op: 'replace', path: '/entityMemory/npcs/Vesper', value: { name: 'Vesper', status: 'with you', description: 'Vesper waves from the dock.' } }]);
+  v = gameState.entityMemory.npcs.Vesper;
+  const beats = gameState.storyBeats.map(b => b.type);
+  check(v.status === 'dead' && /held the bridge/.test(v.fate) && v.fateTurn === 18, `the dead stay dead (status ${v.status}, fate "${v.fate}", T${v.fateTurn})`);
+  check(beats.includes('joined') && beats.includes('betrayal') && beats.includes('death'), `joins, betrayals and deaths are remembered as key moments (${beats.join(', ')})`);
+  block = MR.castBlock('Kade sneers. "Vesper would have hated this."');
+  check(/Vesper \(dead: held the bridge so the heroes could escape, T18\)/.test(block) && /Kade \(enemy/.test(block) && /REMEMBER: .*Vesper died/.test(block),
+    `named in the scene: the dead and the turncoat show as they are (${block.trim().replace(/\n/g, ' | ').slice(0, 240)})`);
+  check(!/Kade|Vesper/.test(MR.castBlock('A quiet street.').replace(/VILLAIN.*/, '')), 'people not in the scene and not with the heroes cost nothing');
+
+  // The 5-turn summary can report changes too.
+  const res = S.validateArcMemoryPayload({ summary: 'Mara was taken by the Directorate.', people: [{ name: 'Mara', status: 'captured', relationship: 'friend' }], storySoFar: 'Katie came to the city...' });
+  gameState.entityMemory.npcs.Mara = MR.mergePerson(undefined, { ...res.people[0], name: 'Mara' });
+  check(gameState.entityMemory.npcs.Mara.status === 'captured' && res.storySoFar.startsWith('Katie') && gameState.storyBeats.some(b => b.type === 'captured'), 'the summary call reports captures, deaths and the story so far');
+});
+
+section('Batch 32: the ending, the reflection, the next chapter, the Story Book (10-10)');
+
+await block(async () => {
+  const R = await import('../reflection.js');
+  const AI = await import('../aiHandler.js');
+  const { createNewPlayer } = await import('../state.js');
+  const stub = (content) => { globalThis.fetch = window.fetch = async (u, o) => { stub.asked.push(JSON.parse(o.body).messages[1].content);
+    return { ok: true, status: 200, statusText: '200', headers: { get: () => null }, json: async () => ({ choices: [{ message: { content: JSON.stringify(content) } }] }), text: async () => '' }; }; };
+  stub.asked = [];
+  const offline = globalThis.fetch;
+  localStorage.setItem('adv.cloudProvider', 'groq_qwen'); localStorage.setItem('adv.apiKey.api.groq.com', 'test');
+  const realGet = document.getElementById.bind(document);
+  document.getElementById = (id) => id === 'choicesContainer' ? { querySelectorAll: () => [{}], appendChild() {}, innerHTML: '' } : realGet(id);
+  // A hero who mostly charged in, took the reckless road, then learned kindness late.
+  const hero = () => {
+    const { p } = fresh(); gameState.turn = 60;
+    const rec = (t, type, stat, band, text) => ({ turn: t, type, stat, band, text, significance: 0.5 });
+    const list = [];
+    for (let i = 0; i < 8; i++) list.push(rec(i, 'Reckless', 'brave', i === 4 ? 'crit' : i % 3 ? 'success' : 'fail', i === 4 ? 'Charge headlong into the cannon' : `Charge ${i}`));
+    for (let i = 8; i < 14; i++) list.push(rec(i, 'Bold', 'kind', 'success', i === 12 ? 'Carry the wounded smuggler to safety' : `Help ${i}`));
+    for (let i = 0; i < 7; i++) list.push({ turn: 20 + i, type: 'Attack', stat: null, band: null, text: 'Attack', significance: 0.2 });
+    gameState.choicePatterns = new Map([[p.id, list]]);
+    return p;
+  };
+  try {
+    // The reading is the game's, not the storyteller's.
+    hero();
+    const [r] = R.readHeroes(gameState);
+    const keys = r.signals.map(s => s.key);
+    check(r.title === 'The Storm-Walker' && keys.includes('brave') && keys.includes('risk') && r.lines.some(l => /charge headlong into the cannon/i.test(l)) && new Set(r.lines.map(l => (l.match(/"([^"]+)"/) || [])[1]).filter(Boolean)).size === r.lines.filter(l => /"/.test(l)).length && r.lines.length === 3,
+      `the story noticed: ${r.title}: ${r.lines.join(' / ').slice(0, 260)}`);
+    check(keys.includes('turn') || keys.includes('stood') || keys.includes('grit'), `a turning point or how they fought is noticed too (${keys.join(', ')})`);
+    const strayed = R.cleanReflection({ lines: ['Your personality profile shows bravery.', 'b', 'c'], speaker: 'Oracle' }, r);
+    const kept = R.cleanReflection({ lines: ['You never waited for permission to be brave.', 'You learned to carry others.', 'You ran toward the fire.'], speaker: 'Vesper', closing: 'Storm-Walker, they will call you.' }, r);
+    check(strayed.lines === r.lines && kept.lines[0].startsWith('You never') && kept.speaker === 'Vesper', 'clinical words fall back to the game\'s own lines; warm words are kept');
+
+    // The whole ending, from one call: world changes, cards, reflection, three chapters.
+    const p = hero();
+    gameState.isGoalComplete = true; gameState.adventureGoal = 'Free the city';
+    gameState.godModeManager = { isActive: true };
+    gameState.questProgress = { milestones: [{ name: 'final_blow' }], villain: 'Director Halcyon', lair: 'the Spire', bossDefeated: true, finalBlow: 'Katie, with the special "Plasma Lance"' };
+    gameState.entityMemory = { npcs: { Vesper: { name: 'Vesper', status: 'with you', bond: 2 }, Brann: { name: 'Brann', status: 'dead', fate: 'held the bridge', bond: 2 } }, locations: { 'the Spire': { name: 'the Spire', description: 'A tower of glass.' } }, items: {} };
+    gameState.storyThreads = [{ text: 'the locked music box' }];
+    stub({ aftermath: 'The Spire went dark, and the city exhaled.', people: [{ name: 'Vesper', line: 'Vesper opened a school in the tunnels.' }, { name: 'Brann', line: 'They carved his name on the bridge.' }],
+      world: 'Lights came back on in the lower districts.', reflection: [{ hero: p.name, speaker: 'Vesper', lines: ['You ran at every danger.', 'You won more than you lost.', 'Then you learned to carry others.'], closing: 'The Storm-Walker.' }],
+      chapters: [{ title: 'The Music Box', goal: 'Open the music box and learn who sent it', villain: '' }] });
+    stub.asked.length = 0;
+    const end = await AI.writeEnding();
+    const asked = stub.asked[0] || '';
+    check(gameState.entityMemory.npcs['Director Halcyon']?.status === 'defeated' && /freed/.test(gameState.entityMemory.locations['the Spire'].traits.join()) && gameState.currentLocation?.dangerLevel !== 0.9,
+      'the world really changes: the villain is defeated and the stronghold freed');
+    check(stub.asked.length === 1 && /Brann: died \(held the bridge\)/.test(asked) && /the final blow: Katie, with the special "Plasma Lance"/.test(asked) && /title: The Storm-Walker/.test(asked),
+      `one call carries the facts: the fallen, the final blow, the reflection (${stub.asked.length} call)`);
+    check(/— The End of the Quest —/.test(end.text) && /Vesper opened a school/.test(end.text) && /— The story noticed —/.test(end.text) && /The Storm-Walker: Ava \(as Vesper saw it\)/.test(end.text),
+      'the closing sequence: aftermath, what became of them, the world, the story noticed');
+    const types = (gameState.currentChoices || []).map(c => c.type);
+    check(end.chapters.length === 3 && types.length === 3 && types.every(t => t === 'NewChapter') && end.chapters.some(c => /music box/i.test(c.goal)),
+      `three next chapters offered (${end.chapters.map(c => c.title).join(' | ')})`);
+
+    // Reflection off (a parent's choice): no reflection asked for or shown.
+    localStorage.setItem('adv.reflection', '0'); stub.asked.length = 0;
+    const quiet = await AI.writeEnding();
+    check(!/THE STORY NOTICED/.test(stub.asked[0] || '') && !/story noticed/.test(quiet.text), 'with the reflection off, nothing about the hero is asked or shown');
+    localStorage.removeItem('adv.reflection');
+
+    // Picking a chapter: a fresh three-act quest, Divine Will kept, and the storyteller opens it.
+    stub({ narration: 'A letter waits on the doorstep.', ops: [], choices: ['brave', 'clever', 'sneaky', 'kind', 'luck'].map(stat => ({ stat, safe: `S ${stat}`, bold: `B ${stat}`, reckless: `R ${stat}` })) });
+    stub.asked.length = 0; gameState.isLoading = false;
+    await AH.handlePlayerChoice('NewChapter', `${end.chapters[0].title}: ${end.chapters[0].goal}`);
+    const QD = await import('../questDefinitions.js');
+    check(!gameState.isGoalComplete && gameState.adventureGoal === end.chapters[0].goal && QD.determineCurrentAct(gameState)?.id === 'act1' && gameState.godModeManager.isActive && /\[New chapter\]/.test(stub.asked[0] || ''),
+      `the next chapter begins: "${gameState.adventureGoal}", Act 1, Divine Will kept, opened by the storyteller`);
+
+    // The Story Book reads like a book: chapter headings.
+    gameState.storyLog = ['## Act 1: Call to Adventure', 'It began in the rain.', 'A stranger knocked.', '## Act 2: The Trial', 'The bridge fell.'];
+    const book = UI.storyBookText();
+    check(/ACT 1: CALL TO ADVENTURE\n\nIt began in the rain\.\n\n\* \* \*\n\nA stranger knocked\.\n\nACT 2: THE TRIAL\n\nThe bridge fell\./.test(book), 'the Story Book has chapters');
+  } finally { document.getElementById = realGet; globalThis.fetch = window.fetch = offline; localStorage.removeItem('adv.apiKey.api.groq.com'); localStorage.removeItem('adv.cloudProvider'); }
+});
+
+await block(async () => {
+  // Live 10-10: after the win, a later summary turned the beaten villain "away". Only Divine Will may undo a defeat.
+  const MR = await import('../memoryRetriever.js');
+  fresh(); gameState.isGoalComplete = true; gameState.divineTurn = false;
+  let v = MR.mergePerson(undefined, { name: 'Blackwake', status: 'defeated' });
+  v = MR.mergePerson(v, { name: 'Blackwake', status: 'escaped and away' });
+  const kept = v.status;
+  v = MR.mergePerson(v, { name: 'Blackwake', status: 'dead', fate: 'fell into the sea' });
+  const died = v.status;
+  gameState.divineTurn = true; v = MR.mergePerson(v, { name: 'Blackwake', status: 'with you' }); gameState.divineTurn = false;
+  check(kept === 'defeated' && died === 'dead' && v.status === 'with you', `after the win the defeated stay defeated (${kept}), may still die (${died}), and only Divine Will brings them back (${v.status})`);
+});
+
 console.error = realError;
 out(`\nfetch attempts blocked: ${fetchCalls}; elapsed ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 out(failed ? `✗ ${failed} mechanics check(s) failed` : '✓ all mechanics checks passed');
