@@ -39,7 +39,7 @@ const CHOICE_TYPE_MEANINGS = {
  */
 export function buildDiffInstructions(pIdx) {
     const P = `/players/${pIdx}`;
-    const isGodMode = !!gameState.isGoalComplete;
+    const isGodMode = !!(gameState.isGoalComplete || gameState.divineTurn);
     const rules = `OPS = the world changes this turn caused (the engine applies them; invalid ones are dropped):
 - "add" only on list paths ending in "/-" (e.g. ${P}/inventory/-, /enemies/-, /questProgress/milestones/-).
 - "replace" for single values (hp, coins, currentLocation, adventureGoal, inCombat), always with the new full value, never a delta.
@@ -55,7 +55,10 @@ GOD MODE: the player has authorial authority. Their input is a DECLARATION; pers
 - "I have N gold" -> replace ${P}/coins (cap 99999). "I wield/wear X" -> add ${P}/inventory/- (give reasonable stats).
 - "I learn X" -> add ${P}/specialMoves/- (cooldown 3, mpCost 10). "I summon/befriend X" -> add /entityMemory/npcs/<Name>.
 - "I go to/create X" -> replace /currentLocation + add /entityMemory/locations/<Name>. "I face X" -> add /enemies/- + replace /inCombat true.
-- "New quest: X" -> replace /adventureGoal + replace /questProgress/completionPercentage 0. Never touch /isGoalComplete.
+- A new quest, mission or story arc ("new quest: X", "we set out to...", "a new enemy rises") -> replace /questProgress/newQuest {"goal": one sentence, "villain": name if there is one}: a fresh 3-act quest. Never touch /isGoalComplete.
+- Another world or era (portal, time travel, dream, "we wake up in..."): replace /adventureTheme with one of fantasy, space, pirate, underwater, jungle, future_utopia, dinosaur, arctic, steampunk, haunted, cyberpunk, wild_west, post_apoc, or {"theme":"custom","description":"..."} for anything else; AND replace /currentLocation with the arrival place. Everything after happens in the new world.
+- Allies and companions ("an AI joins us", "the dragon is my friend") -> add /entityMemory/npcs/<Name> with relationship "ally". Changes to the world's rules or history are canon: show them and keep to them.
+- Heal, revive, power up: replace ${P}/hp (up to maxHp), ${P}/level, ${P}/stats/<stat>, ${P}/maxHp.
 Defaults when vague: items tier "Special" with atk or def 18-30; bosses hp 300-800, atk 30-60, def 20-40; "a lot" = 10000.
 Example: {"op":"add","path":"${P}/inventory/-","value":{"name":"Singing Sword","type":"Weapon","tier":"Special","effect":"its hum staggers foes","stats":{"atk":24}}}`;
     }

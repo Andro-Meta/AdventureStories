@@ -104,6 +104,7 @@ export async function handlePlayerChoice(actionType, choiceText) {
     const log = window.displayVisualError || console.log;
     log(`Handling player choice: ${actionType} - ${choiceText}`);
     let recapBefore = null, recapActor = null; // set once the turn actually starts
+    gameState.divineTurn = false; // only a Divine Will turn gets god-mode ops
     let heroBeforeRoll = null; // the hero before an exploration roll, put back if the story never comes
 
     try {
@@ -1349,6 +1350,7 @@ export async function handleCustomAction(text = '') {
     }
 
     UI.renderChoices([], null); // Clear choice buttons visually
+    gameState.divineTurn = true; // god-mode ops (new quest, new world, stats) for this turn; cleared in finally
 
     // Phase 3: anchor the free-form input in existing world entities. We
     // substring-match (case-insensitive) the input against names in
@@ -1441,6 +1443,7 @@ The wish succeeds fully and at once, with no cost, catch or twist unless the pla
         // Re-throw error - no silent failures
         throw new Error(`Custom action processing failed: ${error.message}`);
     } finally {
+        gameState.divineTurn = false;
         UI.showLoading(false);
         try { UI.showTurnRecap(formatTurnRecap(recapBefore, snapshotParty(), recapActor)); } catch (_) {}
         try { (await import('./saveLoad.js')).autosave(); } catch (_) {}

@@ -563,7 +563,7 @@ export function resetGameState() {
     const preservedCustomThemeDescription = gameState.customThemeDescription || '';
 
     Object.keys(gameState).forEach(key => {
-        if (key !== 'playerCount' && key !== 'playerAges' && key !== 'playerNames'
+        if (key !== 'playerCount' && key !== 'playerAges' && key !== 'playerNames' && key !== 'playerRoster'
             && key !== 'adventureTheme' && key !== 'customThemeDescription') {
             delete gameState[key];
         }

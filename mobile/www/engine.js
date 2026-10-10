@@ -237,7 +237,7 @@ const PATHS = [
         validate: (m, value, gs) => {
             if (!gs.players?.[Number(m[1])]) return `players[${m[1]}] does not exist`;
             if (typeof value !== 'number' || !Number.isFinite(value)) return `stat must be a number 0-${STAT_MAX}`;
-            if (!gs.isGoalComplete) return 'stats grow by play (levels and practice), not narration';
+            if (!divine(gs)) return 'stats grow by play (levels and practice), not narration';
             return null;
         },
         apply: (m, value, gs) => {
@@ -654,6 +654,54 @@ const PATHS = [
         }
     },
 
+    // ---- Divine Will: a new quest, another world (10-09) ----
+    {
+        // A fresh main quest: new goal (and villain), Act 1 again, rewards can be won again.
+        // The Divine Will box stays: the players keep the power they earned.
+        regex: /^\/questProgress\/newQuest$/,
+        ops: ['replace'],
+        validate: (_m, value, gs) => {
+            if (!divine(gs)) return 'a new quest comes from Divine Will';
+            if (!value || typeof value.goal !== 'string' || !value.goal.trim()) return 'newQuest needs {goal, villain?}';
+            return null;
+        },
+        apply: (_m, value, gs) => {
+            gs.questProgress = gs.questProgress || {};
+            Object.assign(gs.questProgress, { milestones: [], completionPercentage: 0, bossDefeated: false, questStartTurn: gs.turn || 0 });
+            delete gs.questProgress.act3StartTurn;
+            if (typeof value.villain === 'string' && value.villain.trim()) gs.questProgress.villain = value.villain.trim().slice(0, 60);
+            else delete gs.questProgress.villain;
+            gs.storyThreads = [];
+            gs.adventureGoal = value.goal.trim();
+            gs.isGoalComplete = false;       // the acts run again (determineCurrentAct)
+            gs.questRewardsGranted = false;  // winning it pays out again
+            return `new quest: "${gs.adventureGoal}"${gs.questProgress.villain ? ` (villain ${gs.questProgress.villain})` : ''}, Act 1`;
+        }
+    },
+    {
+        // Another world: a portal, a time jump, a dream. The setting itself changes
+        // (names, items, shop, magic or tech follow the theme), not just one scene.
+        regex: /^\/adventureTheme$/,
+        ops: ['replace'],
+        validate: (_m, value, gs) => {
+            if (!divine(gs)) return 'the world changes only by Divine Will';
+            const key = typeof value === 'string' ? value : value?.theme;
+            if (!THEMES.includes(key)) return `theme must be one of ${THEMES.join(', ')} (custom with a description)`;
+            if (key === 'custom' && !String(value?.description || '').trim()) return 'a custom world needs {theme:"custom", description}';
+            return null;
+        },
+        apply: (_m, value, gs) => {
+            const key = typeof value === 'string' ? value : value.theme;
+            const from = gs.adventureTheme;
+            gs.adventureTheme = key;
+            gs.customThemeDescription = key === 'custom' ? String(value.description).trim().slice(0, 300) : '';
+            gs.storyVariation = null; // the old world's setting/conflict threads would pull the story back
+            gs.storyHook = null;
+            try { gs.shopItems = Items.generateShopItems(key, gs.turn || 1); } catch (_) {}
+            return `world: ${from} -> ${key}${gs.customThemeDescription ? ` (${gs.customThemeDescription.slice(0, 60)})` : ''}`;
+        }
+    },
+
     // ---- Adventure goal & quest progress ----
     {
         regex: /^\/adventureGoal$/,
@@ -963,6 +1011,10 @@ function itemTier(t) {
 // Quest progress from milestones reached: each story beat is worth a fixed share.
 const MILESTONE_PCT = { call_to_adventure: 5, world_introduced: 12, stakes_clear: 20, ally_found: 35,
     first_obstacle_overcome: 50, antagonist_revealed: 65, final_confrontation: 80, final_blow: 100 };
+// God-mode powers: after the main quest is won, or during a Divine Will turn.
+const divine = (gs) => !!(gs?.isGoalComplete || gs?.divineTurn);
+const THEMES = ['fantasy', 'space', 'pirate', 'underwater', 'jungle', 'future_utopia', 'dinosaur', 'arctic', 'steampunk', 'haunted', 'cyberpunk', 'wild_west', 'post_apoc', 'custom'];
+
 export function questPercent(gs) {
     return Math.max(0, ...(gs.questProgress?.milestones || []).map(m => MILESTONE_PCT[m.name] || 0));
 }
@@ -1087,6 +1139,8 @@ export function describeAllowedPaths() {
         '/players/0/def       (replace, number) - defense stat',
         '/players/0/level     (replace, number)',
         `/players/0/stats/brave|clever|sneaky|kind (replace, 0-${STAT_MAX}; god mode only)`,
+        '/questProgress/newQuest (replace, {goal, villain?}; god mode only) - a fresh 3-act main quest',
+        '/adventureTheme     (replace, theme key, or {theme:"custom", description}; god mode only) - travel to another world',
         '/players/0/inventory/- (add, {name, type, tier, effect, stats})',
         '/players/0/inventory/<id> (remove)',
         '/players/0/equipment/weapon|armor (replace, item name or id, or null)',
