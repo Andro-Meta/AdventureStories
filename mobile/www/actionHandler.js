@@ -115,13 +115,13 @@ async function startChapter(text) {
     finally { gameState.divineTurn = false; }
     gameState.nextChapters = null;
     try { recordStoryBeat('chapter', `A new chapter began: ${pick.title}`, 0.8, []); } catch (_) {}
-    UI.updateContextHeaders(); // Act 1 and the new goal in the header right away
+    UI.updateGameHeader(); UI.updateContextHeaders(); // Act 1 and the new goal in the header right away
     UI.showLoading(true, 'Opening the next chapter...');
     try {
         await makeAICallForSystemAction(`[New chapter] "${pick.title}": the heroes set out to ${pick.goal.replace(/^./, c => c.toLowerCase())}. Open this chapter with a fresh scene that starts the new quest: where they go, who needs them, what first goes wrong. The old villain is gone; this is a new story with the same heroes and friends.`, false);
     } finally {
         UI.showLoading(false);
-        UI.updateContextHeaders();
+        UI.updateGameHeader(); UI.updateContextHeaders();
         try { (await import('./saveLoad.js')).autosave(); } catch (_) {} // the new chapter survives closing the app
     }
 }
