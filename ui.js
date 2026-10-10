@@ -1353,15 +1353,15 @@ export function renderSpecialMoves() {
             card.innerHTML = `
                 <h4>${sanitizeText(spell.name || 'Unnamed Spell')}</h4>
                 <p>${sanitizeText(spell.description || spell.effect || 'A learned spell.')}</p>
-                <p class="meta">School: ${sanitizeText(spell.school || 'Arcane')} · MP: ${spell.mpCost ?? '?'} · Level: ${spell.level ?? '?'}</p>
+                <p class="meta">School: ${sanitizeText(spell.school || 'Arcane')} · MP: ${Progression.abilityMpCost(spell)} · Rank ${Progression.ROMAN[Progression.abilityRank(spell)]}${Progression.abilityRank(spell) < 5 ? ` (${spell.uses || 0}/${Progression.RANK_USES[Progression.abilityRank(spell)]} uses to rank ${Progression.ROMAN[Progression.abilityRank(spell) + 1]})` : ' (mastered)'}</p>
             `;
             // Cast from here (the Book/Cast quick buttons were only ever added
             // when a save was loaded, so new games could never cast).
             const castBtn = document.createElement('button');
             castBtn.className = 'castSpellCardBtn';
             const player = getCurrentPlayer();
-            const enoughMp = (player?.mp ?? 0) >= (spell.mpCost || 0);
-            castBtn.textContent = enoughMp ? `${AdaptiveAbilities.isMagicWorld() ? 'Cast' : 'Use'} (${spell.mpCost || 0} MP)` : `Need ${spell.mpCost} MP`;
+            const enoughMp = (player?.mp ?? 0) >= Progression.abilityMpCost(spell);
+            castBtn.textContent = enoughMp ? `${AdaptiveAbilities.isMagicWorld() ? 'Cast' : 'Use'} (${Progression.abilityMpCost(spell)} MP)` : `Need ${Progression.abilityMpCost(spell)} MP`;
             castBtn.disabled = !enoughMp || gameState.isLoading;
             castBtn.addEventListener('click', async () => {
                 showScreen('gameScreen');
@@ -1500,7 +1500,7 @@ function createSpecialMoveCard(move) {
     card.dataset.moveId = move.id;
     let player; try { player = getCurrentPlayer(); } catch(e) {}
     const isReady = move.currentCooldown <= 0;
-    const hasEnoughMP = !move.mpCost || (player?.mp >= move.mpCost);
+    const hasEnoughMP = !move.mpCost || (player?.mp >= Progression.abilityMpCost(move));
     // Wrong place for the move (exploration-only in a fight, or combat-only outside one) too.
     const wrongPlace = (move.usageContext === 'exploration' && gameState.inCombat) || (move.usageContext === 'combat' && !gameState.inCombat);
     const isDisabled = player?.isDowned || !isReady || !hasEnoughMP || gameState.isLoading || wrongPlace;
@@ -1549,7 +1549,8 @@ function createSpecialMoveCard(move) {
         ${mechanicsDesc ? `<p class="move-mechanics">${sanitizeText(mechanicsDesc)}</p>` : ''}
         <div class="move-footer">
             <p class="move-cooldown">Cooldown: ${move.cooldown} turns</p>
-            ${move.mpCost ? `<p class="move-mp-cost">MP Cost: ${move.mpCost} 🔮</p>` : ''}
+            ${move.mpCost ? `<p class="move-mp-cost">MP Cost: ${Progression.abilityMpCost(move)} 🔮</p>` : ''}
+            <p class="move-cooldown">Rank ${Progression.ROMAN[Progression.abilityRank(move)]}${Progression.abilityRank(move) < 5 ? ` (${move.uses || 0}/${Progression.RANK_USES[Progression.abilityRank(move)]} uses to rank ${Progression.ROMAN[Progression.abilityRank(move) + 1]})` : ' (mastered)'}</p>
             <p class="move-status ${isReady ? 'ready' : 'on-cooldown'}">
                 ${isReady ? 'Ready!' : `Ready in ${move.currentCooldown} turns`}
             </p>
