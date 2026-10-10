@@ -2438,6 +2438,39 @@ await block(async () => {
   check(kept === 'defeated' && died === 'dead' && v.status === 'with you', `after the win the defeated stay defeated (${kept}), may still die (${died}), and only Divine Will brings them back (${v.status})`);
 });
 
+await block(async () => {
+  // Every theme, custom included: the spine, the cast, new specials and the ending work the same.
+  const AI = await import('../aiHandler.js');
+  const Spells = await import('../spells.js');
+  const Q = await import('../questDefinitions.js');
+  const AA = await import('../adaptiveAbilities.js');
+  const themes = ['fantasy', 'space', 'pirate', 'underwater', 'jungle', 'future_utopia', 'dinosaur', 'arctic', 'steampunk', 'haunted', 'cyberpunk', 'wild_west', 'post_apoc', 'custom'];
+  const bad = [];
+  const magicWords = /fireball|arcane|meteor|quicksilver|aegis|mending/i;
+  for (const th of themes) {
+    const { p } = fresh();
+    gameState.adventureTheme = th;
+    gameState.customThemeDescription = th === 'custom' ? 'Ancient Egypt where cats can talk' : '';
+    try { AA.refreshThemeAdaptation?.(); } catch (_) {}
+    gameState.turn = 20;
+    gameState.questProgress = { milestones: Q.BEATS.slice(0, 5).map(b => ({ name: b.name, turn: 10 })), villain: 'The Pale Regent', lair: 'the Sunken Throne' };
+    gameState.entityMemory = { npcs: { Mira: { name: 'Mira', status: 'with you', bond: 2 } }, locations: {}, items: {} };
+    gameState.currentNarrative = 'Mira points at the sky.';
+    let sys = '';
+    try { sys = AI.generateSystemPrompt(); } catch (e) { bad.push(`${th}: prompt threw ${e.message}`); continue; }
+    if (!/STORY BEAT NOW|BUILD TOWARD/.test(sys) || !/WITH THE HEROES: Mira/.test(sys) || !/VILLAIN: The Pale Regent/.test(sys)) bad.push(`${th}: brief missing beat/people/villain`);
+    if (th === 'custom' && !/Ancient Egypt where cats can talk/.test(sys)) bad.push('custom: the world description is not in the brief');
+    p.level = 8; p.spellcasting = { knownSpells: [], preparedSpells: [] };
+    const offer = Spells.newAbilityChoices(p, 8);
+    if (offer.length !== 8 || offer.some(o => !o.name)) bad.push(`${th}: new specials ${offer.length}`);
+    if (!AA.isMagicWorld() && offer.some(o => magicWords.test(o.name))) bad.push(`${th}: magic names in a world without magic (${offer.map(o => o.name).join(', ')})`);
+    // The ending with the storyteller down: the game's own words, three chapters, nothing theme-broken.
+    const e = AI.composeEnding({}, { reads: [], open: ['the sealed door'], villain: 'The Pale Regent', lair: 'the Sunken Throne', peopleFacts: [['Mira', { status: 'with you' }]] });
+    if (e.chapters.length !== 3 || !/The Pale Regent has fallen/.test(e.text) || !/Mira/.test(e.text)) bad.push(`${th}: fallback ending`);
+  }
+  check(bad.length === 0, `all ${themes.length} themes (custom too): beat, people and villain in the brief, 8 new specials named for the world, an ending even if the storyteller fails${bad.length ? ' | ' + bad.slice(0, 4).join(' | ') : ''}`);
+});
+
 console.error = realError;
 out(`\nfetch attempts blocked: ${fetchCalls}; elapsed ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 out(failed ? `✗ ${failed} mechanics check(s) failed` : '✓ all mechanics checks passed');
