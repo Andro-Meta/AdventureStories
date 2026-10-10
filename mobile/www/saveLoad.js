@@ -244,6 +244,20 @@ export function saveGameToLocalStorage(slotName) {
  * "Continue Last Game" picks the newest save, which is usually this one.
  * The player's own slot stays the target of "Save" / "Save and Exit".
  */
+// Save soon after a change outside the story turn (buy, sell, equip, use an
+// item, a level-up pick, the inn): several taps in a row make one save, 400 ms
+// after the last. A turn in progress saves itself when it ends. One save is
+// ~2 ms on a PC for a 160 KB game (measured 10-09).
+let saveTimer = null;
+export function requestAutosave() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+        saveTimer = null;
+        if (gameState.isLoading) return; // the turn's own autosave covers it
+        try { autosave(); } catch (e) { (window.displayVisualError || console.log)(`Autosave failed: ${e.message}`); }
+    }, 400);
+}
+
 export function autosave() {
     if (!gameState.players?.length) return;
     rememberNames();
