@@ -325,6 +325,15 @@ function setupEventListeners(UI, setup, actionHandler, saveLoad) { // Added acti
     }, 'readAloudBtn');
     }).catch(e => displayVisualError(`Sound & Voice setup failed: ${e.message}`));
     { const v = document.getElementById('versionInfo'); if (v) v.textContent = `v${Config.APP_VERSION}`; }
+    // New version on GitHub? A banner on the main menu (checked at start, at most every 6 hours).
+    import('./updates.js').then(U => {
+        U.showUpdateBanner().catch(() => {});
+        safeAddListener('checkUpdatesBtn', 'click', async () => {
+            const b = document.getElementById('checkUpdatesBtn'); b.textContent = 'Checking…';
+            const rel = await U.showUpdateBanner(true).catch(() => null);
+            b.textContent = rel ? `Version ${rel.version} is out ↑` : 'Up to date ✓';
+        }, 'checkUpdatesBtn');
+    }).catch(e => displayVisualError(`Update check setup failed: ${e.message}`));
     // Save backup: export every save to a file, import them again.
     safeAddListener('exportSavesBtn', 'click', () => saveLoad.exportSaves(), 'exportSavesBtn');
     safeAddListener('importSavesBtn', 'click', () => document.getElementById('importSavesInput')?.click(), 'importSavesBtn');

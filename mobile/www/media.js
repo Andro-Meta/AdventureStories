@@ -81,6 +81,8 @@ const SFX = {
     crit: ['sfx/crit.ogg'],
     fumble: ['sfx/fumble.ogg'],
     levelup: ['sfx/levelup.ogg'],
+    victory: ['sfx/victory.ogg'],
+    rankup: ['sfx/rankup.ogg'],
     tap: ['sfx/tap.ogg']
 };
 const cache = {};
@@ -106,6 +108,7 @@ export function buzz(pattern) {
 /** The sound for a popup type (rewards). Hurt, heal and hit sounds come from fx.js, which sees every HP change. */
 export function cue(type, message = '') {
     if (/reached level|level up/i.test(message)) return play('levelup');
+    if (/reached rank|learned|grow stronger/i.test(message)) { play('rankup'); return buzz([20, 30, 40]); } // a special grew
     switch (type) {
         case 'coins': case 'item': return play('coin');
         case 'legendary': play('crit'); return buzz([30, 40, 60]);

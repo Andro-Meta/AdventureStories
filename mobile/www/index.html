@@ -26,6 +26,12 @@
         <!-- Main Menu Screen -->
         <div id="mainMenuScreen" class="screen active">
             <h1>Adventure Stories</h1>
+            <div id="updateBanner" class="card update-banner hidden">
+                <p class="update-title"></p>
+                <p class="update-notes"></p>
+                <button class="update-btn primary"></button>
+                <p class="update-help"><small>The new version downloads in your browser. Tap the finished download to install it (the first time, Android asks you to allow installs from your browser). Your saves and keys stay.</small></p>
+            </div>
             <div class="card">
                 <div class="button-container vertical">
                     <button id="newGameBtn">New Adventure</button>
@@ -38,7 +44,7 @@
                 </div>
             </div>
             <footer>
-                <p class="version-info" id="versionInfo">v1.2.2</p>
+                <p class="version-info"><span id="versionInfo">v1.2.2</span> · <button id="checkUpdatesBtn" class="link-btn">Check for updates</button></p>
             </footer>
         </div>
 
@@ -74,12 +80,12 @@
                             <input type="password" id="googleApiKeyInput" class="api-key-input" placeholder="Paste your free Google AI Studio key" autocomplete="off" spellcheck="false">
                             <button id="googleApiKeySaveBtn" class="primary">Save</button>
                         </div>
-                        <p class="api-key-hint">Free key: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">aistudio.google.com/apikey →</a> (use a project without billing so it stays free)</p>
                         <h3>Second Google Key (optional, another account):</h3>
                         <div class="api-key-row">
                             <input type="password" id="googleApiKey2Input" class="api-key-input" placeholder="Optional: key from a second Google account" autocomplete="off" spellcheck="false">
                             <button id="googleApiKey2SaveBtn" class="primary">Save</button>
                         </div>
+                        <p class="api-key-hint">Free key: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">aistudio.google.com/apikey →</a> (use a project without billing so it stays free)</p>
                         <h3>Groq Key (used when Google is busy):</h3>
                         <div class="api-key-row">
                             <input type="password" id="groqApiKeyInput" class="api-key-input" placeholder="Paste your free Groq key" autocomplete="off" spellcheck="false">

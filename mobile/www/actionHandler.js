@@ -205,6 +205,8 @@ export async function handlePlayerChoice(actionType, choiceText) {
                     }
                 } catch (_) { /* keep enemies[0] fallback */ }
                 let combatLog = '';
+                let moveWas = ''; // how the aftermath names this move if it ends the fight
+                const aliveBefore = aliveEnemies.filter(e => e.hp > 0);
                 // Stun/Paralysis/Sleep: the hero loses this turn whatever they
                 // picked (before, only Attack was blocked; Item and Run worked).
                 const disabled = (currentPlayer.statusEffects || []).find(fx => fx?.duration > 0 && fx.effectTickData?.cannotAct);
@@ -255,6 +257,7 @@ export async function handlePlayerChoice(actionType, choiceText) {
                         if (r.missed) combatLog = `${currentPlayer.name} swings at ${target.name} and misses.`;
                         else if (r.blocked) combatLog = `${target.name} blocks ${currentPlayer.name}'s strike.`;
                         else combatLog = `${currentPlayer.name} hits ${target.name} for ${r.actualDamage} ${r.element || ''} damage.`;
+                        moveWas = `a strike with ${currentPlayer.name}'s weapon`;
                         break;
                     }
 
@@ -278,10 +281,11 @@ export async function handlePlayerChoice(actionType, choiceText) {
                                 total += before - target.hp;
                                 currentPlayer.lastPowerStrikeRound = round;
                             }
+                            moveWas = `a Power Strike (a heavy blow with ${currentPlayer.name}'s weapon)`;
                             combatLog = r.missed ? `${currentPlayer.name}'s power strike misses ${target.name}.`
                                 : ready ? `${currentPlayer.name} lands a Power Strike on ${target.name} for ${total} damage!`
                                 : `${currentPlayer.name} is still winded from the last power strike and hits ${target.name} for ${total}.`;
-                        } else if ((move.mpCost || 0) > (currentPlayer.mp || 0)) {
+                        } else if (Progression.abilityMpCost(move) > (currentPlayer.mp || 0)) {
                             combatLog = `${currentPlayer.name} reaches for ${move.name} but doesn't have enough MP.`;
                         } else {
                             // Special: 1.5x a weapon hit, plus the move's own damage
@@ -305,6 +309,7 @@ export async function handlePlayerChoice(actionType, choiceText) {
                             if (ranked) UI.showPopup(`✨ ${currentPlayer.name}'s ${move.name} reached rank ${Progression.ROMAN[ranked]}!`, 'legendary', 3500);
                             const mpCost = Progression.abilityMpCost(move);
                             if (mpCost) currentPlayer.mp = Math.max(0, (currentPlayer.mp || 0) - mpCost);
+                            moveWas = `the special move "${move.name}"${move.description ? ` (${String(move.description).slice(0, 120)})` : ''}, not a plain weapon swing`;
                             combatLog = r.missed
                                 ? `${currentPlayer.name} unleashes ${move.name} but misses ${target.name}.`
                                 : `${currentPlayer.name} uses ${move.name} on ${target.name} for ${r.actualDamage || 0} damage!`;
@@ -383,10 +388,15 @@ export async function handlePlayerChoice(actionType, choiceText) {
                         const SpellCasting = await import('./spellCasting.js');
                         // Healing/self spells land on the caster, not the foe.
                         const selfCast = spell.targeting === 'self' || (spell.effects?.healing > 0 && !(spell.effects?.damage > 0));
+                        const hpBefore = new Map((gameState.enemies || []).map(e => [e, e.hp]));
                         const res = await SpellCasting.castSpell(currentPlayer, spell, selfCast ? currentPlayer : target);
-                        combatLog = res?.success
-                            ? `${currentPlayer.name} casts ${spell.name}!`
-                            : `${currentPlayer.name} tries ${spell.name} but it fizzles (${res?.reason || 'failed'}).`;
+                        // Say what it did (it used to be only "casts X!", so the storyteller guessed).
+                        const hit = [...hpBefore].filter(([e, hp]) => e.hp < hp).map(([e, hp]) => `${e.name} −${hp - e.hp}`);
+                        moveWas = `the special "${spell.name}"${spell.description ? ` (${String(spell.description).slice(0, 120)})` : ''}, not a weapon`;
+                        combatLog = !res?.success
+                            ? `${currentPlayer.name} tries ${spell.name} but it fizzles (${res?.reason || 'failed'}).`
+                            : hit.length ? `${currentPlayer.name} uses ${spell.name}: ${hit.join(', ')}.`
+                            : `${currentPlayer.name} uses ${spell.name}.`;
                         break;
                     }
 
@@ -425,6 +435,10 @@ export async function handlePlayerChoice(actionType, choiceText) {
                     }
                 }
 
+                // Name every foe this move finished.
+                const felled = aliveBefore.filter(e => e.hp <= 0).map(e => e.name);
+                if (felled.length) combatLog += ` ${felled.join(' and ')} ${felled.length > 1 ? 'fall' : 'falls'}.`;
+
                 // Loot + coins for anything the player's action just killed.
                 for (const e of (gameState.enemies || [])) {
                     if (e && (e.isDefeated || e.hp <= 0) && !e.defeatProcessed) {
@@ -451,6 +465,7 @@ export async function handlePlayerChoice(actionType, choiceText) {
                 // Resolve win/wipe; otherwise let combat system advance to enemy turn(s).
                 if (Combat.areAllEnemiesDefeated()) {
                     cbStep(8, 'all enemies defeated, exiting combat');
+                    Media.play('victory');
                     gameState.inCombat = false;
                     if (gameState.combat) gameState.combat.isActive = false;
                 } else if (gameState.inCombat && !Combat.isPartyWiped()) {
@@ -497,7 +512,8 @@ export async function handlePlayerChoice(actionType, choiceText) {
                 const escaped = actionType === 'Run' && !Combat.areAllEnemiesDefeated();
                 const combatActionLog = `[Fight over]
 ${escaped ? `${currentPlayer.name} escaped the fight.` : `The heroes won.${fallen.length ? ` Defeated: ${fallen.join(', ')}.` : ''}`}
-Last move: ${combatLog}
+Last move: ${combatLog}${!escaped && moveWas ? `
+FINAL BLOW: ${moveWas}. Show exactly this move ending the fight, by name; never turn it into a different attack.` : ''}
 Heroes now: ${(gameState.players || []).map(p => `${p.name} (HP ${p.hp}/${p.maxHp})`).join(', ')}
 
 In 2 short paragraphs, show how the fight ends (one vivid moment, not a blow-by-blow recap) and what the heroes notice or face next.${averagePartyAge() < 15 && !Config.injuryDetailOn() ? ' Kid-safe: no blood or wounds.' : ''} Never write HP, MP or other game numbers in the story. Then provide 5 exploration choices (one per approach, each with a danger) as JSON.`;
