@@ -2204,6 +2204,70 @@ await block(async () => {
   } finally { document.getElementById = realGet; globalThis.fetch = window.fetch = offline; localStorage.removeItem('adv.apiKey.api.groq.com'); localStorage.removeItem('adv.cloudProvider'); }
 });
 
+section('Batch 30: Divine Will can start a new quest and move to another world (10-09)');
+
+await block(async () => {
+  const QD = await import('../questDefinitions.js');
+  const ops = (o) => Engine.applyDiff(o, { strict: false });
+  // An ordinary turn can't do either.
+  fresh(); gameState.adventureTheme = 'cyberpunk'; gameState.isGoalComplete = false; gameState.divineTurn = false;
+  ops([{ op: 'replace', path: '/adventureTheme', value: 'haunted' }, { op: 'replace', path: '/questProgress/newQuest', value: { goal: 'x' } }]);
+  check(gameState.adventureTheme === 'cyberpunk', `an ordinary turn can't change the world (${gameState.adventureTheme})`);
+
+  // God mode after a win: a new quest restarts the three acts; the Divine Will box stays.
+  fresh(); gameState.adventureTheme = 'cyberpunk'; gameState.isGoalComplete = true; gameState.divineTurn = true;
+  gameState.godModeManager = { isActive: true };
+  gameState.questProgress = { milestones: [{ name: 'stakes_clear' }, { name: 'antagonist_revealed' }, { name: 'final_blow' }], completionPercentage: 100, bossDefeated: true, villain: 'The Machine Mind' };
+  gameState.storyThreads = [{ text: 'old clue' }];
+  ops([{ op: 'replace', path: '/questProgress/newQuest', value: { goal: 'Free the city with our AI allies from the Halcyon oppressors', villain: 'Director Halcyon' } }]);
+  const act = QD.determineCurrentAct(gameState);
+  check(gameState.adventureGoal.startsWith('Free the city') && gameState.questProgress.villain === 'Director Halcyon' && gameState.questProgress.milestones.length === 0
+    && !gameState.isGoalComplete && act === QD.MAIN_QUEST_ARC[0] && gameState.godModeManager.isActive && gameState.storyThreads.length === 0,
+    `new quest: goal set, villain ${gameState.questProgress.villain}, Act ${QD.MAIN_QUEST_ARC.indexOf(act) + 1}, Divine Will kept (${gameState.godModeManager.isActive})`);
+
+  // A portal from a dystopian future into a haunted mansion: the world itself changes.
+  gameState.divineTurn = true; gameState.storyVariation = { narrativeElements: { conflict: 'man against machine' } };
+  ops([{ op: 'replace', path: '/adventureTheme', value: 'haunted' }, { op: 'replace', path: '/currentLocation', value: { name: 'Blackwood Manor Foyer', type: 'mansion', dangerLevel: 0.5, description: 'Dust and candlelight.' } }]);
+  const shopThemed = (gameState.shopItems || []).length > 0;
+  check(gameState.adventureTheme === 'haunted' && gameState.storyVariation === null && gameState.currentLocation?.name === 'Blackwood Manor Foyer' && shopThemed,
+    `portal: world ${gameState.adventureTheme}, old world's threads cleared, arrived at ${gameState.currentLocation?.name}, shop restocked (${(gameState.shopItems || []).length})`);
+  ops([{ op: 'replace', path: '/adventureTheme', value: { theme: 'custom', description: 'A candy kingdom inside a snow globe' } }, { op: 'replace', path: '/adventureTheme', value: 'atlantis' }]);
+  check(gameState.adventureTheme === 'custom' && /snow globe/.test(gameState.customThemeDescription), `a custom world from a description works; an unknown key is refused (${gameState.adventureTheme})`);
+
+  // The storyteller is told how, on a Divine Will turn even mid-quest.
+  gameState.isGoalComplete = false; gameState.divineTurn = true;
+  const rules = (await import('../aiHandler.js')).buildDiffInstructions(0);
+  gameState.divineTurn = false;
+  check(/newQuest/.test(rules) && /adventureTheme/.test(rules) && /GOD MODE/.test(rules), 'Divine Will turns get the god-mode rules (new quest, other worlds), mid-quest too');
+});
+
+await block(async () => {
+  // Heroes travel between games (roster.js): saved on autosave, picked on the names screen.
+  const Roster = await import('../roster.js');
+  const SL = await import('../saveLoad.js');
+  localStorage.removeItem('adv.heroes');
+  const { p } = fresh();
+  gameState.adventureTheme = 'cyberpunk';
+  const { levelUp } = await import('../battle.js');
+  levelUp(p, 6); p.stats = { brave: 4, clever: 3, sneaky: 2, kind: 5 }; p.coins = 777; p.hp = 3;
+  p.specialMoves = [{ id: 'm1', name: 'Arc Smash', uses: 9, currentCooldown: 2, mechanics: { directDamage: 20 } }];
+  p.inventory.push({ id: 'rod', name: 'Spark Rod', type: 'Weapon', tier: 'High', stats: { atk: 20 } });
+  SL.autosave();
+  const list = Roster.listHeroes();
+  check(list.length === 1 && /^Ava · Lv 7 · ATK \d+ · DEF \d+ · from Cyberpunk$/.test(list[0].label), `the hero is in the roster after an autosave (${list[0]?.label})`);
+  // A new game, a fresh level-1 player turned into the saved hero.
+  resetGameState(); gameState.adventureTheme = 'haunted';
+  const fresh1 = createNewPlayer('Ava', 10);
+  const ok = Roster.applyHero(fresh1, list[0].id);
+  check(ok && fresh1.level === 7 && fresh1.stats.kind === 5 && fresh1.coins === 777 && fresh1.hp === fresh1.maxHp && fresh1.maxHp === p.maxHp
+    && fresh1.specialMoves[0].uses === 9 && fresh1.specialMoves[0].currentCooldown === 0 && fresh1.inventory.some(i => i.name === 'Spark Rod'),
+    `loaded into a new game: level ${fresh1.level}, Kind ${fresh1.stats.kind}, ${fresh1.coins} coins, HP full ${fresh1.hp}/${fresh1.maxHp}, Arc Smash rank kept, gear kept`);
+  // Playing on updates the same roster entry, not a copy.
+  gameState.players = [fresh1]; levelUp(fresh1, 1); SL.autosave();
+  check(Roster.listHeroes().length === 1 && /Lv 8 · .* · from Haunted$/.test(Roster.listHeroes()[0].label), `progress in the new game updates the same hero (${Roster.listHeroes()[0].label})`);
+  localStorage.removeItem('adv.heroes');
+});
+
 console.error = realError;
 out(`\nfetch attempts blocked: ${fetchCalls}; elapsed ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 out(failed ? `✗ ${failed} mechanics check(s) failed` : '✓ all mechanics checks passed');

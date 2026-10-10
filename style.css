@@ -2138,3 +2138,6 @@ body::after { bottom: 0; height: env(safe-area-inset-bottom); }
 .voice-row { display: flex; align-items: center; gap: 10px; margin: 10px 0; flex-wrap: wrap; }
 .voice-row select { flex: 1 1 180px; min-width: 0; }
 .voice-row input[type=range] { flex: 1 1 120px; }
+
+/* Player Names: pick a saved hero (roster.js) */
+.hero-pick { width: 100%; margin: 0 0 6px; }

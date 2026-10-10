@@ -198,6 +198,8 @@ export async function completeSetupAndStartGameIntelligent() {
     // Save names to cache and store in gameState
     savePlayerNames(playerNames);
     gameState.playerNames = [...playerNames];
+    // Saved heroes picked on this screen (roster.js), by player slot ('' = a new hero).
+    gameState.playerRoster = playerNames.map((_, i) => document.getElementById(`heroPick_${i}`)?.value || '');
     log(`Setup: Names validated: [${playerNames.join(', ')}]. Starting intelligent initialization...`);
 
     // Shown only after validation so an invalid name can't strand the overlay.

@@ -154,8 +154,16 @@ export class InitializationManager {
                 gameState.players = [];
                 gameState.currentPlayerIndex = 0;
                 
+                const Roster = await import('./roster.js');
                 for (let i = 0; i < gameState.playerNames.length; i++) {
                     const player = createNewPlayer(gameState.playerNames[i], gameState.playerAges[i]);
+                    // A saved hero from another game keeps their level, stats, specials and gear.
+                    if (gameState.playerRoster?.[i] && Roster.applyHero(player, gameState.playerRoster[i])) {
+                        Combat.recalculateCharacterStats(player);
+                        player.hp = player.maxHp;
+                        gameState.players.push(player);
+                        continue;
+                    }
                     
                     // Generate and equip starting items
                     const startingItems = Items.generateStartingItems(gameState.adventureTheme);

@@ -9,6 +9,7 @@
 
 // --- Static Imports ---
 import { gameState } from './state.js'; // Import gameState
+import * as Roster from './roster.js';
 import * as Config from './config.js';
 import * as UI from './ui.js';
 // Import functions from other new modules statically
@@ -246,6 +247,7 @@ export function saveGameToLocalStorage(slotName) {
 export function autosave() {
     if (!gameState.players?.length) return;
     rememberNames();
+    try { Roster.rememberHeroes(gameState.players, gameState.adventureTheme); } catch (_) {} // heroes for other games
     // One autosave per game: a single shared slot meant starting a new game
     // overwrote the previous game's only copy.
     if (!gameState.gameId) gameState.gameId = Date.now().toString(36);
@@ -303,7 +305,8 @@ export async function exportSaves() {
     }
     const count = Object.keys(saves).length;
     if (!count) { UI.showPopup('No saves to export yet.', 'info'); return; }
-    const json = JSON.stringify({ app: 'adventure-stories', version: Config.APP_VERSION, exportedAt: new Date().toISOString(), saves });
+    let heroes = null; try { heroes = JSON.parse(localStorage.getItem('adv.heroes') || 'null'); } catch (_) {}
+    const json = JSON.stringify({ app: 'adventure-stories', version: Config.APP_VERSION, exportedAt: new Date().toISOString(), saves, heroes });
     const name = `adventure-stories-saves-${new Date().toISOString().slice(0, 10)}.json`;
     const cap = globalThis.Capacitor;
     try {
@@ -333,6 +336,9 @@ export async function importSaves(text) {
     for (const [k, v] of Object.entries(saves)) {
         if (!k.startsWith(Config.SAVE_GAME_PREFIX) || typeof v !== 'string') continue;
         try { JSON.parse(v); localStorage.setItem(k, v); n++; } catch (_) { /* skip a broken or oversized save */ }
+    }
+    if (data.heroes && typeof data.heroes === 'object') { // saved heroes: add to (never wipe) this device's roster
+        try { const mine = JSON.parse(localStorage.getItem('adv.heroes') || '{}'); localStorage.setItem('adv.heroes', JSON.stringify({ ...data.heroes, ...mine })); } catch (_) {}
     }
     UI.showPopup(n ? `Imported ${n} save${n > 1 ? 's' : ''}.` : 'No saves could be imported.', n ? 'success' : 'error');
     return n;

@@ -10,6 +10,7 @@ import * as Spells from './spells.js';
 import * as AdaptiveAbilities from './adaptiveAbilities.js';
 import * as Progression from './progression.js';
 import * as Media from './media.js';
+import * as Roster from './roster.js';
 // Import specific utils needed
 import { sanitizeText } from './utils.js';
 import { describeQuestStep, friendlyMilestone } from './questDefinitions.js';
@@ -1205,8 +1206,21 @@ export function generateNameInputs() {
     // Load cached names
     const cachedNames = loadPlayerNames();
     
+    // Saved heroes from earlier games (roster.js): pick one, or make a new hero.
+    const heroes = Roster.listHeroes();
     for (let i = 0; i < gameState.playerCount; i++) {
         const div = document.createElement('div');
+        if (heroes.length) {
+            const pick = document.createElement('select');
+            pick.id = `heroPick_${i}`; pick.className = 'cloud-provider-select hero-pick';
+            pick.innerHTML = `<option value="">✨ New hero</option>` + heroes.map(h => `<option value="${sanitizeText(h.id)}">${sanitizeText(h.label)}</option>`).join('');
+            pick.addEventListener('change', () => {
+                const h = heroes.find(x => x.id === pick.value);
+                const input = document.getElementById(`nameInput_${i}`);
+                if (input) { input.value = h ? h.name : ''; input.readOnly = !!h; }
+            });
+            div.appendChild(pick);
+        }
         const label = document.createElement('label');
         label.htmlFor = `nameInput_${i}`;
         label.textContent = `Player ${i + 1} Name:`;
