@@ -8,9 +8,13 @@ Kenney.nl (www.kenney.nl), "License (Creative Commons Zero, CC0)":
   hurt-1..2.ogg   Impact Sounds: impactSoft_heavy_000..001
   coin-1..2.ogg   RPG Audio: handleCoins, handleCoins2
   heal.ogg        Digital Audio: powerUp7
-  fumble.ogg      Digital Audio: lowDown
-  crit.ogg        Music Jingles: jingles_HIT05
-  levelup.ogg     Music Jingles: jingles_NES00
+  crit.ogg        Music Jingles: jingles_NES12   (rising run: critical success)
+  fumble.ogg      Music Jingles: jingles_SAX01   (falling "wah-wah": critical failure)
+  levelup.ogg     Music Jingles: jingles_STEEL02 (rising steel-drum run: level up)
+  victory.ogg     Music Jingles: jingles_PIZZI10 (rising: the last foe falls)
+  rankup.ogg      Music Jingles: jingles_NES03   (short climb: a special ranks up / is learned)
+  (10-09: crit fell 6.5 semitones and levelup was the falling F-E-D#-D "game over"
+  sting; replaced after measuring each melody's direction.)
   tap.ogg         Interface Sounds: click_002
 
 artisticdude, "Swishes Sound Pack" (opengameart.org/content/swishes-sound-pack), CC0:
