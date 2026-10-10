@@ -54,7 +54,7 @@ async function handleGodModeChoice(customChoice) {
         gameState.allowCustomActions = true;
         await handleCustomAction(customChoice);
         // Record after completion so it doesn't double-record on errors.
-        try { recordPlayerChoice(getCurrentPlayer()?.id, 'God Mode', customChoice, 1.0); } catch (_) {}
+        try { recordPlayerChoice(getCurrentPlayer()?.id, 'God Mode', customChoice, null, 1.0); } catch (_) {}
     } catch (error) {
         log(`God Mode: Error handling custom choice: ${error.message}`);
         UI.showPopup('An error occurred while processing your divine command.', 'error', 3000);
@@ -103,9 +103,33 @@ export function formatTurnRecap(before, after, actorName) {
     return parts.join(' \u00b7 ');
 }
 
+/**
+ * A next chapter picked from the ending: a fresh three-act quest (Divine Will
+ * stays), then the storyteller opens it.
+ */
+async function startChapter(text) {
+    const pick = (gameState.nextChapters || []).find(c => String(text).startsWith(c.title)) || { title: 'A New Chapter', goal: String(text).replace(/^[^:]*:\s*/, ''), villain: '' };
+    const { applyDiff } = await import('./engine.js');
+    gameState.divineTurn = true; // newQuest is a god-mode op
+    try { applyDiff([{ op: 'replace', path: '/questProgress/newQuest', value: { goal: pick.goal, villain: pick.villain || undefined } }], { strict: false }); }
+    finally { gameState.divineTurn = false; }
+    gameState.nextChapters = null;
+    try { recordStoryBeat('chapter', `A new chapter began: ${pick.title}`, 0.8, []); } catch (_) {}
+    UI.updateContextHeaders(); // Act 1 and the new goal in the header right away
+    UI.showLoading(true, 'Opening the next chapter...');
+    try {
+        await makeAICallForSystemAction(`[New chapter] "${pick.title}": the heroes set out to ${pick.goal.replace(/^./, c => c.toLowerCase())}. Open this chapter with a fresh scene that starts the new quest: where they go, who needs them, what first goes wrong. The old villain is gone; this is a new story with the same heroes and friends.`, false);
+    } finally {
+        UI.showLoading(false);
+        UI.updateContextHeaders();
+        try { (await import('./saveLoad.js')).autosave(); } catch (_) {} // the new chapter survives closing the app
+    }
+}
+
 export async function handlePlayerChoice(actionType, choiceText) {
     const log = window.displayVisualError || console.log;
     log(`Handling player choice: ${actionType} - ${choiceText}`);
+    if (actionType === 'NewChapter') return startChapter(choiceText);
     let recapBefore = null, recapActor = null; // set once the turn actually starts
     gameState.divineTurn = false; // only a Divine Will turn gets god-mode ops
     let heroBeforeRoll = null; // the hero before an exploration roll, put back if the story never comes
@@ -447,6 +471,7 @@ export async function handlePlayerChoice(actionType, choiceText) {
                     }
                 }
 
+                try { recordPlayerChoice(currentPlayer.id, actionType, choiceText, null, 0.2); } catch (_) {}
                 // Name every foe this move finished.
                 const felled = aliveBefore.filter(e => e.hp <= 0).map(e => e.name);
                 if (felled.length) combatLog += ` ${felled.join(' and ')} ${felled.length > 1 ? 'fall' : 'falls'}.`;
@@ -522,6 +547,7 @@ export async function handlePlayerChoice(actionType, choiceText) {
                 // The fight is over: one storyteller call tells how it ended and what comes next.
                 const fallen = (gameState.enemies || []).filter(e => e.isDefeated || e.hp <= 0).map(e => e.name);
                 const escaped = actionType === 'Run' && !Combat.areAllEnemiesDefeated();
+                if (gameState.questProgress?.bossDefeated && !gameState.questProgress.finalBlow && moveWas) gameState.questProgress.finalBlow = `${currentPlayer.name}, with ${moveWas.replace(/, not .*$/, '')}`;
                 const combatActionLog = `[Fight over]
 ${escaped ? `${currentPlayer.name} escaped the fight.` : `The heroes won.${fallen.length ? ` Defeated: ${fallen.join(', ')}.` : ''}`}
 Last move: ${combatLog}${!escaped && moveWas ? `
@@ -709,37 +735,6 @@ In 2 short paragraphs, show how the fight ends (one vivid moment, not a blow-by-
             recordStoryBeat('player_choice', `${currentPlayer.name} chose: ${choiceText}`, choiceSignificance, [currentPlayer.id]);
         }
         
-        // Analyze character development impact
-        if (gameState.characterDevelopmentAgent) {
-            try {
-                const choiceData = {
-                    id: generateId('choice'),
-                    type: actionType,
-                    text: choiceText,
-                    outcome: gameState.narrativeContext.lastOutcome,
-                    significance: choiceSignificance,
-                    turn: gameState.turn,
-                    location: gameState.currentLocation?.name
-                };
-                
-                // Async character development analysis (non-blocking).
-                // BUG-23 fix: capture turn-tag so a stale resolution after
-                // Exit-to-menu doesn't write into the post-reset gameState.
-                const _tagCD = gameState.turn;
-                gameState.characterDevelopmentAgent.analyzeCharacterDevelopment(currentPlayer.id, choiceData)
-                    .then(developmentResult => {
-                        if (gameState.turn !== _tagCD) return; // stale — drop
-                        if (developmentResult?.narrativeInsights) {
-                            log(`Character development: ${currentPlayer.name} - ${JSON.stringify(developmentResult.narrativeInsights)}`);
-                        }
-                    })
-                    .catch(error => {
-                        if (gameState.turn === _tagCD) log(`Character development analysis failed: ${error.message}`);
-                    });
-            } catch (error) {
-                log(`Character development integration error: ${error.message}`);
-            }
-        }
         
         // Check God Mode unlock conditions
         if (gameState.godModeManager) {
@@ -753,36 +748,6 @@ In 2 short paragraphs, show how the fight ends (one vivid moment, not a blow-by-
             }
         }
         
-        // Analyze world evolution impact
-        if (gameState.worldEvolutionAgent) {
-            try {
-                const evolutionData = {
-                    id: generateId('action'),
-                    type: actionType,
-                    text: choiceText,
-                    outcome: gameState.narrativeContext.lastOutcome,
-                    significance: choiceSignificance,
-                    turn: gameState.turn,
-                    location: gameState.currentLocation?.name
-                };
-                
-                // Async world evolution analysis (non-blocking).
-                // BUG-23 fix: turn-tag guard.
-                const _tagWE = gameState.turn;
-                gameState.worldEvolutionAgent.analyzeWorldEvolution(currentPlayer.id, evolutionData)
-                    .then(evolutionResult => {
-                        if (gameState.turn !== _tagWE) return; // stale — drop
-                        if (evolutionResult?.evolutionEvent) {
-                            log(`World evolution: ${evolutionResult.evolutionEvent.significance.toFixed(2)} significance - ${evolutionResult.evolutionEvent.immediateConsequences?.consequences?.length || 0} consequences`);
-                        }
-                    })
-                    .catch(error => {
-                        if (gameState.turn === _tagWE) log(`World evolution analysis failed: ${error.message}`);
-                    });
-            } catch (error) {
-                log(`World evolution integration error: ${error.message}`);
-            }
-        }
 
         // The scene, location and recent turns are already in the turn prompt;
         // this says only what was chosen and what the game rolled.
@@ -877,8 +842,8 @@ Result: ${(lastRoll && !lastRoll.stat
                 // Quest just won: write the ending before god mode opens.
                 // Locked while it's written, so no one clicks past the ending.
                 gameState.isLoading = true;
-                try { UI.showLoading(true, 'Writing the epilogue...'); await (await import('./aiHandler.js')).writeEpilogue(); }
-                catch (e) { log(`Epilogue skipped: ${e.message}`); }
+                try { UI.showLoading(true, 'Writing the ending...'); await (await import('./aiHandler.js')).writeEnding(); }
+                catch (e) { log(`Ending skipped: ${e.message}`); }
                 finally { gameState.isLoading = false; }
             }
             try { UI.showTurnRecap(formatTurnRecap(recapBefore, snapshotParty(), recapActor)); } catch (_) {}

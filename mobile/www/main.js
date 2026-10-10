@@ -301,6 +301,8 @@ function setupEventListeners(UI, setup, actionHandler, saveLoad) { // Added acti
         soundReturn = from;
         const set = (id, on) => { const el = document.getElementById(id); if (el) el.checked = on; };
         set('optReadAloud', Media.settings.readAloud); set('optSfx', Media.settings.sfx); set('optVibrate', Media.settings.vibrate);
+        let refl = true; try { refl = localStorage.getItem('adv.reflection') !== '0'; } catch (_) {}
+        set('optReflection', refl);
         const note = document.getElementById('voiceNote');
         if (note && !Media.canSpeak()) note.textContent = 'Read-aloud is not available on this device yet.';
         const rate = document.getElementById('optVoiceRate'); if (rate) rate.value = Media.voiceRate();
@@ -316,6 +318,8 @@ function setupEventListeners(UI, setup, actionHandler, saveLoad) { // Added acti
     safeAddListener('soundSettingsBtn', 'click', () => openSound('mainMenuScreen'), 'soundSettingsBtn');
     safeAddListener('menuSoundSettingsBtn', 'click', () => openSound('menuScreen'), 'menuSoundSettingsBtn');
     safeAddListener('soundSettingsBackBtn', 'click', () => UI.showScreen(soundReturn), 'soundSettingsBackBtn');
+    // The end-of-quest reflection: on unless a parent turns it off (reflection.js).
+    document.getElementById('optReflection')?.addEventListener('change', (e) => { try { localStorage.setItem('adv.reflection', e.target.checked ? '1' : '0'); } catch (_) {} });
     for (const [id, key] of [['optReadAloud', 'readAloud'], ['optSfx', 'sfx'], ['optVibrate', 'vibrate']]) {
         document.getElementById(id)?.addEventListener('change', (e) => {
             Media.settings.set(key, e.target.checked);
@@ -598,14 +602,11 @@ function updateContinueButtonVisibility() {
     if (!continueBtn) return;
     
     try {
-        // Check if any saves exist under the current prefix (AG-) or the legacy
-        // prefix (advStorySave_) in case migration hasn't run yet on first load.
-        const savePrefix = (Config && Config.SAVE_GAME_PREFIX) ? Config.SAVE_GAME_PREFIX : 'AG-';
-        const legacyPrefix = 'advStorySave_';
+        const savePrefix = Config.SAVE_GAME_PREFIX;
         let hasSaves = false;
         for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
-            if (key && (key.startsWith(savePrefix) || key.startsWith(legacyPrefix))) {
+            if (key && key.startsWith(savePrefix)) {
                 hasSaves = true;
                 break;
             }

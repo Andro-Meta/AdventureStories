@@ -12,7 +12,83 @@
 // that TF-IDF over short summaries is brittle vs cosine over real
 // embeddings; that's a Phase 2.5 upgrade when we can ship EmbeddingGemma.
 
-import { gameState } from './state.js';
+import { gameState, recordStoryBeat } from './state.js';
+
+// ---------------------------------------------------------------- the cast
+// Who the heroes know, where they stand, and who is gone (Michael 10-10:
+// "does it pass along friends and enemies? if they're with you? if they've
+// died and how?"). Only the game changes a person's status; the storyteller
+// reports changes with an op (or the 5-turn summary does), and the dead stay dead.
+const STATUS = [['defeated', /defeat|vanquish|overthrown/], ['dead', /dead|died|killed|slain|fallen|perish|destroyed/], ['captured', /captur|prison|taken|caught|held/],
+    ['missing', /missing|lost|vanish|disappear/], ['with you', /with|party|join|compan|follow|travel/]];
+const BONDS = [[3, /loyal|bonded|devoted|family/], [2, /ally|friend|compan|trust/], [-3, /nemesis|arch/], [-2, /enemy|hostile|foe|betray/], [-1, /wary|rival|suspic|distrust/]];
+export const statusOf = (s) => (STATUS.find(([, re]) => re.test(String(s || '').toLowerCase())) || ['away'])[0];
+export function bondOf(rel, fallback = 0) {
+    if (typeof rel === 'number' && Number.isFinite(rel)) return Math.max(-3, Math.min(3, Math.round(rel)));
+    if (!rel) return fallback;
+    return (BONDS.find(([, re]) => re.test(String(rel).toLowerCase())) || [0])[0];
+}
+const BOND_WORD = { 3: 'devoted friend', 2: 'friend', 1: 'friendly', 0: 'neutral', '-1': 'wary', '-2': 'enemy', '-3': 'sworn enemy' };
+
+/**
+ * Merge a reported change into a person's record and log the big moments.
+ * Returns the merged record. The dead stay dead unless Divine Will says otherwise.
+ */
+export function mergePerson(old, incoming, gs = gameState) {
+    const prev = old || {};
+    const next = { ...prev, ...incoming };
+    next.status = incoming.status != null ? statusOf(incoming.status) : (prev.status || 'away');
+    next.bond = incoming.relationship != null || incoming.bond != null ? bondOf(incoming.bond ?? incoming.relationship, prev.bond || 0) : (prev.bond || 0);
+    // No quiet resurrections: the dead stay dead and the defeated stay defeated
+    // (defeated may become dead). Only Divine Will can undo it; winning the
+    // quest does not (live 10-10: a later summary turned the beaten villain "away").
+    // An enemy is never "with the heroes" (live 10-10: a customs officer tailing them was).
+    if (next.status === 'with you' && next.bond < 0) next.status = 'away';
+    const final = (s) => s === 'dead' || s === 'defeated';
+    if (final(prev.status) && !gs.divineTurn && !(next.status === 'dead' || next.status === prev.status)) {
+        next.status = prev.status; next.fate = prev.fate; next.fateTurn = prev.fateTurn;
+    }
+    const name = next.name;
+    if (next.status === 'dead' && prev.status !== 'dead') {
+        next.fate = String(incoming.fate || incoming.description || 'fell').slice(0, 120); next.fateTurn = gs.turn;
+        recordStoryBeat('death', `${name} died: ${next.fate}`, 1.0, [name]);
+    } else if (next.status === 'with you' && prev.status !== 'with you') recordStoryBeat('joined', `${name} joined the heroes`, 0.7, [name]);
+    else if (next.status === 'captured' && prev.status !== 'captured') recordStoryBeat('captured', `${name} was captured`, 0.9, [name]);
+    else if (prev.status === 'with you' && next.status === 'away') recordStoryBeat('left', `${name} left the party`, 0.6, [name]);
+    if ((prev.bond || 0) >= 1 && next.bond <= -1) recordStoryBeat('betrayal', `${name} turned against the heroes`, 0.9, [name]);
+    return next;
+}
+
+/**
+ * One compact line about the people who matter right now: everyone with the
+ * heroes, the villain, and anyone the last scene or choice named (the dead
+ * show as dead, with how). Replaces the old 8-names list + 5 descriptions.
+ */
+export function castBlock(query, gs = gameState) {
+    const q = String(query || '').toLowerCase();
+    const npcs = Object.entries(gs.entityMemory?.npcs || {});
+    const villain = gs.questProgress?.villain;
+    const sees = (name) => name && q.includes(String(name).toLowerCase());
+    const label = ([name, p]) => {
+        if (p.status === 'dead') return `${name} (dead: ${p.fate || 'fell'}${p.fateTurn ? `, T${p.fateTurn}` : ''})`;
+        const bits = [BOND_WORD[p.bond ?? bondOf(p.relationship)]]; // older saves: a word ("ally")
+        if (p.status && p.status !== 'away' && p.status !== 'with you') bits.push(p.status);
+        if (p.status !== 'with you' && p.description) bits.push(String(p.description).split(/\s+/).slice(0, 8).join(' '));
+        return `${name} (${bits.join(', ')})`;
+    };
+    const party = npcs.filter(([, p]) => p.status === 'with you').slice(0, 4);
+    const named = npcs.filter(([n, p]) => p.status !== 'with you' && sees(n) && n !== villain).slice(0, 4);
+    const lines = [];
+    if (party.length) lines.push(`WITH THE HEROES: ${party.map(label).join(' · ')}`);
+    if (villain && !gs.isGoalComplete) lines.push(`VILLAIN: ${villain}`);
+    if (named.length) lines.push(`ALSO IN THIS SCENE: ${named.map(label).join(' · ')}`);
+    // The 1-2 heaviest moments about these people (deaths, betrayals, captures).
+    const who = new Set([...party, ...named].map(([n]) => n));
+    const moments = (gs.storyBeats || []).filter(b => b.significance >= 0.9 && (b.involvedPlayers || []).some(n => who.has(n) || sees(n)))
+        .sort((a, b) => b.turn - a.turn).slice(0, 2);
+    if (moments.length) lines.push(`REMEMBER: ${moments.map(m => `T${m.turn} ${m.description}`).join(' · ')}`);
+    return lines.length ? `\n\nPEOPLE:\n${lines.join('\n')}\n` : '';
+}
 
 // ---- Tokenizer + stop-words -------------------------------------------------
 // Tiny stop-word list — enough that "the/a/of/and/to" don't dominate scores.
@@ -126,7 +202,7 @@ export function retrieveSummaries(query, opts = {}) {
  * @returns {{npcs:Array, locations:Array, items:Array}}
  */
 export function retrieveEntities(query, opts = {}) {
-    const perCategoryK = opts.perCategoryK ?? 5;
+    const perCategoryK = opts.perCategoryK ?? 3; // people now come from castBlock
     const queryLower = (query || '').toLowerCase();
     const em = gameState.entityMemory || {};
 
@@ -164,6 +240,8 @@ export function renderMemoryBlock(query) {
     const ents = retrieveEntities(query);
 
     let out = '';
+    const sofar = gameState.arcMemory?.storySoFar;
+    if (sofar) out += `\n\nSTORY SO FAR: ${sofar}`;
     if (summaries.length > 0) {
         out += '\n\nADVENTURE MEMORY (recency-blended retrieval):\n';
         for (const s of summaries) {
@@ -176,7 +254,7 @@ export function renderMemoryBlock(query) {
         for (const e of list) s += `- ${e.name}: ${e.info.description}\n`;
         return s;
     };
-    out += renderEnts('KNOWN NPCS', ents.npcs);
+    out += castBlock(query);
     out += renderEnts('KNOWN LOCATIONS', ents.locations);
     out += renderEnts('NOTABLE ITEMS', ents.items);
     return out;

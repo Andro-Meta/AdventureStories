@@ -12,8 +12,9 @@ import * as Items from './items.js';
 import * as AdaptiveAbilities from './adaptiveAbilities.js';
 import { getChoiceSchema, validateChoicesPayload, arcMemorySchema, validateArcMemoryPayload, storyTurnSchema, validateNarrativeTurnPayload, EXPLORATION_CHOICE_TYPES, COMBAT_CHOICE_TYPES } from './schemas.js';
 import { applyDiff, describeAllowedPaths } from './engine.js';
-import { renderMemoryBlock } from './memoryRetriever.js';
-import { buildQuestStageHint, nextBeat } from './questDefinitions.js';
+import { renderMemoryBlock, mergePerson } from './memoryRetriever.js';
+import * as Reflection from './reflection.js';
+import { buildQuestStageHint, nextBeat, determineCurrentAct } from './questDefinitions.js';
 import { generateNarrativeGuidelines, getReadingSpecification } from './ageAppropriateReading.js';
 import * as Combat from './combat.js';
 // Import turn manager functions statically
@@ -68,6 +69,7 @@ ALREADY HANDLED BY THE GAME (do not emit): anything listed under "Already applie
 YOURS TO EMIT when the story makes them happen:
 - A named new place the players enter: replace /currentLocation AND add /entityMemory/locations/<Name>.
 - New named NPCs or notable items: add /entityMemory/npcs/<Name> or /entityMemory/items/<Name>; items the hero picks up: add ${P}/inventory/-.
+- When someone joins or leaves the heroes, turns friend or enemy, is captured or dies: replace /entityMemory/npcs/<Name> with {"status":"with you|away|captured|missing|dead","relationship":"friend|ally|neutral|enemy","fate":"how they died"} ("with you" = a companion travelling with the heroes). The dead stay dead.
 - A fight starts: add /enemies/- (hp, maxHp, atk, def, abilities) AND replace /inCombat true. During a fight the game handles enemy HP and defeat itself: never emit /enemies/<n>/hp or /isDefeated, and never re-add an enemy that is already there or was defeated.
 - Status effects with narrative weight (Poison, Burn, Stun, Fear, Regen, Shield...): add ${P}/statusEffects/- {name, duration}.
 - Setups (Chekhov's gun): sparingly (about one every few turns), when the story makes a point of a clue, object, promise or mystery, add /storyThreads/- {text}. When one pays off, replace /storyThreads/<n>/resolved true. Never plant something you won't use.
@@ -456,31 +458,88 @@ Values are totals, not deltas. Reply exactly as {"ops":[...]}; only a purely cos
     return Array.isArray(payload?.ops) ? payload.ops.filter(o => o && typeof o.path === 'string').slice(0, 12) : [];
 }
 
-export async function writeEpilogue() {
-    const heroes = (gameState.players || []).map(p => p.name).join(', ');
-    const villain = gameState.questProgress?.villain;
+/**
+ * The closing sequence after the boss falls (10-10, replaces the one-paragraph
+ * epilogue): the game applies the world's changes and gathers the facts (who
+ * lived, who died and how, what the heroes did, what the choices revealed),
+ * then ONE call writes it: aftermath, a card per person, the changed world,
+ * the reflection, and three possible next chapters (offered as choices).
+ */
+export async function writeEnding() {
+    const qp = gameState.questProgress || {};
+    const villain = qp.villain, lair = qp.lair;
+    // 1. The world really changes (the cast, the stronghold, the danger).
+    const em = gameState.entityMemory || (gameState.entityMemory = { npcs: {}, locations: {}, items: {} });
+    const changes = [];
+    if (villain) {
+        const key = findEntityKey(em.npcs, villain) ?? villain;
+        em.npcs[key] = mergePerson(em.npcs[key], { name: key, status: 'defeated', relationship: 'enemy', fate: qp.finalBlow || 'defeated by the heroes' });
+        changes.push(`${villain} is defeated and their hold is broken`);
+    }
+    if (lair) {
+        const key = findEntityKey(em.locations, lair) ?? lair;
+        const old = em.locations[key] || {};
+        em.locations[key] = { ...old, name: key, description: `${old.description ? `${old.description} ` : ''}Freed from ${villain || 'its master'}.`.trim(), traits: [...new Set([...(old.traits || []), 'freed'])], lastSeenTurn: gameState.turn };
+        changes.push(`${lair} is free`);
+    }
+    if (gameState.currentLocation) gameState.currentLocation.dangerLevel = 0.2;
+    qp.worldChanges = changes;
+    // 2. The people worth a card: companions, the fallen, the captured, close friends and sworn enemies.
+    const weight = (p) => (p.status === 'with you' ? 4 : 0) + (p.status === 'dead' ? 3 : 0) + (p.status === 'captured' ? 2 : 0) + Math.abs(p.bond || 0);
+    const people = Object.entries(em.npcs).filter(([n, p]) => n !== villain && weight(p) >= 2).sort((a, b) => weight(b[1]) - weight(a[1])).slice(0, 6);
+    const momentOf = (name) => (gameState.storyBeats || []).filter(b => (b.involvedPlayers || []).includes(name)).sort((a, b) => b.significance - a.significance)[0]?.description;
+    const peopleFacts = people.map(([n, p]) => `${n}: ${p.status === 'dead' ? `died (${p.fate || 'fell'})` : p.status}, ${p.bond >= 2 ? 'a friend' : p.bond <= -2 ? 'an enemy' : 'known'}${momentOf(n) ? `; moment: ${momentOf(n)}` : ''}`);
+    // 3. What the choices revealed (worked out in code; the storyteller only words it).
+    const reads = Reflection.reflectionOn() ? Reflection.readHeroes(gameState) : [];
+    const open = (gameState.storyThreads || []).filter(t => t && !t.resolved).map(t => t.text);
     const payload = await API.getAIResponseJSON([
-        { role: 'system', content: `You write the ending of a ${getThemeName()} text adventure. Reply with one JSON object only.` },
-        { role: 'user', content: `QUEST WON: ${gameState.adventureGoal || 'the main quest'}${villain ? `
-VILLAIN DEFEATED: ${villain}` : ''}${(gameState.storyThreads || []).length ? `
-STORY THREADS (pay off any still open in a line each): ${gameState.storyThreads.map(t => `${t.text}${t.resolved ? '' : ' (still open)'}`).join('; ')}` : ''}
-HEROES: ${heroes}
-FINAL SCENE:
-${gameState.currentNarrative || ''}
+        { role: 'system', content: `You write the ending of a ${getThemeName()} text adventure: warm, specific, never generic. Reply with one JSON object only.` },
+        { role: 'user', content: `QUEST WON: ${gameState.adventureGoal || 'the main quest'}${villain ? `\nVILLAIN DEFEATED: ${villain}${lair ? ` at ${lair}` : ''}${qp.finalBlow ? `; the final blow: ${qp.finalBlow}` : ''}` : ''}
+HEROES: ${(gameState.players || []).map(p => p.name).join(', ')}
+WORLD CHANGES (true now; show them): ${changes.join('; ') || 'the danger has passed'}
+PEOPLE (one line each, naming something real they or the heroes did): ${peopleFacts.join(' | ') || 'none'}
+LOOSE THREADS: ${open.join('; ') || 'none'}${reads.length ? `
+THE STORY NOTICED (for each hero, 3 warm lines spoken to them by someone in the story who saw it all; keep each fact and its moment; strengths and growth only; never use words like profile, personality, test or diagnosis):
+${reads.map(r => `${r.hero} (title: ${r.title}): ${r.signals.map((s, i) => `${i + 1}. ${s.text}`).join(' ')}`).join('\n')}` : ''}
+FINAL SCENE: ${lastParagraph(gameState.currentNarrative)}
 
-Write the epilogue in 2-3 short paragraphs, third person, past tense: how the world changed, how the people react, and one line for each hero about what they do next. End with a hint that more adventures wait. Reply exactly as {"epilogue":"..."}` }
-    ], { type: 'object', properties: { epilogue: { type: 'string' } }, required: ['epilogue'] },
-    { jsonSchemaName: 'epilogue', max_tokens: 900, temperature: 0.8 });
-    const text = String(payload?.epilogue || '').trim();
-    if (text.length < 40) throw new Error('epilogue too short');
-    gameState.epilogue = text;
-    gameState.currentNarrative = `${gameState.currentNarrative || ''}
+Reply exactly as {"aftermath":"2 short paragraphs: the moment after victory and how the people react","people":[{"name":"...","line":"what became of them"}],"world":"1 paragraph: how the place has changed","reflection":[{"hero":"...","speaker":"who says it","lines":["...","...","..."],"closing":"one line that gives them their title"}],"chapters":[{"title":"...","goal":"one sentence quest","villain":"a new threat's name, or empty"}, 3 in all: grown from the loose threads, a power left empty, or a friend's own quest]}` }
+    ], { type: 'object', properties: { aftermath: { type: 'string' }, people: { type: 'array' }, world: { type: 'string' }, reflection: { type: 'array' }, chapters: { type: 'array' } }, required: ['aftermath', 'chapters'] },
+    { jsonSchemaName: 'ending', max_tokens: 1800, temperature: 0.8 }).catch(e => { (window.displayVisualError || console.log)(`Ending call failed (${e.message}); using the game's own ending.`); return {}; });
 
-— Epilogue —
-
-${text}`.trim();
+    const ending = composeEnding(payload, { reads, open, villain, lair, peopleFacts: people });
+    gameState.ending = ending;
+    gameState.epilogue = ending.text; // the Story Book's closing chapter
+    gameState.nextChapters = ending.chapters;
+    gameState.currentNarrative = `${gameState.currentNarrative || ''}\n\n${ending.text}`.trim();
     UI.updateNarrative(gameState.currentNarrative);
-    return text;
+    UI.renderChoices(ending.chapters.map(c => ({ type: 'NewChapter', text: `${c.title}: ${c.goal}` })));
+    return ending;
+}
+
+/** The ending's text and next chapters from the storyteller's reply, with the game's own words wherever it fell short. */
+export function composeEnding(payload, { reads = [], open = [], villain, lair, peopleFacts = [] } = {}) {
+    const str = (s) => String(s || '').trim();
+    const parts = [];
+    parts.push('— The End of the Quest —', str(payload?.aftermath) || `${villain ? `${villain} has fallen. ` : ''}The heroes stand together in the quiet that follows.`);
+    const cards = (Array.isArray(payload?.people) ? payload.people : []).filter(p => p?.name && p?.line).slice(0, 6);
+    if (cards.length) parts.push('— What became of them —', cards.map(p => `• ${str(p.name)}: ${str(p.line)}`).join('\n'));
+    else if (peopleFacts.length) parts.push('— What became of them —', peopleFacts.map(([n, p]) => `• ${n}: ${p.status === 'dead' ? `remembered: ${p.fate || 'they fell'}` : p.status === 'with you' ? 'still at the heroes\' side' : 'their story goes on'}`).join('\n'));
+    parts.push('— The world —', str(payload?.world) || `${lair ? `${lair} is free. ` : ''}The land breathes easier.`);
+    if (reads.length) {
+        const words = Array.isArray(payload?.reflection) ? payload.reflection : [];
+        const cleaned = reads.map(r => Reflection.cleanReflection(words.find(w => str(w?.hero).toLowerCase() === r.hero.toLowerCase()), r));
+        parts.push('— The story noticed —', cleaned.map(c => `${c.title}: ${c.hero}${c.speaker ? ` (as ${c.speaker} saw it)` : ''}\n${c.lines.map(l => `“${l}”`).join('\n')}${c.closing ? `\n${c.closing}` : ''}`).join('\n\n'));
+    }
+    let chapters = (Array.isArray(payload?.chapters) ? payload.chapters : []).filter(c => c?.title && c?.goal).slice(0, 3)
+        .map(c => ({ title: str(c.title).slice(0, 60), goal: str(c.goal).slice(0, 160), villain: str(c.villain).slice(0, 60) }));
+    // Never end without a way forward: grow chapters from loose threads.
+    const fallback = [...open.map(t => ({ title: 'An Unfinished Thread', goal: `Follow up on ${t}`, villain: '' })),
+        { title: 'The Empty Throne', goal: `Find out who rises to fill the place ${villain || 'the enemy'} left empty`, villain: '' },
+        { title: 'Beyond the Horizon', goal: 'Answer a call for help from a faraway land', villain: '' }];
+    while (chapters.length < 3 && fallback.length) chapters.push(fallback.shift());
+    parts.push('— What comes next? —', 'Choose the next chapter, or write your own with Divine Will.');
+    return { text: parts.join('\n\n'), chapters };
 }
 
 export async function requestChoicesOnly(narrative, inCombat, forHero = null, avoid = []) {
@@ -592,13 +651,6 @@ function buildCanonicalStateBlock() {
     }
     const equipLine = equipParts.length ? equipParts.join(', ') : 'none';
 
-    // NPCs from entityMemory — most recently seen first, capped.
-    const npcs = Object.entries(gameState.entityMemory?.npcs || {})
-        .sort(([, a], [, b]) => (b.lastSeenTurn || 0) - (a.lastSeenTurn || 0))
-        .slice(0, 8)
-        .map(([name]) => name)
-        .join(', ') || 'none recorded';
-
     // Active quests — main quest stage + side quests + jail if active.
     const activeQuests = [];
     if (gameState.imprisoned) activeQuests.push('jail_escape');
@@ -634,7 +686,6 @@ Player: ${playerLine}
 Equipped: ${equipLine}${partyLine ? `
 Party: ${partyLine}` : ''}
 Active Quests: ${activeQuests.join(', ') || 'none'}
-NPCs (most recent): ${npcs}
 Story Flags: ${flags}
 Recent Milestones: ${recentMilestones}
 === END STATE ===
@@ -773,6 +824,9 @@ export async function refreshArcMemory() {
         return;
     }
 
+    // The story-so-far is rewritten only when the act changes (one field in the same call).
+    const actNow = determineCurrentAct(gameState)?.id || 'won';
+    const actChanged = actNow !== gameState.arcMemory.storyAct;
     try {
         const payload = await API.getAIResponseJSON(
             [
@@ -781,7 +835,9 @@ export async function refreshArcMemory() {
 `Summarize turns ${lastSummaryTurn + 1}-${gameState.turn} and extract any new named entities. Already known (reuse these exact names, do not rename or re-list them): ${['npcs', 'locations', 'items'].map(c => Object.keys(gameState.entityMemory?.[c] || {}).join(', ')).filter(Boolean).join('; ') || 'none'}. Respond with ONLY this JSON shape (use empty arrays where nothing applies):
 
 {
-  "summary": "1-2 sentences capturing WHO did WHAT and the LASTING CONSEQUENCE.",
+  "summary": "1-2 sentences capturing WHO did WHAT and the LASTING CONSEQUENCE.",${actChanged ? `
+  "storySoFar": "the WHOLE story so far in at most 80 words (previous: ${String(gameState.arcMemory.storySoFar || 'none').slice(0, 500)})",` : ''}
+  "people": [{"name": "...", "status": "with you|away|captured|missing|dead", "relationship": "friend|ally|neutral|enemy", "fate": "how they died, only if they did"}] (only people whose place or loyalty CHANGED in these turns; "with you" = travelling with the heroes as a companion),
   "newNpcs":     [{"name": "...", "description": "..."}],
   "newLocations":[{"name": "...", "description": "..."}],
   "newItems":    [{"name": "...", "description": "..."}]
@@ -835,6 +891,12 @@ ${recentWindow}` }
             }
         };
         mergeEntities(gameState.entityMemory.npcs, result.newNpcs);
+        // Who joined, left, turned or died in these turns (same merge as the storyteller's ops).
+        for (const p of result.people) {
+            const key = findEntityKey(gameState.entityMemory.npcs, p.name) ?? p.name;
+            gameState.entityMemory.npcs[key] = mergePerson(gameState.entityMemory.npcs[key], { ...p, name: key });
+        }
+        if (result.storySoFar) { gameState.arcMemory.storySoFar = result.storySoFar; gameState.arcMemory.storyAct = actNow; }
         mergeEntities(gameState.entityMemory.locations, result.newLocations);
         mergeEntities(gameState.entityMemory.items, result.newItems);
 

@@ -1102,50 +1102,10 @@ export async function handleEnemyDefeat(enemyId) {
          });
      }
 
-     // Track performance for difficulty adaptation
-     if (gameState.difficultyAdaptationAgent) {
-         try {
-             const performanceData = {
-                 combatSuccessRate: calculateCombatSuccessRate(),
-                 enemyDefeated: true,
-                 turnsToDefeat: gameState.combat.round,
-                 playerHealthRemaining: gameState.players.reduce((sum, p) => sum + (p.hp || 0), 0),
-                 timestamp: Date.now()
-             };
-             
-             // Async difficulty analysis (non-blocking)
-             gameState.difficultyAdaptationAgent.analyzeDifficultyAdaptation(gameState.players[0]?.id, performanceData)
-                 .then(adaptationResult => {
-                     if (adaptationResult?.adapted) {
-                         log(`Difficulty adapted: ${adaptationResult.adaptations.length} changes applied`);
-                     }
-                 })
-                 .catch(error => {
-                     log(`Difficulty adaptation failed: ${error.message}`);
-                 });
-         } catch (error) {
-             log(`Difficulty adaptation integration error: ${error.message}`);
-         }
-     }
 
      log(`Combat: handleEnemyDefeat finished for ${enemy.name}.`);
 }
 
-/**
- * Calculate combat success rate for difficulty adaptation
- * @returns {number} Success rate between 0 and 1
- */
-function calculateCombatSuccessRate() {
-    // Simple heuristic based on player health and combat progress
-    const totalPlayerHealth = gameState.players.reduce((sum, p) => sum + (p.hp || 0), 0);
-    const totalMaxHealth = gameState.players.reduce((sum, p) => sum + (p.maxHp || 1), 0);
-    const healthRatio = totalPlayerHealth / Math.max(totalMaxHealth, 1);
-    
-    // Factor in combat rounds (longer combat = lower success rate)
-    const roundPenalty = Math.max(0, (gameState.combat.round - 5) * 0.05);
-    
-    return Math.max(0, Math.min(1, healthRatio - roundPenalty));
-}
 
 // --- Enemy AI ---
 

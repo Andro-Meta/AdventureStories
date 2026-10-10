@@ -16,7 +16,7 @@ export const AI_REQUEST_CONFIG = {
 };
 
 // Shown in the log header of every game (keep in step with package.json / build.gradle).
-export const APP_VERSION = '1.3.0';
+export const APP_VERSION = '1.4.0';
 
 export const AI_DEFAULT_PARAMS = { max_tokens: 2048, temperature: 0.7, top_p: 0.95 };
 
@@ -537,6 +537,5 @@ export const STATUS_EFFECTS = {
 
 // --- Local Storage ---
 export const SAVE_GAME_PREFIX = 'AG-';           // Prefix for save game keys (spec: AG-<date-time-code>)
-export const SAVE_GAME_LEGACY_PREFIX = 'advStorySave_'; // Default popup message duration (ms)
 // Delay before showing "Thinking..." when waiting for AI (unused currently)
 // export const TYPING_INDICATOR_DELAY = 800;
