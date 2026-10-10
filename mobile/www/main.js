@@ -470,6 +470,19 @@ function setupEventListeners(UI, setup, actionHandler, saveLoad) { // Added acti
                 }
                 actionType = pick.type;
                 choiceText = pick.text;
+                gameState.pickedTargetId = pick.targetId || null;
+                // A special, spell or throwable that hits one foe: which one? (10-09:
+                // specials always hit the first foe.)
+                const foes = pick.targets === 'one' ? Battle.battleOptions('Attack', hero) : null;
+                if (foes) {
+                    const foe = await Battle.pickBattleOption(`${pick.label}: which foe?`, foes);
+                    if (!foe) {
+                        document.querySelectorAll('#choicesContainer .choice-btn').forEach(btn => btn.disabled = false);
+                        return;
+                    }
+                    gameState.pickedTargetId = foe.targetId;
+                    choiceText = `${pick.text} on ${foes.find(f => f.targetId === foe.targetId)?.label || ''}`.trim();
+                }
             }
         }
 

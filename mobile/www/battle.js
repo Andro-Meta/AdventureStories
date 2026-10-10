@@ -88,12 +88,12 @@ export function battleOptions(type, hero) {
     const foes = (gameState.enemies || []).filter(e => e && !e.isDefeated && e.hp > 0);
     if (type === 'Attack') {
         if (foes.length < 2) return null;
-        return foes.map(e => ({ label: e.name, detail: `${e.hp}/${e.maxHp} HP${e.isBoss ? ' · boss' : ''}`, type: 'Attack', text: `Attack ${e.name}` }));
+        return foes.map(e => ({ label: e.name, detail: `${e.hp}/${e.maxHp} HP${e.isBoss ? ' · boss' : ''}`, type: 'Attack', text: `Attack ${e.name}`, targetId: e.id }));
     }
     if (type === 'Item') {
         const items = (hero.inventory || []).filter(battleUsable);
         if (!items.length) return [{ label: 'Catch your breath', detail: 'No usable items: recover a little HP', type: 'Item', text: 'Catch a breath' }];
-        return items.map(i => ({ label: `${i.name}${i.quantity > 1 ? ` ×${i.quantity}` : ''}`, detail: itemDetail(i), type: 'Item', text: `Use ${i.name}` }));
+        return items.map(i => ({ label: `${i.name}${i.quantity > 1 ? ` ×${i.quantity}` : ''}`, detail: itemDetail(i), type: 'Item', text: `Use ${i.name}`, targets: i.stats?.throwStatus ? 'one' : 'self' }));
     }
     if (type === 'Defend') return null; // no picker: a fixed command
     if (type === 'Special') {
@@ -102,7 +102,8 @@ export function battleOptions(type, hero) {
             const cd = m.currentCooldown || 0;
             const cost = Progression.abilityMpCost(m), rank = Progression.abilityRank(m);
             const noMp = cost > (hero.mp || 0);
-            return { label: `${m.name}${rank > 1 ? ` ${Progression.ROMAN[rank]}` : ''}`, detail: cd > 0 ? `ready in ${cd}` : `${cost ? cost + ' MP · ' : ''}${m.description || 'special move'}`.slice(0, 70), type: 'Special', text: `Use ${m.name}`, disabled: cd > 0 || noMp };
+            const healOnly = m.mechanics?.healing > 0 && !(m.mechanics?.damage > 0 || m.mechanics?.directDamage > 0);
+            return { label: `${m.name}${rank > 1 ? ` ${Progression.ROMAN[rank]}` : ''}`, detail: cd > 0 ? `ready in ${cd}` : `${cost ? cost + ' MP · ' : ''}${m.description || 'special move'}`.slice(0, 70), type: 'Special', text: `Use ${m.name}`, disabled: cd > 0 || noMp, targets: healOnly ? 'self' : 'one' };
         });
         const listed = new Set((hero.specialMoves || []).map(m => String(m?.name).toLowerCase()));
         for (const s of hero.spellcasting?.knownSpells || []) {
@@ -112,10 +113,12 @@ export function battleOptions(type, hero) {
             const area = isAreaSpell(s) ? (s.effects?.healing > 0 && !(s.effects?.damage > 0) ? 'whole party · ' : 'hits all foes · ') : '';
             const kind = abilityKind();
             const rank = Progression.abilityRank(s);
-            opts.push({ label: `${s.name}${rank > 1 ? ` ${Progression.ROMAN[rank]}` : ''} (${kind})`, detail: `${cost} MP · ${area}${s.description || s.effect || ''}`.slice(0, 80), type: 'Spell', text: `Cast ${s.name}`, disabled: (hero.mp || 0) < cost });
+            const selfish = s.targeting === 'self' || s.targeting === 'ally' || (s.effects?.healing > 0 && !(s.effects?.damage > 0));
+            opts.push({ label: `${s.name}${rank > 1 ? ` ${Progression.ROMAN[rank]}` : ''} (${kind})`, detail: `${cost} MP · ${area}${s.description || s.effect || ''}`.slice(0, 80), type: 'Spell', text: `Cast ${s.name}`, disabled: (hero.mp || 0) < cost,
+                targets: isAreaSpell(s) ? 'all' : selfish ? 'self' : 'one' });
         }
         const winded = round - (hero.lastPowerStrikeRound ?? -99) < 2;
-        opts.push({ label: 'Power Strike', detail: winded ? 'winded: a normal hit this round' : 'heavy blow, every other round', type: 'Special', text: 'Power Strike' });
+        opts.push({ label: 'Power Strike', detail: winded ? 'winded: a normal hit this round' : 'heavy blow, every other round', type: 'Special', text: 'Power Strike', targets: 'one' });
         return opts;
     }
     return null;

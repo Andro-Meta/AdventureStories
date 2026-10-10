@@ -687,6 +687,9 @@ Use names, people, places and props native to this theme (no village elders in c
         parts.push(`STORY THREADS: setting ${v.setting}; conflict ${v.conflict}; mystery ${v.mystery}; urgency ${v.urgency}; mood ${v.atmosphericElement}.`);
     }
     if (gameState.adventureGoal) parts.push(`CURRENT GOAL: ${gameState.adventureGoal}`);
+    if ((gameState.playerCanon || []).length) {
+        parts.push(`THE PLAYERS' STORY DIRECTION (set with Divine Will; it is canon and outranks the theme, goal, threads, villain and anything earlier in the story; build every scene on it and never drift back to what it replaced; later lines win over earlier ones):\n${gameState.playerCanon.map((c, i) => `${i + 1}. ${c}`).join('\n')}`);
+    }
 
     const context = determineContext(currentPlayer);
     let scene = `SCENE: ${context.situation}; ${context.environment}; ${context.timeOfDay}; weather ${context.weather} (interpret for the setting: indoors or in space it means the conditions there).`;
