@@ -91,8 +91,8 @@ function cosineSim(a, b) {
  * @returns {{turn:number, summary:string, generatedAt:number}[]}
  */
 export function retrieveSummaries(query, opts = {}) {
-    const recencyK = opts.recencyK ?? 3;
-    const relevanceK = opts.relevanceK ?? 3;
+    const recencyK = opts.recencyK ?? 2; // was 3 + 3 every turn (prompt diet 10-10)
+    const relevanceK = opts.relevanceK ?? 1;
     const summaries = gameState.arcMemory?.summaries || [];
     if (!summaries.length) return [];
 
