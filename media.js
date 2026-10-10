@@ -45,6 +45,32 @@ async function nativeVoice(tts) {
     return nativeVoiceIndex;
 }
 
+// Player's own pick (Sound & Voice, 10-09): a voice id and a reading speed.
+const chosenVoice = () => { try { return localStorage.getItem('adv.voice') || ''; } catch (_) { return ''; } };
+export const voiceRate = () => { try { return Number(localStorage.getItem('adv.voiceRate')) || 0.95; } catch (_) { return 0.95; } };
+export function setVoice(id, rate) {
+    try { if (id != null) localStorage.setItem('adv.voice', id); if (rate != null) localStorage.setItem('adv.voiceRate', String(rate)); } catch (_) {}
+}
+/** Every English voice on this device, best first: [{ id, label }]. id '' = automatic (the best one). */
+export async function listVoices() {
+    const tts = nativeTts();
+    let vs = [];
+    try {
+        if (tts) vs = ((await tts.getSupportedVoices()).voices || []).map((v, i) => ({ id: String(i), name: v.name || v.voiceURI || `Voice ${i + 1}`, lang: v.lang || '', online: v.localService === false }));
+        else if (webTts()) vs = webTts().getVoices().map(v => ({ id: v.voiceURI, name: v.name, lang: v.lang, online: !v.localService }));
+    } catch (_) {}
+    vs = vs.filter(v => /^en/i.test(v.lang)).sort((a, b) => score(b.name, b.lang, b.online) - score(a.name, a.lang, a.online));
+    const accent = (lang) => ({ US: 'American', GB: 'British', AU: 'Australian', IN: 'Indian', CA: 'Canadian', IE: 'Irish', ZA: 'South African', NZ: 'New Zealand' })[String(lang).split(/[-_]/)[1]?.toUpperCase()] || lang;
+    // Android gives every voice the same name ("English United States"): label by
+    // accent and number, and say which need the internet (they sound more natural).
+    const seen = {};
+    return [{ id: '', label: 'Automatic (best voice)' }, ...vs.map(v => {
+        const a = accent(v.lang); seen[a] = (seen[a] || 0) + 1;
+        const own = /^english/i.test(v.name) ? '' : ` · ${v.name}`;
+        return { id: v.id, label: `${a} ${seen[a]}${v.online ? ' · online (more natural)' : ''}${own}` };
+    })];
+}
+
 /** Read text aloud (stops anything already being read). */
 export async function speak(text) {
     stopSpeaking();
@@ -53,13 +79,14 @@ export async function speak(text) {
     const tts = nativeTts();
     try {
         if (tts) {
-            const voice = await nativeVoice(tts);
-            await tts.speak({ text: t, lang: 'en-US', rate: 0.95, pitch: 1.0, volume: 1.0, ...(voice != null ? { voice } : {}) });
+            const voice = chosenVoice() !== '' ? Number(chosenVoice()) : await nativeVoice(tts);
+            await tts.speak({ text: t, lang: 'en-US', rate: voiceRate(), pitch: 1.0, volume: 1.0, ...(voice != null ? { voice } : {}) });
         } else if (webTts()) {
             const u = new SpeechSynthesisUtterance(t);
             if (!webVoice) pickWebVoice();
-            if (webVoice) u.voice = webVoice;
-            u.rate = 0.97;
+            const mine = chosenVoice() && webTts().getVoices().find(v => v.voiceURI === chosenVoice());
+            if (mine || webVoice) u.voice = mine || webVoice;
+            u.rate = voiceRate();
             webTts().speak(u);
         }
     } catch (e) { (globalThis.displayVisualError || console.log)(`Read-aloud failed: ${e?.message || e}`); }

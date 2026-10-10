@@ -6,7 +6,7 @@
 import * as Config from './config.js';
 
 const REPO = 'Andro-Meta/AdventureStories';
-const EVERY_MS = 6 * 60 * 60 * 1000; // ask GitHub at most every 6 hours (60 requests/hour limit per IP)
+const EVERY_MS = 60 * 60 * 1000; // ask GitHub at most hourly (its limit: 60 requests/hour per IP)
 
 /** 1 if a is newer than b, -1 if older, 0 if the same ("v1.2.10" > "1.2.9"). */
 export function compareVersions(a, b) {
