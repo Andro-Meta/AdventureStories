@@ -71,7 +71,9 @@ Engine.applyDiff([{ op: 'add', path: '/entityMemory/locations/the grand foyer', 
 check(Object.keys(gameState.entityMemory.locations).length === 1 && gameState.entityMemory.locations['Grand Foyer'].description === 'dusty', 'renamed place updates the existing entity');
 check(AI.findEntityKey({ 'Grand Foyer': {} }, 'The grand-foyer') === 'Grand Foyer', 'summarizer merge matches "The grand-foyer" to "Grand Foyer"');
 
-// Bosses and mid-fight reinforcements.
+// Bosses and mid-fight reinforcements (the story has reached the stronghold).
+const AT_LAIR = () => Q.BEATS.slice(0, Q.BEATS.findIndex(b => b.name === 'final_confrontation')).map(b => ({ name: b.name, turn: -10 }));
+gameState.questProgress = { ...(gameState.questProgress || {}), milestones: AT_LAIR() };
 Engine.applyDiff([{ op: 'add', path: '/enemies/-', value: { name: 'Kraken Queen', hp: 30, atk: 4, def: 1, isBoss: true } }], { strict: false });
 const boss = gameState.enemies.find(e => e.name === 'Kraken Queen');
 check(boss?.isBoss && boss.maxHp >= 80 && boss.lootChance === 1, `boss gets a 2-player floor (hp ${boss?.maxHp}) and a sure drop`);
@@ -79,7 +81,7 @@ check(gameState.combat.initiative.includes(boss.id), 'an enemy added mid-fight j
 
 // Pacing nudge after 5 idle rounds.
 const qs = { turn: 20, adventureGoal: 'x', questProgress: { milestones: [{ name: 'call_to_adventure', turn: 2 }, { name: 'world_introduced', turn: 4 }, { name: 'stakes_clear', turn: 12 }] } };
-check(/STALLED: 8 rounds/.test(Q.buildQuestStageHint(qs)), 'stalled story (8 idle rounds) gets a pacing nudge toward the next beat');
+check(/STALLED for 8 rounds/.test(Q.buildQuestStageHint(qs)), 'stalled story (8 idle rounds) gets a pacing nudge toward the next beat');
 check(!/STALLED/.test(Q.buildQuestStageHint({ ...qs, turn: 14 })), 'no nudge when a beat happened recently');
 
 // Combat owns enemy HP; no duplicate villains.
@@ -105,11 +107,17 @@ check(Engine.validateOp({ op: 'add', path: '/questProgress/milestones/-', value:
 // only that villain becomes the boss (live: minion "Scout Kelri" did).
 gameState.enemies = []; gameState.inCombat = false; gameState.combat = null;
 gameState.isGoalComplete = false;
-gameState.questProgress.milestones = [];
+gameState.questProgress.milestones = Q.BEATS.slice(0, Q.BEATS.findIndex(b => b.name === 'antagonist_revealed')).map(b => ({ name: b.name, turn: -10 }));
 gameState.questProgress.villain = undefined;
-Engine.applyDiff([{ op: 'add', path: '/questProgress/milestones/-', value: { name: 'antagonist_revealed', description: 'the admiral', villain: 'Admiral Grimtide' } }], { strict: false });
-check(gameState.questProgress.villain === 'Admiral Grimtide', 'antagonist_revealed stores the villain name');
+Engine.applyDiff([{ op: 'add', path: '/questProgress/milestones/-', value: { name: 'antagonist_revealed', description: 'the admiral', villain: 'Admiral Grimtide', lair: 'the Drowned Citadel' } }], { strict: false });
+check(gameState.questProgress.villain === 'Admiral Grimtide' && gameState.questProgress.lair === 'the Drowned Citadel', 'antagonist_revealed stores the villain and the stronghold');
 check(Q.buildQuestStageHint(gameState).includes('Admiral Grimtide'), 'quest hint names the villain');
+// Met before the stronghold: the villain is not fought (they escape).
+check(!Engine.validateOp({ op: 'add', path: '/enemies/-', value: { name: 'Admiral Grimtide', hp: 30 } }).ok, 'the villain cannot be fought before the final confrontation');
+Engine.applyDiff([{ op: 'add', path: '/enemies/-', value: { name: 'Sea Wraith', hp: 20, isBoss: true } }], { strict: false });
+check(gameState.enemies.length === 1 && !gameState.enemies[0].isBoss, 'a foe marked isBoss before the climax is an ordinary foe');
+gameState.enemies = []; gameState.inCombat = false; gameState.combat = null;
+gameState.questProgress.milestones = AT_LAIR();
 // No final_confrontation: the live narrator skipped it and the villain fell at 30 HP.
 Engine.applyDiff([{ op: 'add', path: '/enemies/-', value: { name: 'Deckhand Brute', hp: 20 } }], { strict: false });
 check(!gameState.enemies[0]?.isBoss, 'a minion at the climax is not made the boss when the villain is known');
@@ -136,8 +144,16 @@ check(gameState.storyThreads[1].resolved === true, 'a thread can be paid off');
 Engine.applyDiff([{ op: 'add', path: '/storyThreads/-', value: 'clue 5' }], { strict: false });
 check(gameState.storyThreads.length === 5, 'paying one off makes room for a new thread');
 check(Engine.describeAllowedPaths().includes('/storyThreads/-'), 'narrator is told about /storyThreads');
-check(Q.MAIN_QUEST_ARC.every(a => /STORY CIRCLE/.test(a.narratorHint)), 'every act carries its Story Circle beats');
-check(/OPEN THREAD/.test(Q.MAIN_QUEST_ARC[2].narratorHint), 'Act 3 demands open threads be paid off');
+// The spine: beats in order and spaced; the climax waits for open threads.
+check(Q.BEATS.every(b => b.beat && b.says) && Q.MAIN_QUEST_ARC.every(a => a.targetMilestones.length), 'every story beat has an instruction and a player-facing step');
+{
+  const g = { turn: 30, storyThreads: [{ text: 'a' }, { text: 'b' }], questProgress: { milestones: AT_LAIR() } };
+  check(/pay off open threads/.test(Q.beatBlocked(g, 'final_confrontation') || '') && /BEFORE THE FINAL CONFRONTATION/.test(Q.buildQuestStageHint(g)), 'two open threads hold back the final confrontation');
+  g.storyThreads[0].resolved = true;
+  check(!Q.beatBlocked(g, 'final_confrontation'), 'with at most one open thread the confrontation may begin');
+  const early = { turn: 5, questProgress: { milestones: [{ name: 'call_to_adventure', turn: 4 }] } };
+  check(/too soon/.test(Q.beatBlocked(early, 'world_introduced') || '') && /next story beat/.test(Q.beatBlocked(early, 'stakes_clear') || ''), 'beats wait their turn: never two in a row, never out of order');
+}
 
 // Combat Item/Special choices name the acting hero's real kit.
 gameState.currentPlayerIndex = 0; gameState.nextActorIndex = 0;

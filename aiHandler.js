@@ -13,7 +13,7 @@ import * as AdaptiveAbilities from './adaptiveAbilities.js';
 import { getChoiceSchema, validateChoicesPayload, arcMemorySchema, validateArcMemoryPayload, storyTurnSchema, validateNarrativeTurnPayload, EXPLORATION_CHOICE_TYPES, COMBAT_CHOICE_TYPES } from './schemas.js';
 import { applyDiff, describeAllowedPaths } from './engine.js';
 import { renderMemoryBlock } from './memoryRetriever.js';
-import { buildQuestStageHint } from './questDefinitions.js';
+import { buildQuestStageHint, nextBeat } from './questDefinitions.js';
 import { generateNarrativeGuidelines, getReadingSpecification } from './ageAppropriateReading.js';
 import * as Combat from './combat.js';
 // Import turn manager functions statically
@@ -71,7 +71,7 @@ YOURS TO EMIT when the story makes them happen:
 - A fight starts: add /enemies/- (hp, maxHp, atk, def, abilities) AND replace /inCombat true. During a fight the game handles enemy HP and defeat itself: never emit /enemies/<n>/hp or /isDefeated, and never re-add an enemy that is already there or was defeated.
 - Status effects with narrative weight (Poison, Burn, Stun, Fear, Regen, Shield...): add ${P}/statusEffects/- {name, duration}.
 - Setups (Chekhov's gun): sparingly (about one every few turns), when the story makes a point of a clue, object, promise or mystery, add /storyThreads/- {text}. When one pays off, replace /storyThreads/<n>/resolved true. Never plant something you won't use.
-- Quest beats: add /questProgress/milestones/- using the EXACT names from the MAIN QUEST STAGE block (the game computes the progress bar from them). Favors or rumors: add /questProgress/sideQuests/- {name, description, reward}.
+- Quest beats: add /questProgress/milestones/- using the EXACT name from the MAIN QUEST block (the game computes the progress bar from them). Favors or rumors: add /questProgress/sideQuests/- {name, description, reward}.
 ${gameState.adventureGoal && gameState.adventureGoal !== 'Not set yet.' ? '' : '- Set /adventureGoal once early (turn 4-6).\n'}- The main quest ends when the boss is defeated in battle (the game records it); never declare the win in narration alone.
 If the narration says the hero picked something up, met someone named, arrived somewhere named, or a fight began, the matching op MUST be in "ops". An empty list is only for a turn where nothing in the world changed.
 Format examples only (never use these names or details in the story):
@@ -211,8 +211,8 @@ export async function processAIResponse(prompt) {
     const beatLine = beat && BEAT_LINES[beat] ? `\n\n${BEAT_LINES[beat]}` : '';
     if (beatLine) log(`Story moment: ${beat}${treasure ? ` (${treasure.name})` : ''}.`);
     const recent = (gameState.recentTurns || []).slice(-3);
-    const scene = isInitialSetup ? prompt : `${recent.length ? `RECENT TURNS (oldest first):\n${recent.join('\n')}\n\n` : ''}PREVIOUS SCENE:
-${gameState.currentNarrative || '(the story is just beginning)'}
+    const scene = isInitialSetup ? prompt : `${recent.length ? `RECENT TURNS (oldest first):\n${recent.join('\n')}\n\n` : ''}PREVIOUS SCENE (how it ended):
+${lastParagraph(gameState.currentNarrative) || '(the story is just beginning)'}
 
 WHAT ${actor.toUpperCase()} JUST DID:
 ${prompt}${encounterLine}${beatLine}`;
@@ -400,11 +400,18 @@ export async function ensureChoiceMix(choices, narrative, avoid = []) {
  */
 // Names from this device's earlier games, so a replayed theme gets new
 // people and places (live: "Salty ..." in 4 of 4 pirate games).
+/** The end of the last scene: its final paragraph (two if the last is short). Was the whole scene, every turn. */
+function lastParagraph(text) {
+    const paras = String(text || '').split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
+    const last = paras.slice(-1)[0] || '';
+    return last.length < 200 && paras.length > 1 ? paras.slice(-2).join('\n\n') : last;
+}
+
 function usedNamesLine() {
     let names = [];
     try { names = JSON.parse(localStorage.getItem('adv.usedNames') || '[]'); } catch (_) {}
     const mine = new Set(Object.keys(gameState.entityMemory?.npcs || {}).concat(Object.keys(gameState.entityMemory?.locations || {}), gameState.ownNames || [], [gameState.questProgress?.villain]));
-    names = names.filter(n => !mine.has(n)).slice(-40);
+    names = names.filter(n => !mine.has(n)).slice(-10);
     return names.length ? ` Names from earlier games, never reuse them or close variants: ${names.join(', ')}.` : '';
 }
 
@@ -685,7 +692,7 @@ Use names, people, places and props native to this theme (no village elders in c
     if (gameState.storyHook && (gameState.turn || 0) <= 3) {
         parts.push(`STORY HOOK FOR THIS RUN: build the opening on the "${gameState.storyHook.archetype}" archetype${gameState.storyHook.motif ? ` with the twist "${gameState.storyHook.motif}"` : ''}, using your own new people, places and details.`);
     }
-    if (gameState.storyVariation?.narrativeElements) {
+    if (gameState.storyVariation?.narrativeElements && (nextBeat(gameState)?.act || 3) === 1) {
         const v = gameState.storyVariation.narrativeElements;
         parts.push(`STORY THREADS: setting ${v.setting}; conflict ${v.conflict}; mystery ${v.mystery}; urgency ${v.urgency}; mood ${v.atmosphericElement}.`);
     }

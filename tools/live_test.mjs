@@ -161,11 +161,12 @@ if (FULL) {
   check(!!recap, `turn recap shown ("${recap}")`);
 
   // What the narrator would send over Acts 1-2, plus kit for the fight.
-  await op([
-    ...['call_to_adventure', 'world_introduced', 'stakes_clear', 'ally_found', 'first_obstacle_overcome'].map(name => ({ op: 'add', path: '/questProgress/milestones/-', value: { name, description: 'test jump' } })),
-    { op: 'add', path: '/questProgress/milestones/-', value: { name: 'antagonist_revealed', description: 'The red tide is his doing.', villain: VILLAIN } },
-    { op: 'replace', path: '/questProgress/completionPercentage', value: 70 },
-  ]);
+  // The story spine refuses beats in a burst: place the quest at the stronghold directly.
+  await page.evaluate(async (villain) => {
+    const { gameState: g } = await import('/state.js'); const { BEATS } = await import('/questDefinitions.js');
+    g.questProgress.milestones = BEATS.slice(0, BEATS.findIndex(b => b.name === 'final_confrontation')).map(b => ({ name: b.name, description: 'test jump', turn: -10 }));
+    Object.assign(g.questProgress, { villain, lair: 'the Drowned Citadel', completionPercentage: 85 });
+  }, VILLAIN);
   for (let p = 0; p < PLAYERS; p++) await op([
     { op: 'add', path: `/players/${p}/inventory/-`, value: { name: 'Healing Potion', stats: { heal: 35 }, quantity: 2 } },   // no type on purpose
     { op: 'add', path: `/players/${p}/inventory/-`, value: { name: 'Stormcaller Cutlass', type: 'weapon', stats: { atk: 14 } } },

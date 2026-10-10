@@ -71,7 +71,7 @@ const cases = [
       {op:'replace',path:'/players/0/maxMp',value:200}
    ] },
   { name:'sideQuest',ops:[{op:'add',path:'/questProgress/sideQuests/-',value:{name:'Find the lost cat',description:'A villager cat'}}] },
-  { name:'milestone',ops:[{op:'add',path:'/questProgress/milestones/-',value:{name:'first_obstacle_overcome',description:'The gate is open.'}}] }
+  { name:'milestone',ops:[{op:'add',path:'/questProgress/milestones/-',value:{name:'call_to_adventure',description:'The gate is open.'}}] }
 ];
 
 for (const c of cases) {
@@ -110,12 +110,15 @@ resetGS(); gameState.turn = 25;
 Engine.applyDiff([{op:'replace',path:'/questProgress/completionPercentage',value:80}]);
 if (gameState.questProgress.completionPercentage === 0) ok('narrator guess ignored with no milestones (80 asked, 0 shown)');
 else fail(`narrator guess applied: ${gameState.questProgress.completionPercentage}`);
+// Story beats come in order, a few rounds apart (questDefinitions spine).
 Engine.applyDiff([{op:'add',path:'/questProgress/milestones/-',value:{name:'call_to_adventure'}}]);
-Engine.applyDiff([{op:'add',path:'/questProgress/milestones/-',value:{name:'stakes_clear'}}]);
-if (gameState.questProgress.completionPercentage === 20) ok('stakes_clear reached -> 20%');
-else fail(`expected 20 after stakes_clear, got ${gameState.questProgress.completionPercentage}`);
+gameState.turn += 3;
+Engine.applyDiff([{op:'add',path:'/questProgress/milestones/-',value:{name:'world_introduced'}}]);
+const twoBeats = Math.round(100 * 2 / Quest.BEATS.length);
+if (gameState.questProgress.completionPercentage === twoBeats) ok(`two story beats reached -> ${twoBeats}%`);
+else fail(`expected ${twoBeats} after two beats, got ${gameState.questProgress.completionPercentage}`);
 Engine.applyDiff([{op:'replace',path:'/questProgress/completionPercentage',value:0}]);
-if (gameState.questProgress.completionPercentage === 20 && gameState.questProgress.milestones.length === 2) ok('stray 0 mid-quest ignored (milestones kept)');
+if (gameState.questProgress.completionPercentage === twoBeats && gameState.questProgress.milestones.length === 2) ok('stray 0 mid-quest ignored (milestones kept)');
 else fail(`stray 0 changed progress: ${gameState.questProgress.completionPercentage}`);
 gameState.isGoalComplete = true;
 Engine.applyDiff([{op:'replace',path:'/questProgress/completionPercentage',value:0}]);
@@ -134,8 +137,8 @@ else fail(`side-quest dedupe failed — got ${gameState.questProgress.sideQuests
 // ---- 6. ENGINE: milestone dedupe ----
 console.log('\n=== ENGINE: milestone dedupe ===');
 resetGS();
-Engine.applyDiff([{op:'add',path:'/questProgress/milestones/-',value:{name:'stakes_clear'}}]);
-Engine.applyDiff([{op:'add',path:'/questProgress/milestones/-',value:{name:'Stakes Clear'}}]);
+Engine.applyDiff([{op:'add',path:'/questProgress/milestones/-',value:{name:'call_to_adventure'}}]);
+Engine.applyDiff([{op:'add',path:'/questProgress/milestones/-',value:{name:'Call To Adventure'}}]);
 if (gameState.questProgress.milestones.length === 1) ok('milestone dedupe works (case+separator-insensitive)');
 else fail(`milestone dedupe failed — got ${gameState.questProgress.milestones.length}`);
 

@@ -850,6 +850,8 @@ await block(async () => {
   gameState.enemies[0].hp = 2;
   Engine.applyDiff([{ op: 'replace', path: '/inCombat', value: false }]);
   check(!gameState.inCombat && gameState.enemies.length === 0, `story-ended fight: live drake is driven off (enemies left ${gameState.enemies.length})`);
+  const { BEATS } = await import('../questDefinitions.js'); // the story has reached the stronghold
+  gameState.questProgress.milestones = BEATS.slice(0, BEATS.findIndex(b => b.name === 'final_confrontation')).map(b => ({ name: b.name, turn: -10 }));
   Engine.applyDiff([{ op: 'add', path: '/enemies/-', value: { name: 'Malakor', hp: 60, isBoss: true } }, { op: 'replace', path: '/inCombat', value: true }]);
   Engine.applyDiff([{ op: 'replace', path: '/inCombat', value: false }]);
   check(gameState.inCombat === true, `story cannot end a boss fight with the boss standing (in combat ${gameState.inCombat})`);
@@ -1085,7 +1087,7 @@ await block(async () => {
   gameState.enemies = [{ id: 'e_old', name: 'Lord Vex', hp: 0, maxHp: 60, isBoss: true, isDefeated: true, statusEffects: [] }];
   Engine.applyDiff(AH.extractGodModeDiffOps('I retire my godhood'));
   const hint = Q.buildQuestStageHint(gameState);
-  check(/Act 1/.test(hint) && !/Lord Vex/.test(hint) && !gameState.questProgress.bossDefeated, `new quest after retiring at turn 40 starts in Act 1 with no old villain (${(hint.match(/MAIN QUEST STAGE — ([^:]+)/) || [])[1]})`);
+  check(/Act 1/.test(hint) && !/Lord Vex/.test(hint) && !gameState.questProgress.bossDefeated, `new quest after retiring at turn 40 starts in Act 1 with no old villain (${(hint.match(/MAIN QUEST — ([^·\n]+)/) || [])[1]})`);
   const re = Engine.applyDiff([{ op: 'add', path: '/enemies/-', value: { name: 'Lord Vex', hp: 30 } }]);
   check(re.length === 1, 'the old villain name can return in the new quest');
 });
@@ -1095,7 +1097,7 @@ await block(async () => {
   fresh(); gameState.enemies = []; gameState.turn = 40;
   gameState.questProgress = { villain: 'Lord Vex', act3StartTurn: 35, milestones: ['call_to_adventure', 'stakes_clear', 'antagonist_revealed', 'final_confrontation'].map(name => ({ name })) };
   const hint = Q.buildQuestStageHint(gameState);
-  check(/isBoss/.test(hint) && /Lord Vex/.test(hint.split('DEADLINE')[1] || '') && !/add the "final_blow"/.test(hint), `stalled climax asks for the boss fight (${(hint.match(/DEADLINE:[^\n]*/) || ['no deadline'])[0].slice(0, 90)})`);
+  check(/THIS TURN: Lord Vex fights/.test(hint) && /isBoss/.test(hint) && !/final_blow/.test(hint), `stalled climax asks for the boss fight (${(hint.match(/THIS TURN:[^\n]*/) || ['no line'])[0].slice(0, 90)})`);
 });
 await block(async () => {
   // God-mode summoned boss was always 60 HP.

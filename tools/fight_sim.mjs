@@ -22,6 +22,10 @@ const lootTier = (level) => (Items.lootTierFor ? Items.lootTierFor(level) : 'Low
 const NARRATOR_FOE = { name: 'Spectral Butler', hp: 30, maxHp: 30, atk: 7, def: 3, abilities: ['Chill Touch'] };
 const NARRATOR_BOSS = { name: 'Julian Vance', hp: 60, maxHp: 60, atk: 9, def: 4, isBoss: true, abilities: ['Hypnotic Swing'] };
 
+// The story has reached the villain's stronghold: bosses can be fought (questDefinitions spine).
+const { BEATS } = await import('../questDefinitions.js');
+const AT_LAIR = () => BEATS.slice(0, BEATS.findIndex(b => b.name === 'final_confrontation')).map(b => ({ name: b.name, turn: -10 }));
+
 function hero(level) {
     resetGameState();
     gameState.adventureTheme = 'haunted';
@@ -43,7 +47,7 @@ function fight(level, foeSpec, n = 300) {
     for (let i = 0; i < n; i++) {
         const p = hero(level);
         gear = gear || { atk: p.atk, def: p.def, hp: p.maxHp };
-        gameState.enemies = []; gameState.inCombat = false; gameState.questProgress = { milestones: [] };
+        gameState.enemies = []; gameState.inCombat = false; gameState.questProgress = { milestones: AT_LAIR() };
         Engine.applyDiff([{ op: 'add', path: '/enemies/-', value: { ...foeSpec } }], { strict: false });
         const e = gameState.enemies[0];
         let h = 0;

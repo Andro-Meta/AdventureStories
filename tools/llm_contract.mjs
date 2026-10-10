@@ -159,7 +159,7 @@ const corpus = [
   },
   {
     name: 'engine op: legal milestone add',
-    text: '{"op":"add","path":"/questProgress/milestones/-","value":{"name":"first_obstacle_overcome","description":"The gate is open."}}',
+    text: '{"op":"add","path":"/questProgress/milestones/-","value":{"name":"call_to_adventure","description":"The gate is open."}}',
     expectShape: 'engineOp', expectPass: true
   },
   {

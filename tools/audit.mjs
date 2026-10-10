@@ -76,15 +76,11 @@ for (const a of arc || []) {
     fail(`${a.id}: targetMilestones is empty`); continue;
   }
   for (const m of want) {
-    if (!a.targetMilestones.includes(m) && !a.narratorHint.includes(m)) {
-      fail(`${a.id} missing required milestone "${m}" in both targetMilestones and narratorHint`);
-    }
+    if (!a.targetMilestones.includes(m)) fail(`${a.id} missing required milestone "${m}"`);
   }
-  if (!a.narratorHint || a.narratorHint.length < 100) {
-    fail(`${a.id}: narratorHint suspiciously short`);
-  } else {
-    ok(`${a.id} narrator hint: ${a.narratorHint.length} chars`);
-  }
+  const thin = Quest.BEATS.filter(b => a.targetMilestones.includes(b.name) && !(b.beat?.length > 20));
+  if (thin.length) fail(`${a.id}: beats without an instruction: ${thin.map(b => b.name).join(', ')}`);
+  else ok(`${a.id}: ${a.targetMilestones.length} story beats, each with an instruction`);
 }
 
 // Test buildQuestStageHint for the THREE major states: act1, act3-finale, post-victory god mode.
@@ -98,7 +94,7 @@ else ok('Fresh state → Act 1 hint');
 
 const act3Hint = Quest.buildQuestStageHint(baseGS({
   questProgress: { milestones:[
-    {name:'stakes_clear'},{name:'antagonist_revealed'}
+    ...Quest.BEATS.slice(0, Quest.BEATS.findIndex(b => b.name === 'path_to_lair') + 1).map(b => ({ name: b.name, turn: 1 }))
   ], completionPercentage: 60 },
   turn: 35
 }));
