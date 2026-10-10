@@ -184,6 +184,21 @@ export const arcMemorySchema = {
             minLength: 1,
             maxLength: 400
         },
+        storySoFar: { type: 'string', maxLength: 700 },
+        people: {
+            type: 'array',
+            items: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['name'],
+                properties: {
+                    name: { type: 'string', minLength: 1, maxLength: 80 },
+                    status: { type: 'string', maxLength: 30 },
+                    relationship: { type: 'string', maxLength: 30 },
+                    fate: { type: 'string', maxLength: 160 }
+                }
+            }
+        },
         newNpcs: {
             type: 'array',
             items: {
@@ -245,6 +260,9 @@ export function validateArcMemoryPayload(payload) {
 
     return {
         summary,
+        storySoFar: typeof payload.storySoFar === 'string' ? payload.storySoFar.trim().slice(0, 700) : '',
+        people: (Array.isArray(payload.people) ? payload.people : []).filter(p => p && typeof p.name === 'string' && p.name.trim())
+            .map(p => ({ name: p.name.trim(), status: p.status, relationship: p.relationship, fate: p.fate })),
         newNpcs: normEntities(payload.newNpcs),
         newLocations: normEntities(payload.newLocations),
         newItems: normEntities(payload.newItems)

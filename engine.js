@@ -17,13 +17,14 @@
 // grammar is OUR grammar — keyed to our gameState tree, single-player
 // indices baked in for now (multi-player is a Phase 3 concern).
 
-import { gameState, recordStoryBeat, recordWorldStateChange } from './state.js';
+import { gameState, recordStoryBeat } from './state.js';
 import * as Combat from './combat.js';
 import * as Config from './config.js';
 import { levelUp } from './battle.js';
 import { gainXp, usableType, ensureStats, STAT_MAX } from './progression.js';
 import * as Items from './items.js';
 import { BEATS, isMainBeat, beatBlocked, climaxOpen } from './questDefinitions.js';
+import { mergePerson } from './memoryRetriever.js';
 
 /**
  * Phase 1.2: Look up a status effect from Config.STATUS_EFFECTS by name
@@ -346,15 +347,12 @@ const PATHS = [
             const key = Object.keys(gs.entityMemory?.[category] || {}).find(k => norm(k) === norm(rawKey)) || rawKey;
             gs.entityMemory = gs.entityMemory || { npcs: {}, locations: {}, items: {} };
             gs.entityMemory[category] = gs.entityMemory[category] || {};
-            gs.entityMemory[category][key] = {
-                description: value.description || '',
-                traits: value.traits || [],
-                relationship: value.relationship || (category === 'npcs' ? 'neutral' : undefined),
-                lastSeenTurn: gs.turn,
-                createdInGodMode: !!gs.isGoalComplete,
-                ...value,
-                name: key // keep the stored key's spelling
-            };
+            const old = gs.entityMemory[category][key];
+            const fresh = { description: value.description || old?.description || '', traits: value.traits || old?.traits || [],
+                firstSeenTurn: old?.firstSeenTurn ?? gs.turn, createdInGodMode: old?.createdInGodMode ?? !!gs.isGoalComplete,
+                ...value, lastSeenTurn: gs.turn, name: key }; // keep the stored key's spelling
+            // People keep their history: a change merges into the record (status, bond, fate).
+            gs.entityMemory[category][key] = category === 'npcs' ? mergePerson(old, fresh, gs) : { ...(old || {}), ...fresh };
             return `entityMemory.${category}["${key}"] set`;
         }
     },
@@ -657,7 +655,6 @@ const PATHS = [
                 dangerLevel: typeof value.dangerLevel === 'number' ? value.dangerLevel : 0.3,
                 description: value.description || ''
             };
-            try { recordWorldStateChange('movement', `Moved to ${value.name}`, value.name, 'local'); } catch (_) {}
             return `location: ${oldName} -> ${value.name}`;
         }
     },
@@ -1178,7 +1175,7 @@ export function describeAllowedPaths() {
         '/storyThreads/-       (add, {text}) - a setup the story must pay off later',
         '/storyThreads/<n>/resolved (replace, true) - that setup just paid off',
         '/isGoalComplete      (replace, boolean) - unlocks god mode',
-        '/entityMemory/npcs/<name>      (add|replace, {name, description, traits, relationship})',
+        '/entityMemory/npcs/<name>      (add|replace, {name, description, status: with you|away|captured|missing|dead, relationship: friend|ally|neutral|enemy, fate: how they died})',
         '/entityMemory/locations/<name> (add|replace, {name, description, traits})',
         '/entityMemory/items/<name>     (add|replace, {name, description, traits})',
     ].join('\n');
