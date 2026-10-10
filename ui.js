@@ -954,6 +954,9 @@ export async function copyStoryBook() {
  */
 export function renderChoices(choices, handler = null) {
     const log = window.displayVisualError || console.log;
+    // Bag/Shop follow the fight state whenever choices change (phone 10-09: a
+    // fight starts mid-turn, and the Bag stayed open until the turn ended).
+    try { updateQuickActions(); } catch (_) {}
     // Every set of story choices is shown in a fresh random order, whatever
     // path produced it (post-fight and fallback choices came in type order).
     if (Array.isArray(choices) && !handler) choices = choices.filter(c => c?.type !== 'Defend');

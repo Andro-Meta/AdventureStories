@@ -1969,8 +1969,12 @@ await block(async () => {
   const real = { ...qa };
   for (const k of ['inventoryBtn', 'shopBtn', 'specialBtn', 'menuBtn', 'helpAllyBtn']) qa[k] = qa[k] || fake();
   UI.elements.quickActionButtons = qa;
-  fresh(); gameState.inCombat = true; UI.updateQuickActions(); const inFight = qa.inventoryBtn.disabled;
-  gameState.inCombat = false; UI.updateQuickActions(); const outside = qa.inventoryBtn.disabled;
+  // Through the real path: the battle menu appears, no manual refresh (the phone
+  // showed the Bag open mid-fight when only turn ends refreshed the buttons).
+  const B = await import('../battle.js');
+  const { p } = fresh(); UI.updateQuickActions();
+  gameState.inCombat = true; UI.renderChoices(B.battleMenu(p)); const inFight = qa.inventoryBtn.disabled;
+  gameState.inCombat = false; UI.renderChoices([['brave', 'Safe'], ['clever', 'Bold'], ['sneaky', 'Reckless'], ['kind', 'Safe'], ['luck', 'Bold']].map(([stat, type]) => ({ stat, type, text: `go ${stat}` }))); const outside = qa.inventoryBtn.disabled;
   Object.assign(qa, real);
   check(inFight && !outside, `the Bag is closed in a fight (${inFight}) and open outside one (${!outside})`);
 });
