@@ -20,84 +20,6 @@ import { resetGameState } from './state.js';
 import { generateShopItems } from './items.js';
 
 
-/**
- * One-time migration: move any saves stored under the legacy 'advStorySave_'
- * prefix to the current 'AG-' prefix. Runs silently at module load so players
- * never lose saves after upgrading. Marks completion in localStorage to avoid
- * re-scanning on every page load.
- */
-// BUG-25 fix: defense-in-depth guard against localStorage access errors.
-// Each operation wrapped individually so a SecurityError in any single
-// call doesn't prevent the others. An in-memory `_migrationAttempted`
-// flag prevents this IIFE from re-running multiple times within a session
-// even when persistent flag setting is denied.
-let _migrationAttemptedThisSession = false;
-(function migrateLegacySaves() {
-    if (_migrationAttemptedThisSession) return;
-    _migrationAttemptedThisSession = true;
-    if (typeof localStorage === 'undefined') return;
-
-    // Wrap every individual localStorage call in safeGet/safeSet/safeKey
-    // helpers — environments that throw SecurityError on read can also
-    // throw on length / key()/setItem etc. We swallow each independently
-    // and bail when we can't make progress.
-    const safeGet = (k) => { try { return localStorage.getItem(k); } catch (_) { return null; } };
-    const safeSet = (k, v) => { try { localStorage.setItem(k, v); return true; } catch (_) { return false; } };
-    const safeRemove = (k) => { try { localStorage.removeItem(k); return true; } catch (_) { return false; } };
-    const safeLen = () => { try { return localStorage.length || 0; } catch (_) { return 0; } };
-    const safeKeyAt = (i) => { try { return localStorage.key(i); } catch (_) { return null; } };
-
-    try {
-        // Not under the save prefix 'AG-': the old 'AG-migration-v1-done' key was
-        // counted as a save, so Continue showed with no saves.
-        const MIGRATED_FLAG = 'adv.migration-v1-done';
-        if (safeGet('AG-migration-v1-done')) { safeSet(MIGRATED_FLAG, '1'); safeRemove('AG-migration-v1-done'); }
-        if (safeGet(MIGRATED_FLAG)) return; // already ran in a previous session
-
-        const oldPrefix = Config.SAVE_GAME_LEGACY_PREFIX;
-        const newPrefix = Config.SAVE_GAME_PREFIX;
-        let migrated = 0;
-        let blockedWrites = 0;
-
-        // Snapshot keys first — modifying localStorage while iterating is unsafe.
-        const allKeys = [];
-        const total = safeLen();
-        for (let i = 0; i < total; i++) {
-            const k = safeKeyAt(i);
-            if (k) allKeys.push(k);
-        }
-
-        for (const key of allKeys) {
-            if (!key || !key.startsWith(oldPrefix)) continue;
-            const slotName = key.slice(oldPrefix.length);
-            const newKey = newPrefix + slotName;
-            // Only migrate if the new key doesn't already exist.
-            if (!safeGet(newKey)) {
-                const value = safeGet(key);
-                if (value != null) {
-                    if (safeSet(newKey, value)) migrated++;
-                    else blockedWrites++;
-                }
-            }
-            // Remove the old key regardless so the UI doesn't show duplicates.
-            safeRemove(key);
-        }
-
-        // Persist the flag — if this fails (storage denied), the in-memory
-        // _migrationAttemptedThisSession sentinel still prevents re-entry
-        // within the current session.
-        const persisted = safeSet(MIGRATED_FLAG, '1');
-        if (migrated > 0) {
-            console.log(`SaveLoad: Migrated ${migrated} save(s) from '${oldPrefix}' → '${newPrefix}'${persisted ? '.' : ' (flag NOT persisted — storage write denied).'}`);
-        }
-        if (blockedWrites > 0) {
-            console.warn(`SaveLoad: ${blockedWrites} legacy save(s) could not be migrated due to storage write errors.`);
-        }
-    } catch (e) {
-        // Final safety net — never let migration crash the module load.
-        console.warn('SaveLoad: Legacy save migration failed (non-fatal):', e?.message);
-    }
-}());
 
 
 /**
@@ -105,6 +27,12 @@ let _migrationAttemptedThisSession = false;
  * @param {string} slotName - The name to use for the save slot.
  * @returns {boolean} True if saving was successful, false otherwise.
  */
+// Runtime-only or never read back: a saved in-flight promise came back as {}
+// (truthy) and blocked every later summary; live services came back method-less.
+const SKIP_IN_SAVE = new Set(['_arcMemoryRefreshInFlight', '_rewardsPromise', 'dynamicItemRegistry', 'dynamicSpellRegistry',
+    'popupQueue', 'activeModals', 'reputationSystem', 'questProgressManager', 'relationshipMatrix', 'playerArchetypes',
+    'worldStateHistory', 'divineTurn']);
+
 export function saveGameToLocalStorage(slotName) {
     // (Unchanged)
     const log = window.displayVisualError || console.log;
@@ -123,92 +51,24 @@ export function saveGameToLocalStorage(slotName) {
     if (UI.elements.saveError) UI.hideMessage(UI.elements.saveError);
 
     try {
-        // BUG-26 fix: capture GodModeManager's Map state BEFORE the
-        // JSON.stringify deep-clone strips it (Maps don't survive JSON
-        // serialization without a toJSON method, and the manager is a
-        // class instance whose Maps would all serialize as `{}`). We
-        // snapshot now and re-attach onto stateToSave below so save files
-        // preserve the unlock flag, custom choice history, achievements,
-        // and creative stats — losing those was BUG-26.
-        let _gmSnapshot = null;
-        try {
-            if (gameState.godModeManager && typeof gameState.godModeManager.toJSON === 'function') {
-                _gmSnapshot = gameState.godModeManager.toJSON();
+        // One pass (10-10; it was clone, parse, clone again, then delete): runtime
+        // objects and records nothing reads back are left out, Maps become
+        // objects, and the god-mode manager writes itself (its toJSON).
+        const json = JSON.stringify({ saveDate: Date.now(), gameState }, (k, v) => {
+            if (SKIP_IN_SAVE.has(k)) return undefined;
+            if (k === 'isLoading' || k === 'combatRoundInProgress' || k === 'handlingPartyWipe') return false;
+            if (k === 'pendingConfirmation') return null;
+            if (k === 'godModeManager') return gameState.godModeManager?.toJSON?.() ?? null; // its unlock state, not the class
+            // Only replies since the last summary are ever read (by the next summary); the prompts never were.
+            if (k === 'messageHistory' && Array.isArray(v)) {
+                const since = gameState.arcMemory?.summaries?.slice(-1)[0]?.turn || 0;
+                return v.filter(m => (m.turn || 0) > since).slice(-10).map(m => ({ turn: m.turn, response: m.response }));
             }
-        } catch (e) { log(`SaveLoad: GodModeManager toJSON failed (non-fatal): ${e?.message}`); }
-
-        // JSON.stringify turns a Map into {}, so swap Maps for plain objects
-        // during the clone (the old post-clone `instanceof Map` checks never
-        // matched, and every save lost these fields).
-        const stateToSave = JSON.parse(JSON.stringify(gameState, (k, v) => v instanceof Map ? Object.fromEntries(v) : v));
-        // Runtime-only fields: a saved in-flight promise becomes {} (truthy)
-        // and blocked every later arc-memory summary after loading.
-        delete stateToSave._arcMemoryRefreshInFlight;
-        delete stateToSave._rewardsPromise;
-        // Live service objects: saved, they came back as method-less plain
-        // objects (loot and spell rewards then failed silently) and bloated saves.
-        delete stateToSave.dynamicItemRegistry;
-        delete stateToSave.dynamicSpellRegistry;
-        delete stateToSave.popupQueue;
-        delete stateToSave.activeModals;
-        stateToSave.combatRoundInProgress = false;
-        // Last 20 turns (compressing to 3 left the arc summary blind after a load).
-        stateToSave.messageHistory = (stateToSave.messageHistory || []).slice(-20);
-        stateToSave.isLoading = false;
-        stateToSave.pendingConfirmation = null;
-        stateToSave.handlingPartyWipe = false;
-        // Attach the god-mode snapshot AFTER the clone so the deep-copy
-        // doesn't strip the Map entries to {}.
-        if (_gmSnapshot) {
-            stateToSave._godModeSnapshot = _gmSnapshot;
-            // Don't ship the bare class instance — it'd serialize as garbage.
-            delete stateToSave.godModeManager;
-        }
-        
-        // Convert Maps to Objects for JSON serialization
-        if (stateToSave.choicePatterns instanceof Map) {
-            stateToSave.choicePatterns = Object.fromEntries(stateToSave.choicePatterns);
-        }
-        if (stateToSave.relationshipMatrix instanceof Map) {
-            stateToSave.relationshipMatrix = Object.fromEntries(stateToSave.relationshipMatrix);
-        }
-        if (stateToSave.playerArchetypes instanceof Map) {
-            stateToSave.playerArchetypes = Object.fromEntries(stateToSave.playerArchetypes);
-        }
-        
-        // Convert Dynamic Item Registry Maps to Objects
-        if (stateToSave.dynamicItemRegistry) {
-            const registry = stateToSave.dynamicItemRegistry;
-            if (registry.generatedItems instanceof Map) {
-                registry.generatedItems = Object.fromEntries(registry.generatedItems);
-            }
-            if (registry.contextualCache instanceof Map) {
-                registry.contextualCache = Object.fromEntries(registry.contextualCache);
-            }
-            if (registry.themePatterns instanceof Map) {
-                registry.themePatterns = Object.fromEntries(registry.themePatterns);
-            }
-            if (registry.storyRelevantItems instanceof Map) {
-                registry.storyRelevantItems = Object.fromEntries(registry.storyRelevantItems);
-            }
-            if (registry.recentRequests instanceof Map) {
-                registry.recentRequests = Object.fromEntries(registry.recentRequests);
-            }
-            if (registry.itemQualityScores instanceof Map) {
-                registry.itemQualityScores = Object.fromEntries(registry.itemQualityScores);
-            }
-            if (registry.playerFeedback instanceof Map) {
-                registry.playerFeedback = Object.fromEntries(registry.playerFeedback);
-            }
-        }
-        delete stateToSave.reputationSystem; // factions were removed (old saves may carry them)
-        
-        const saveData = {
-            saveFormatVersion: 2, // Updated for reputation system and new features
-            saveDate: Date.now(),
-            gameState: stateToSave
-        };
-        const json = JSON.stringify(saveData);
+            // Choice records in the slim shape the reflection reads (older ones carried the whole roll).
+            if (k === 'choicePatterns' && v) return Object.fromEntries([...(v instanceof Map ? v : Object.entries(v))].map(([id, list]) => [id, (list || []).map(c => c.outcome === undefined ? c
+                : { turn: c.turn, type: c.type, stat: c.outcome?.roll ? (c.outcome.roll.stat || 'luck') : null, band: c.outcome?.roll?.band || null, text: String(c.text || '').slice(0, 120), significance: c.significance })]));
+            return v instanceof Map ? Object.fromEntries(v) : v;
+        });
         try { localStorage.setItem(Config.SAVE_GAME_PREFIX + slotName, json); }
         catch (e) {
             // Storage full: drop the oldest autosaves (never manual saves) and retry once.
@@ -488,42 +348,8 @@ export async function loadGame(slotName) {
             }
         }
 
-        // Restore Maps from Objects
-        if (gameState.choicePatterns && typeof gameState.choicePatterns === 'object' && !(gameState.choicePatterns instanceof Map)) {
-            gameState.choicePatterns = new Map(Object.entries(gameState.choicePatterns));
-        }
-        if (gameState.relationshipMatrix && typeof gameState.relationshipMatrix === 'object' && !(gameState.relationshipMatrix instanceof Map)) {
-            gameState.relationshipMatrix = new Map(Object.entries(gameState.relationshipMatrix));
-        }
-        if (gameState.playerArchetypes && typeof gameState.playerArchetypes === 'object' && !(gameState.playerArchetypes instanceof Map)) {
-            gameState.playerArchetypes = new Map(Object.entries(gameState.playerArchetypes));
-        }
-        
-        // Restore Dynamic Item Registry Maps from Objects
-        if (gameState.dynamicItemRegistry) {
-            const registry = gameState.dynamicItemRegistry;
-            if (registry.generatedItems && typeof registry.generatedItems === 'object' && !(registry.generatedItems instanceof Map)) {
-                registry.generatedItems = new Map(Object.entries(registry.generatedItems));
-            }
-            if (registry.contextualCache && typeof registry.contextualCache === 'object' && !(registry.contextualCache instanceof Map)) {
-                registry.contextualCache = new Map(Object.entries(registry.contextualCache));
-            }
-            if (registry.themePatterns && typeof registry.themePatterns === 'object' && !(registry.themePatterns instanceof Map)) {
-                registry.themePatterns = new Map(Object.entries(registry.themePatterns));
-            }
-            if (registry.storyRelevantItems && typeof registry.storyRelevantItems === 'object' && !(registry.storyRelevantItems instanceof Map)) {
-                registry.storyRelevantItems = new Map(Object.entries(registry.storyRelevantItems));
-            }
-            if (registry.recentRequests && typeof registry.recentRequests === 'object' && !(registry.recentRequests instanceof Map)) {
-                registry.recentRequests = new Map(Object.entries(registry.recentRequests));
-            }
-            if (registry.itemQualityScores && typeof registry.itemQualityScores === 'object' && !(registry.itemQualityScores instanceof Map)) {
-                registry.itemQualityScores = new Map(Object.entries(registry.itemQualityScores));
-            }
-            if (registry.playerFeedback && typeof registry.playerFeedback === 'object' && !(registry.playerFeedback instanceof Map)) {
-                registry.playerFeedback = new Map(Object.entries(registry.playerFeedback));
-            }
-        }
+        // The choice records (the end-of-quest reflection reads them) are a Map in play.
+        if (gameState.choicePatterns && !(gameState.choicePatterns instanceof Map)) gameState.choicePatterns = new Map(Object.entries(gameState.choicePatterns));
 
         // An autosave is not the player's slot: "Save and Exit" into it made a
         // manual save that pruneAutosaves later deleted.
@@ -546,12 +372,9 @@ export async function loadGame(slotName) {
             // snapshot saved in saveGameToLocalStorage. Without this every
             // load resets custom-choice-history, achievement counters, and
             // creative-stats to zero.
-            if (loadedGameState._godModeSnapshot) {
-                if (typeof godModeManager.restoreFromJSON === 'function') {
-                    godModeManager.restoreFromJSON(loadedGameState._godModeSnapshot);
-                }
-                delete gameState._godModeSnapshot;
-            }
+            const gmSaved = loadedGameState._godModeSnapshot || loadedGameState.godModeManager;
+            if (gmSaved && typeof gmSaved === 'object') godModeManager.restoreFromJSON?.(gmSaved);
+            delete gameState._godModeSnapshot;
             // BUG-08 fix: re-attached singleton has fresh isUnlocked=false,
             // isActive=false. If the saved game was post-victory, restore
             // those flags so the golden god-mode input box renders again
@@ -581,64 +404,6 @@ export async function loadGame(slotName) {
         } else {
              log(`SaveLoad: Loaded ${gameState.shopItems.length} shop items.`);
         }
-
-        // BUG-03 fix: re-attach status-effect catalog metadata after load.
-        // JSON serialization strips function references (onTick, onExpire,
-        // onRound) and any non-data fields the catalog might add. Walk every
-        // character's statusEffects and merge in catalog defaults by name
-        // so combat ticks behave the same after load as before save.
-        try {
-            const { STATUS_EFFECTS } = await import('./config.js');
-            const lookupCat = (name) => {
-                if (!name || typeof name !== 'string') return null;
-                const upper = name.toUpperCase();
-                if (STATUS_EFFECTS[upper]) return STATUS_EFFECTS[upper];
-                for (const e of Object.values(STATUS_EFFECTS)) {
-                    if (e?.name && e.name.toLowerCase() === name.toLowerCase()) return e;
-                }
-                return null;
-            };
-            const reattach = (effect) => {
-                if (!effect || typeof effect !== 'object' || !effect.name) return effect;
-                const cat = lookupCat(effect.name);
-                if (!cat) return effect;
-                // Only set fields that didn't survive serialization. Saved
-                // data fields (duration, effectTickData) take precedence.
-                if (!effect.icon)  effect.icon  = cat.icon  || effect.icon;
-                if (!effect.type)  effect.type  = cat.type  || effect.type;
-                if (!effect.color) effect.color = cat.color || effect.color;
-                if (!effect.resistanceType) effect.resistanceType = cat.resistanceType;
-                // Re-attach any function callbacks the catalog defines so
-                // combat.js's `typeof effect.onTick === 'function'` checks
-                // resolve true again. Catalog entries currently encode
-                // behaviour as data, but this is forward-compatible if we
-                // ever add custom callbacks (e.g. a 'Sleep' breaksOnDamage
-                // listener).
-                for (const key of ['onTick', 'onExpire', 'onRound', 'onApply']) {
-                    if (typeof cat[key] === 'function' && typeof effect[key] !== 'function') {
-                        effect[key] = cat[key];
-                    }
-                }
-                // Ensure effectTickData carries catalog defaults for any
-                // fields that were stripped (won't override saved fields).
-                if (cat.defaultData && typeof cat.defaultData === 'object') {
-                    effect.effectTickData = { ...cat.defaultData, ...(effect.effectTickData || {}) };
-                }
-                return effect;
-            };
-            const reattachAll = (chars) => (chars || []).forEach(c => {
-                if (c && Array.isArray(c.statusEffects)) c.statusEffects.forEach(reattach);
-            });
-            reattachAll(gameState.players);
-            reattachAll(gameState.enemies);
-            log(`SaveLoad: re-attached status-effect catalog metadata (BUG-03 fix).`);
-        } catch (e) {
-            log(`SaveLoad: status-effect re-attach failed (non-fatal): ${e?.message}`);
-        }
-        // Potential stat recalculation - consider if necessary based on saved data version/consistency
-        // gameState.players.forEach(p => p && Combat.recalculateCharacterStats(p));
-        // gameState.enemies.forEach(e => e && Combat.recalculateCharacterStats(e));
-
 
         // Restore UI
         log("SaveLoad: Updating UI for loaded game...");

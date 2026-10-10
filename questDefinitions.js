@@ -10,6 +10,7 @@
 // Rounds between two beats: the story gets room to breathe (about 40-75
 // rounds to the boss), and a stall nudge pushes the next beat after 5 idle rounds.
 export const BEAT_GAP = 3;
+export const THREAD_GRACE = 6; // rounds the climax waits for loose ends before it goes ahead anyway
 
 // In order. `beat` is what the storyteller is asked for (VILLAIN and LAIR are
 // filled in once known); `says` is the next step shown to players.
@@ -67,7 +68,9 @@ export function beatBlocked(gs, name) {
     if (name === 'final_blow') return null; // the kill decides it
     const wait = BEAT_GAP - roundsSinceBeat(gs);
     if (name !== 'call_to_adventure' && wait > 0) return `too soon: ${wait} more round${wait > 1 ? 's' : ''} before the next beat`;
-    if (name === 'final_confrontation' && openThreads(gs).length > 1) return `pay off open threads first (${openThreads(gs).length} open)`;
+    // Loose ends first, but never forever: the storyteller rarely closes threads
+    // on its own, so after THREAD_GRACE rounds of asking, the confrontation may begin.
+    if (name === 'final_confrontation' && openThreads(gs).length > 1 && roundsSinceBeat(gs) < BEAT_GAP + THREAD_GRACE) return `pay off open threads first (${openThreads(gs).length} open)`;
     return null;
 }
 

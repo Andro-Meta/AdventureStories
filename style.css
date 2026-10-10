@@ -880,81 +880,10 @@ footer { margin-top: 2rem; text-align: center; }
     display: none !important;
 }
 
-/* Character Development UI Styles */
-.character-development {
-    margin-top: 10px;
-    padding: 8px;
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 4px;
-    border-left: 3px solid var(--primary-color);
-}
-
-.character-development h4 {
-    margin: 0 0 8px 0;
-    font-size: 0.9em;
-    color: var(--primary-color);
-}
-
-.character-archetype {
-    color: var(--secondary-color);
-    font-weight: bold;
-}
-
-.personality-traits {
-    margin: 8px 0;
-}
-
-.trait-bar {
-    display: flex;
-    align-items: center;
-    margin: 4px 0;
-    font-size: 0.8em;
-}
-
 .trait-name {
     min-width: 80px;
     font-size: 0.75em;
     color: var(--text-muted-color);
-}
-
-.trait-progress {
-    flex: 1;
-    height: 8px;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 4px;
-    margin: 0 8px;
-    overflow: hidden;
-}
-
-.trait-fill {
-    height: 100%;
-    border-radius: 4px;
-    transition: width 0.3s ease;
-}
-
-.trait-value {
-    min-width: 30px;
-    text-align: right;
-    font-size: 0.75em;
-    color: var(--text-muted-color);
-}
-
-.reputation-display {
-    margin: 8px 0;
-}
-
-.reputation-badge {
-    font-weight: bold;
-    padding: 2px 6px;
-    border-radius: 3px;
-    background: rgba(255, 255, 255, 0.1);
-    font-size: 0.8em;
-}
-
-/* Character development loading states */
-.character-dev em {
-    color: var(--text-muted-color);
-    font-size: 0.8em;
 }
 
 /* AI System Status UI Styles */

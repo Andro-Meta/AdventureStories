@@ -537,6 +537,5 @@ export const STATUS_EFFECTS = {
 
 // --- Local Storage ---
 export const SAVE_GAME_PREFIX = 'AG-';           // Prefix for save game keys (spec: AG-<date-time-code>)
-export const SAVE_GAME_LEGACY_PREFIX = 'advStorySave_'; // Default popup message duration (ms)
 // Delay before showing "Thinking..." when waiting for AI (unused currently)
 // export const TYPING_INDICATOR_DELAY = 800;
