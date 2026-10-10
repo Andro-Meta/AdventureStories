@@ -1,143 +1,150 @@
 # Adventure Stories
 
-An AI-driven text adventure for 1–5 friends that runs in your browser or as an Android app. The storyteller is a free online AI (OpenRouter or Google AI Studio); you paste a free key once.
+**A choose-your-own-adventure game where a free AI is the storyteller.** Pick a world, name your heroes, and play through a story that is written live around every choice you make. It has dice rolls, fights, loot, a shop, levelling up and a real ending. Play solo or pass the phone around with up to five friends or family members.
+
+It runs on Android (install the APK from [Releases](https://github.com/Andro-Meta/AdventureStories/releases)) or in any web browser on a PC. The AI is free: you paste a free key from Google, Groq or OpenRouter once, and the game handles the rest.
 
 > *Made with ❤️ for Brookston, Vincent, Toby, and Katie by their Dad.*
 
 ---
 
-## What it does
+## What it's for
 
-- **AI storyteller** narrates a multi-act adventure with persistent NPCs, locations, items, and consequences across hundreds of turns.
-- **1–5 players** — solo or co-op, hot-seat style. Each player gets their own character, inventory, and HP.
-- **Age-adaptive narration** — averages your whole party's ages and picks the right reading level (L1 ages 6–9 / L2 ages 10–14 / L3 ages 15+). A 7-year-old and a 35-year-old playing together get a middle-ground story.
-- **Deterministic JSON-Patch engine** (`engine.js`) is the single mutation point — the narrator proposes state ops; the engine validates and applies them. Items can't be hallucinated, choices can't be meaningless, combat can't break down.
-- **Hybrid retrieval memory** — TF-IDF + recency over scene summaries, plus mention-aware entity scoring. The narrator remembers the NPC you saved 60 turns ago.
-- **130 distinct opening hooks** (13 themes × 10 archetypes) so each new game opens with a different inciting incident.
-- **Clear path to win** — every game gets a goal and a 3-act quest; the header shows the chapter and the next step, and a one-line recap after each turn shows what changed.
-- **God-mode endgame** — finish the main quest, earn 1,000 coins + a legendary weapon per player, then type anything: *"I have a million gold"*, *"I summon Ember the phoenix"*, *"Face me, Hollow King!"*. Earned items and stats persist when you start a new arc.
+Adventure Stories started as a dad's bedtime-story machine and grew into a full game. It is meant for:
 
-## Themes
-
-Fantasy Kingdom · Space Exploration · Pirate Seas · Underwater World · Jungle Expedition · Utopian Future · Dinosaur Times · Arctic Adventure · Steampunk City · Haunted Mansion · Cyberpunk City · Wild West · Post-Apocalypse · Custom
+- **Families and kids.** The story adapts to the youngest and oldest players at the table (reading levels for ages 6–9, 10–14 and 15+). A 7-year-old and a 35-year-old get a story both can follow. For younger players, fights show the effect of a hit without blood or wounds.
+- **Reading practice that doesn't feel like homework.** Every turn is a short scene to read, or to hear: the 🔊 button reads it aloud.
+- **Co-op play.** One to five heroes take turns on one device. Each has their own stats, bag, coins and special moves.
+- **Endless replay.** 13 worlds plus a custom one you describe yourself, 130 different opening hooks, and a new story every time.
+- **Anyone who wants a game that thinks.** The AI writes the story. The game itself enforces the rules (dice, damage, items and quests), so the story can't cheat or forget what you own.
 
 ---
 
-## Play it (free online AI, nothing to install but Python)
+## How a game plays
 
-1. **Windows:** double-click `easy.bat`. **Mac/Linux:** `python3 server.py`.
-   It serves the game at `http://localhost:8321` (next free port if taken) and opens your browser.
-   Keep using the same address: your key and saves are stored per address.
-2. Get a free key (no credit card):
-   - **OpenRouter** (default): <https://openrouter.ai/settings/keys>
-   - or **Google AI Studio** (fastest, ~1–2 s per turn): <https://aistudio.google.com/apikey>
-3. In the game: **⚙️ AI Settings → Cloud AI → pick the provider → paste the key → Save.**
+1. **Set up.** Choose 1–5 players, each player's age and name, and a world: Fantasy Kingdom, Space Exploration, Pirate Seas, Underwater World, Jungle Expedition, Utopian Future, Dinosaur Times, Arctic Adventure, Steampunk City, Haunted Mansion, Cyberpunk City, Wild West, Post-Apocalypse, or Custom.
+2. **Explore.** Each turn the storyteller writes a scene and five choices. Each choice is one way of acting, and each shows its odds:
+   - 💪 **Brave** · 🧠 **Clever** · 🥷 **Sneaky** · 💛 **Kind** · 🍀 **Luck** (an absurd long shot that pays off spectacularly if it works)
+   - Each choice also has a danger level: no mark is **Safe**, ⚠ is **Bold**, ⚠⚠ is **Reckless**. Riskier choices pay more and can hurt when they fail.
+   - The roll is a 20-sided die plus your stat. The story follows the dice, including critical successes and failures.
+3. **Fight.** Encounters come regularly and foes scale with your level. Fights are classic turn-based RPG: you act, a short pause, then each foe answers once. No waiting on the AI between blows.
+   - **Attack**, **Special** (special moves and spells), **Item** (your bag, in a fight), **Defend** (half damage until your next turn, plus a breather), **Run** (not from a boss).
+   - When the fight ends, the storyteller tells how it ended, including the move that landed the final blow.
+4. **Grow.**
+   - **Levels:** XP from every roll, milestones and fights. Each level raises a stat (up to 10). Practising a stat raises it too.
+   - **Specials get stronger** with your level and with use: mastery ranks I–V, cheaper at ranks III and V. **Every 2 levels you learn a new special**, picked from two that fit your world. Rare teaching scrolls teach more.
+   - **Gear and loot** get better as you level: weapons with elements, armour, potions, MP tonics, cures, throwables, buffs and rare elixirs that raise a stat for good.
+   - **Lucky charms** help luck rolls; two charms fuse into a stronger one.
+   - **The shop** restocks as you play. Gear and charms are one per hero, so everyone in a group gets a shot.
+5. **Breathers.** Rest spots, treasure, traps, strangers and puzzles show up between fights. You also catch your breath after every win.
+6. **Win.** Every game has a goal and a 3-act quest that ends with a boss. The header shows the chapter and your next step.
+7. **God mode.** Beat the main quest and the story is yours: type anything ("I summon a phoenix", "Face me, Hollow King!") and it happens.
 
-The key lives only in this browser's localStorage; requests go straight from the browser to the provider.
-
-### Free-tier limits (checked 2026-10-07)
-
-| Provider | Models used | Limit | One turn |
-|---|---|---|---|
-| OpenRouter (default) | Nemotron 3 Super 120B → Nemotron 3 Ultra 550B → Gemma 4 31B (automatic fallback) | 20/min, **50 requests/day**; **1,000/day for good** after a one-time $10 credit purchase (free models never spend it) | 1 request, ~3–7 s |
-| Google AI Studio | Gemini Flash-Lite | Free tier; daily cap shown in AI Studio | 1 request, ~1–2 s |
-
-A new game costs about 6 requests (intro, goal, shop, starting place, spells per player); each turn
-is 1 request (a second small one only if the choices come back unusable), plus a memory summary every
-5 rounds. On 50/day that is ~40 turns; with the $10 credit (1,000/day) a long group session fits easily.
-If the daily quota runs out the game says so instead of failing silently.
-
-### Play on your phone (same Wi-Fi)
-
-`server.py` prints a LAN URL like `http://192.168.x.y:8321`. Open it on the phone, paste a key in AI Settings
-(keys are per device), and **Add to Home Screen** to install it as a PWA.
+Every game autosaves after each turn. You can also save named copies, export all your saves to a file and import them again (Load Game screen).
 
 ---
 
-## Android
+## Install
 
-The Android app is the same game in a Capacitor wrapper, using the same online AI. See
-[`mobile/README.md`](mobile/README.md) to build the APK (about 10 MB).
+### Android (recommended)
+
+1. Open the latest release on [GitHub Releases](https://github.com/Andro-Meta/AdventureStories/releases) on your phone and download the `.apk`.
+2. Tap the download to install. The first time, Android asks you to allow installs from your browser.
+3. **Updates:** the main menu shows a banner when a new version is out. Tap **Download and install**, then tap the finished download. Your saves and keys stay. You can also tap **Check for updates** under the menu.
+
+### PC (any browser)
+
+1. Install [Python 3](https://www.python.org/downloads/).
+2. **Windows:** double-click `easy.bat`. **Mac/Linux:** run `python3 server.py`.
+   This serves the game at `http://localhost:8321` (or the next free port) and opens your browser. Keep using the same address: keys and saves are stored per address.
+3. On the same Wi-Fi, `server.py` also prints a LAN address (`http://192.168.x.y:8321`) that you can open on a phone or tablet.
 
 ---
 
-## Saves
+## The free AI (set up once)
 
-Every game autosaves after each turn into its own slot ("Autosave <names> (<theme>) <id>"; the newest 5 are kept), and you can save named copies from the menu. **Continue Last Game** opens the newest save. Saves live in this browser's `localStorage` (prefix `AG-`).
+Open **⚙️ AI Settings**. The default is **★ Smart switcher**: it uses whichever free provider is fastest and has quota left, and switches when one is busy or out for the day. Paste any keys you have. One is enough, and more keys mean fewer interruptions. Each key box has a link to get that key.
+
+| Provider | Get a free key | Notes |
+|---|---|---|
+| **Google AI Studio** (Gemini Flash-Lite) | <https://aistudio.google.com/apikey> | Fastest (about 1–3 s a turn). Use a project without billing so it stays free. A second key from another Google account doubles the daily quota. |
+| **Groq** (Qwen) | <https://console.groq.com/keys> | Fast, no credit card. A second key from another account is supported. |
+| **OpenRouter** (free Nemotron models) | <https://openrouter.ai/settings/keys> | 50 free requests a day, or 1,000 a day after a one-time $10 credit purchase. The game only ever uses the free models, so the credit is never spent. |
+
+- **Your keys stay on your device.** They are stored only in the app (or browser) and sent only to the provider they belong to.
+- The switcher understands each provider's errors: busy, rate-limited, or out for the day. It moves on without stopping the game, and if a call fails, the dice roll you made is undone so you can try again.
+- A turn is usually one AI call.
 
 ---
 
-## Offline tests (no browser, no AI server)
+## Sound, voice and accessibility
+
+- **Read aloud:** the 🔊 button reads the story with your device's voice (Menu → Sound & Voice to turn on auto-read).
+- **Sound effects and vibration** for dice, hits, heals, coins, crits and level-ups. All sounds are CC0 (see `sfx/CREDITS.txt`).
+- **How to Play** guide in the menu.
+- Built for phones held upright, and works on a PC screen too.
+
+---
+
+## For developers
+
+The game is plain ES modules (no build step) in a Capacitor wrapper for Android.
+
+- **Rules live in code, story lives in the AI.** The storyteller proposes changes as JSON operations. `engine.js` is the only place game state changes; it validates everything (items, foes, HP, quest steps), so the AI can't invent loot or break a fight.
+- **Smart switcher:** `aiRouter.js` (ranking, health, speed) and `localAI.js` (calls, error classification, retries).
+- **Choices:** `progression.js` (approaches, danger plans, rolls, pacing, specials' ranks) and `aiHandler.js` (prompts, repairing a choice set that comes back wrong).
+
+### Tests (pure Node, no browser, no AI, no network)
 
 ```bash
-npm run audit              # all three suites
-npm run audit:hooks        # 14 themes × 10 archetypes + quest hints + schemas
-npm run audit:engine       # every applyDiff path + dedupe + turn cap + monotonicity
-npm run audit:godmode      # main-quest-completion unlock, no extra gates
+npm run audit
 ```
 
-These run pure Node, no browser, no AI server, no network — perfect for CI.
-`npm run audit` also runs `first_turn_check` (fresh game survives turn 1), `prompt_check` (no contradicting
-formats, prompt size budget, multiplayer op targeting, tolerant parsing, fight-op order) and `loot_check`
-(every loot roll yields an item in every theme).
+This runs every suite:
+- the engine, god-mode and story-hook audits;
+- the prompt contract and first-turn checks;
+- loot and shop;
+- mechanics (fights, items, specials, saves);
+- failover between AI providers;
+- a fight simulator at levels 1–12, where foes and specials must stay balanced;
+- a UI wiring audit;
+- dead-code and dead-CSS checks.
 
-### Live play-test tools (developer only)
+### Build the Android APK
 
-- Put an OpenRouter key in `.env` (git-ignored; `powershell -File tools\set_key.ps1` prompts for it hidden).
-- `node tools/key_proxy.mjs` forwards the game's OpenRouter calls and adds the key, so it never enters the
-  page; `KEY_PROXY_DUMP=1` saves every request/response to `test-results/`.
-- `node --experimental-loader ./tools/preload.mjs tools/turn_metrics.mjs` scores those dumps: latency, tokens,
-  truncation, valid JSON, narration words, choice validity and engine-valid ops per call. The Playwright suite (`npm test`) covers the full UI / integration loop and still requires a live AI backend.
+```bash
+node mobile/sync-web.mjs          # copy the game into mobile/www
+cd mobile && npx cap sync android # copy www into the Android project (needed for EVERY build)
+cd android && ./gradlew assembleDebug
+```
 
----
+Builds use JDK 21. The APK is signed with the project's debug key, so every release installs over the last one and keeps saves and keys. See [`mobile/README.md`](mobile/README.md) for details.
 
-## Project layout
+### Project layout (main files)
 
 | File | What |
 |---|---|
-| `index.html` + `style.css` | Static shell, PWA manifest, screens |
-| `main.js` | Entry point + service-worker registration |
-| `state.js` | Central `gameState` object + reset/init helpers |
-| `engine.js` | JSON-Patch engine — only place state mutates |
-| `aiHandler.js` | Prompt construction + narrator JSON pipeline |
-| `actionHandler.js` | Player choice handling, combat, god-mode |
-| `initializationManager.js` | Phased boot sequence with dependency resolution |
-| `combat.js` | Combat math, status effects, equipment scaling |
-| `resolution.js` | Combat/jail outcome handling + quest reward distribution |
-| `questProgress.js` | Quest phase tracking + completion percentage |
-| `questDefinitions.js` | 3-act main-quest scaffold + per-act narrator hints |
-| `storyHooks.js` | 130 inciting-incident archetypes per theme |
-| `godMode.js` | Post-main-quest free-form authoring (unlock = main quest done, period) |
-| `memoryRetriever.js` | TF-IDF + recency arc-memory retrieval |
-| `schemas.js` | JSON schemas for narrator output |
-| `config.js` | Online AI providers (OpenRouter free models, Google AI Studio), game constants |
-| `localAI.js` | Client for the online AI: retries, rate limits, JSON parsing |
-| `saveLoad.js` | localStorage save/load + AG- migration |
-| `ui.js` | All DOM updates — narrative, choices, player cards, quest panel |
-| `server.py` | Static site server (port 8321+) |
-| `easy.bat` | One-click launcher (Windows): runs `server.py` |
-| `mobile/` | Capacitor wrapper + Android build instructions |
-| `tools/audit.mjs` | Static validation: themes, hooks, quest hints, schemas |
-| `tools/engine_audit.mjs` | Engine applyDiff coverage (every god-mode path) |
-| `tools/godmode_audit.mjs` | Unlock condition matches README spec |
-| `tests/smoke7.spec.js` | 26-test Playwright suite (themes, setup, save/load, full game loop) |
-
----
-
-## Status
-
-- ✅ **Phase 0** — Cloud AI backends (OpenRouter / Groq / Google AI), selectable in-game
-- ✅ **Phase 1** — Architecture cleanup: JSON-Patch engine, age tiers, narrator pipeline
-- ✅ **Phase 2** — Jail-escape mechanic, death handling, status effects
-- ✅ **Phase 3** — Arc memory, story hooks, god-mode reward + retirement loop
-- ✅ **Phase 3.5** — Combat log, reputation, side-quest engine, 130 opening variations
-- ✅ **Phase 4** — God mode completion, quest rewards (1000 coins + legendary weapon), 5-player co-op, UI sync fixes, 26/26 tests green
-- ✅ **2026-10** — Cloud-only AI (local/on-device models removed), one AI call per turn, story matches the dice, multiplayer turn fixes, quest win path with rewards, turn recap, per-game autosave, security fixes. Android APK rebuilt.
-
-See `IMPLEMENTATION_PLAN.md` for the older roadmap.
+| `index.html`, `style.css` | Screens and styles |
+| `main.js` | Start-up, buttons, menus |
+| `state.js` | The central `gameState` |
+| `engine.js` | JSON-operation engine: the only place state changes |
+| `aiHandler.js` | Prompts and the storyteller pipeline |
+| `aiRouter.js`, `localAI.js`, `config.js` | Providers, smart switcher, AI calls |
+| `actionHandler.js` | Choices, fights, items, specials |
+| `combat.js`, `battle.js` | Fight rules, battle menu, level-ups |
+| `progression.js` | Stats, rolls, choice mix, pacing, special ranks |
+| `items.js`, `spells.js`, `spellCasting.js` | Loot, shop items, specials and learning new ones |
+| `questProgress.js`, `questDefinitions.js`, `storyHooks.js`, `godMode.js` | Quest, acts, opening hooks, god mode |
+| `memoryRetriever.js` | Story memory (what happened many turns ago) |
+| `saveLoad.js` | Autosave, saves, export/import |
+| `media.js`, `fx.js` | Read-aloud, sounds, vibration, hit effects |
+| `updates.js` | "A new version is out" banner (GitHub Releases) |
+| `ui.js` | Everything drawn on screen |
+| `tools/` | Audits, simulators, phone and live-play test tools |
+| `mobile/` | Android (Capacitor) project |
 
 ---
 
 ## License
 
-To be decided. Third-party assets follow their upstream licenses; AI output is generated by the provider you choose.
+To be decided. Sound effects are CC0 (credits in `sfx/CREDITS.txt`). Story text is generated by the AI provider you choose.
