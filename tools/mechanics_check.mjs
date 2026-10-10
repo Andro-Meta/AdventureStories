@@ -2051,6 +2051,88 @@ await block(async () => {
   check(nothing === 0 && threw === 0, `${n} generated consumables used in a fight: ${nothing} did nothing, ${threw} threw${dull.length ? ` (${dull.join('; ')})` : ''}`);
 });
 
+section('Batch 29: the final blow is told as it happened; Run and Defend (phone 10-09)');
+
+await block(async () => {
+  const { createNewPlayer } = await import('../state.js');
+  const offline = globalThis.fetch; const asked = [];
+  globalThis.fetch = window.fetch = async (u, o) => {
+    asked.push(JSON.parse(o.body).messages[1].content);
+    const content = JSON.stringify({ narration: 'It is over.', ops: [], choices: ['brave', 'clever', 'sneaky', 'kind', 'luck'].map(stat => ({ stat, safe: `S ${stat}`, bold: `B ${stat}`, reckless: `R ${stat}` })) });
+    return { ok: true, status: 200, statusText: '200', headers: { get: () => null }, json: async () => ({ choices: [{ message: { content } }] }), text: async () => '' };
+  };
+  localStorage.setItem('adv.cloudProvider', 'groq_qwen'); localStorage.setItem('adv.apiKey.api.groq.com', 'test');
+  const realGet = document.getElementById.bind(document);
+  document.getElementById = (id) => id === 'choicesContainer' ? { querySelectorAll: () => [{}] } : realGet(id);
+  const lastAsk = () => asked[asked.length - 1] || '';
+  try {
+    // A spell finishes the android: the aftermath names the spell, not a weapon.
+    let { p } = fresh({ enemy: { name: 'Patrol Android', hp: 5, maxHp: 40, def: 0 } });
+    p.mp = 50; p.maxMp = 50;
+    p.spellcasting = { knownSpells: [{ id: 's1', name: 'Plasma Lance', school: 'ELEMENTAL', type: 'OFFENSIVE', level: 1, mpCost: 6, targeting: 'single', effects: { damage: 30 }, description: 'A searing lance of plasma.' }], preparedSpells: [] };
+    startFight(); asked.length = 0; pinRandom(0.5);
+    await AH.handlePlayerChoice('Spell', 'Cast Plasma Lance'); unpinRandom();
+    check(!gameState.inCombat && /FINAL BLOW: the special "Plasma Lance"/.test(lastAsk()) && /Plasma Lance: Patrol Android −\d+\. Patrol Android falls\./.test(lastAsk()),
+      `a spell's kill: the aftermath names it (${(lastAsk().match(/Last move:.*\n.*/) || ['none'])[0].replace(/\n/, ' / ')})`);
+
+    // A learned special move finishes it.
+    ({ p } = fresh({ enemy: { name: 'Patrol Android', hp: 5, maxHp: 40, def: 0 } }));
+    p.specialMoves = [{ id: 'm1', name: 'Arc Smash', description: 'An electrified overhead slam.', mpCost: 0, cooldown: 2, mechanics: { directDamage: 20 } }];
+    startFight(); asked.length = 0; pinRandom(0.5);
+    await AH.handlePlayerChoice('Special', 'Use Arc Smash'); unpinRandom();
+    check(/FINAL BLOW: the special move "Arc Smash"/.test(lastAsk()) && /not a plain weapon swing/.test(lastAsk()), 'a special move\'s kill: the aftermath names the move');
+
+    // A plain attack finishes it: told as a weapon strike.
+    ({ p } = fresh({ enemy: { name: 'Patrol Android', hp: 1, maxHp: 40, def: 0 } }));
+    startFight(); asked.length = 0; pinRandom(0.5);
+    await AH.handlePlayerChoice('Attack', 'Attack Patrol Android'); unpinRandom();
+    check(/FINAL BLOW: a strike with Ava's weapon/.test(lastAsk()), 'a weapon kill is told as a weapon strike');
+
+    // Run: success -> escaped (not "won", no final blow); fail -> still fighting; boss -> no escape.
+    ({ p } = fresh({ enemy: { name: 'Patrol Android', hp: 40, maxHp: 40 } }));
+    startFight(); asked.length = 0; pinRandom(0.01);
+    await AH.handlePlayerChoice('Run', 'Try to escape'); unpinRandom();
+    check(!gameState.inCombat && /escaped the fight/.test(lastAsk()) && !/heroes won|FINAL BLOW/.test(lastAsk()), `a successful escape is told as an escape (${asked.length} call)`);
+    ({ p } = fresh({ enemy: { name: 'Patrol Android', hp: 40, maxHp: 40, atk: 5 } }));
+    startFight(); asked.length = 0; pinRandom(0.99);
+    await AH.handlePlayerChoice('Run', 'Try to escape'); unpinRandom();
+    check(gameState.inCombat && asked.length === 0 && gameState.enemies.length === 1, 'a failed escape: still fighting, no storyteller call');
+    ({ p } = fresh({ enemy: { name: 'Overseer', hp: 200, maxHp: 200, isBoss: true, atk: 5 } }));
+    startFight(); pinRandom(0.01);
+    await AH.handlePlayerChoice('Run', 'Try to escape'); unpinRandom();
+    check(gameState.inCombat, 'no running from a boss');
+
+    // Defend: the foe's next blow does half damage; the guard is gone by the hero's turn after.
+    const hit = async (defend) => {
+      const { p, e } = fresh({ enemy: { name: 'Patrol Android', hp: 400, maxHp: 400, atk: 30, def: 0 } });
+      p.hp = p.maxHp = 300; startFight(); pinRandom(0.5);
+      if (defend) await AH.handlePlayerChoice('Defend', 'Raise your guard');
+      else await AH.handlePlayerChoice('Item', 'Catch a breath');
+      unpinRandom();
+      return { lost: 300 - p.hp, guard: (p.statusEffects || []).find(fx => fx.name === 'Guarding')?.duration || 0, p };
+    };
+    const open = await hit(false), guarded = await hit(true);
+    check(guarded.lost > 0 && guarded.lost < open.lost * 0.7, `Defend: HP lost to the foe's answer ${open.lost} -> ${guarded.lost}`);
+    check(guarded.guard > 0 && guarded.guard <= 1, `the guard lasts until the hero's next turn (${guarded.guard} tick left)`);
+  } finally { document.getElementById = realGet; globalThis.fetch = window.fetch = offline; localStorage.removeItem('adv.apiKey.api.groq.com'); localStorage.removeItem('adv.cloudProvider'); }
+});
+
+await block(async () => {
+  // Update banner (updates.js): a newer GitHub release shows, the same or older never does.
+  const U = await import('../updates.js');
+  const Config = await import('../config.js');
+  const cmp = [U.compareVersions('1.2.10', '1.2.9'), U.compareVersions('v1.3.0', '1.2.99'), U.compareVersions('1.2.5', 'v1.2.5'), U.compareVersions('1.2.4', '1.2.5')];
+  const offline = globalThis.fetch;
+  const release = (tag) => { localStorage.removeItem('adv.update'); globalThis.fetch = window.fetch = async () => ({ ok: true, json: async () => ({ tag_name: tag, body: '- notes', html_url: 'https://github.com/x', assets: [{ name: 'AdventureStories-' + tag + '.apk', browser_download_url: 'https://github.com/x.apk' }] }) }); };
+  let newer, same;
+  try {
+    release('v99.0.0'); newer = await U.checkForUpdate(true);
+    release('v' + Config.APP_VERSION); same = await U.checkForUpdate(true);
+  } finally { globalThis.fetch = window.fetch = offline; localStorage.removeItem('adv.update'); }
+  check(cmp.join(',') === '1,1,0,-1' && newer?.version === '99.0.0' && /\.apk$/.test(newer.apk) && same === null,
+    `updates: version order ${cmp.join(',')}; a newer release offers its APK (${newer?.version}); this version itself is not offered (${same})`);
+});
+
 console.error = realError;
 out(`\nfetch attempts blocked: ${fetchCalls}; elapsed ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 out(failed ? `✗ ${failed} mechanics check(s) failed` : '✓ all mechanics checks passed');
