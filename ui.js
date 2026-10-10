@@ -571,114 +571,6 @@ function renderBattleHud() {
     document.documentElement.style.setProperty('--hud-h', `${hud.offsetHeight}px`);
 }
 
-/**
- * Generate character development UI for player cards
- * @param {Object} character - Player character object
- * @returns {string} HTML string for character development display
- */
-function generateCharacterDevelopmentUI(character) {
-    if (!gameState.characterDevelopmentAgent) {
-        return ''; // No character development system available
-    }
-    
-    try {
-        const profile = gameState.characterDevelopmentAgent.getCharacterProfile(character.id);
-        if (!profile) {
-            return '<div class="character-dev"><p><em>Character development initializing...</em></p></div>';
-        }
-        
-        // Generate personality trait bars
-        const personalityHTML = generatePersonalityTraitsUI(profile.traits);
-        
-        // Generate archetype display
-        const archetypeHTML = `<p><strong>Archetype:</strong> <span class="character-archetype">${sanitizeText(profile.archetype)}</span></p>`;
-        
-        // Generate reputation display
-        const reputationHTML = generateReputationUI(profile.reputation);
-        
-        return `
-            <div class="character-development">
-                <h4>Character Development</h4>
-                ${archetypeHTML}
-                ${personalityHTML}
-                ${reputationHTML}
-            </div>
-        `;
-    } catch (error) {
-        console.log(`Character development UI error: ${error.message}`);
-        return '<div class="character-dev"><p><em>Character data loading...</em></p></div>';
-    }
-}
-
-/**
- * Generate personality traits UI with progress bars
- * @param {Object} traits - Character traits object
- * @returns {string} HTML for personality traits
- */
-function generatePersonalityTraitsUI(traits) {
-    if (!traits || typeof traits !== 'object') {
-        return '<p><em>Personality developing...</em></p>';
-    }
-    
-    // Show top 3 most significant traits
-    const traitEntries = Object.entries(traits)
-        .filter(([key, value]) => typeof value === 'number' && Math.abs(value) > 0.1)
-        .sort(([,a], [,b]) => Math.abs(b) - Math.abs(a))
-        .slice(0, 3);
-    
-    if (traitEntries.length === 0) {
-        return '<p><em>Personality traits emerging...</em></p>';
-    }
-    
-    const traitsHTML = traitEntries.map(([trait, value]) => {
-        const percentage = Math.abs(value * 100);
-        const displayName = trait.charAt(0).toUpperCase() + trait.slice(1);
-        const barColor = value > 0 ? '#4CAF50' : '#FF5722';
-        
-        return `
-            <div class="trait-bar">
-                <span class="trait-name">${sanitizeText(displayName)}</span>
-                <div class="trait-progress">
-                    <div class="trait-fill" style="width: ${percentage}%; background-color: ${barColor};"></div>
-                </div>
-                <span class="trait-value">${Math.round(percentage)}%</span>
-            </div>
-        `;
-    }).join('');
-    
-    return `
-        <div class="personality-traits">
-            <p><strong>Key Traits:</strong></p>
-            ${traitsHTML}
-        </div>
-    `;
-}
-
-
-/**
- * Generate reputation UI display (legacy character development)
- * @param {Object} reputation - Reputation data
- * @returns {string} HTML for reputation display
- */
-function generateReputationUI(reputation) {
-    if (!reputation) {
-        return '<p><em>Reputation unknown...</em></p>';
-    }
-    
-    const globalRep = reputation.global || 0;
-    const repColor = globalRep > 0 ? '#4CAF50' : globalRep < 0 ? '#FF5722' : '#FFC107';
-    const repText = globalRep > 0.3 ? 'Hero' : globalRep < -0.3 ? 'Villain' : 'Neutral';
-    
-    return `
-        <div class="reputation-display">
-            <p><strong>Reputation:</strong> 
-                <span class="reputation-badge" style="color: ${repColor};">
-                    ${sanitizeText(repText)} (${globalRep > 0 ? '+' : ''}${Math.round(globalRep * 100)})
-                </span>
-            </p>
-        </div>
-    `;
-}
 
 /** Creates the HTML structure for a player or enemy card. Helper function. */
 function createCharacterCard(character, type, index, configRef) {
@@ -742,7 +634,7 @@ function createCharacterCard(character, type, index, configRef) {
              ${isPlayer ? `<p>Coins: <span class="${type}-coins">${character.coins ?? 0}</span>💰</p>` : ''}
              ${!isPlayer ? `<p>Abilities: <span class="${type}-abilities">${character.abilities?.map(sanitizeText).join(', ') || 'None'}</span></p>` : ''}
              <p>Effects: <span class="status-effects">${statusEffectString}</span></p>
-             ${isPlayer ? generateCharacterDevelopmentUI(character) : ''}
+
         </div>
         <div class="card-header collapsible">
             <span class="${type}-name">${sanitizeText(character.name)}${isPlayer ? ` <small class="hero-level">Lv ${character.level || 1}</small>` : ''}</span>
@@ -909,15 +801,22 @@ function recordStoryScene(text) {
     const log = gameState.storyLog || (gameState.storyLog = []);
     const last = log[log.length - 1];
     if (last === text) return false;
-    if (last && text.startsWith(last)) log[log.length - 1] = text; // same scene grew (epilogue)
-    else log.push(text);
+    if (last && text.startsWith(last)) { log[log.length - 1] = text; return true; } // same scene grew (the ending)
+    // A chapter heading whenever the story enters a new act (the Story Book reads like a book).
+    const act = describeQuestStep(gameState)?.chapter || (gameState.isGoalComplete ? 'Beyond the Quest' : null);
+    if (act && act !== gameState.storyChapter) { gameState.storyChapter = act; log.push(`## ${act}`); }
+    log.push(text);
     return true;
 }
 
 export function storyBookText() {
     const title = gameState.adventureGoal || 'An Adventure Story';
     const heroes = (gameState.players || []).map(p => p.name).join(', ');
-    return `${title}\n${heroes ? `Starring ${heroes}\n` : ''}\n${(gameState.storyLog || []).join('\n\n* * *\n\n')}\n`;
+    // Headings start chapters; scenes inside a chapter are separated by * * *.
+    const body = (gameState.storyLog || []).reduce((s, e, i, all) => s + (e.startsWith('## ')
+        ? `${i ? '\n\n' : ''}${e.slice(3).toUpperCase()}\n\n`
+        : `${i && !all[i - 1].startsWith('## ') ? '\n\n* * *\n\n' : ''}${e}`), '');
+    return `${title}\n${heroes ? `Starring ${heroes}\n` : ''}\n${body}\n`;
 }
 
 export function showStoryBook() {
@@ -962,14 +861,16 @@ export function renderChoices(choices, handler = null) {
     // Every set of story choices is shown in a fresh random order, whatever
     // path produced it (post-fight and fallback choices came in type order).
     if (Array.isArray(choices) && !handler) choices = choices.filter(c => c?.type !== 'Defend');
+    // The next-chapter picks at the end of a quest are not approach choices.
+    const chapterPick = Array.isArray(choices) && choices.length > 0 && choices.every(c => c?.type === 'NewChapter');
     // Exploration: five different approaches, always (the storyteller is asked
     // and repaired in aiHandler; this is the last line for every other path).
     // Fight commands left over after a fight would turn into luck choices
     // below: show plain story choices instead.
-    if (Array.isArray(choices) && !handler && !gameState.inCombat && choices.length && choices.every(c => ['Attack', 'Special', 'Item', 'Run', 'Defend', 'Spell'].includes(c?.type))) choices = Progression.fallbackChoices(gameState.choicePlan);
-    if (Array.isArray(choices) && !handler && !gameState.inCombat) choices = choices.map(Progression.normalizeChoice);
-    if (Array.isArray(choices) && !handler && !gameState.inCombat && choices.length === 5) choices = Progression.fillMix(choices, gameState.choicePlan);
-    if (Array.isArray(choices) && choices.length > 1 && !handler) {
+    if (Array.isArray(choices) && !handler && !chapterPick && !gameState.inCombat && choices.length && choices.every(c => ['Attack', 'Special', 'Item', 'Run', 'Defend', 'Spell'].includes(c?.type))) choices = Progression.fallbackChoices(gameState.choicePlan);
+    if (Array.isArray(choices) && !handler && !chapterPick && !gameState.inCombat) choices = choices.map(Progression.normalizeChoice);
+    if (Array.isArray(choices) && !handler && !chapterPick && !gameState.inCombat && choices.length === 5) choices = Progression.fillMix(choices, gameState.choicePlan);
+    if (Array.isArray(choices) && choices.length > 1 && !handler && !chapterPick) {
         choices = [...choices];
         for (let i = choices.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
@@ -982,7 +883,7 @@ export function renderChoices(choices, handler = null) {
             const h = gameState.choiceMixHistory || (gameState.choiceMixHistory = []);
             if (!Progression.APPROACHES.every(a => h[h.length - 1]?.[a] === shown[a])) { h.push(shown); if (h.length > 8) h.shift(); }
         }
-    }
+    } else if (chapterPick) gameState.currentChoices = choices; // kept in order, and saved
     // Battle menu in a fixed order (Michael): Attack, Special, Item, Defend,
     // Run. Defend is a fixed command added here at render time (never
     // stored, so it costs the storyteller no words and can't be reshuffled).

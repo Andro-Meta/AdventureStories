@@ -98,10 +98,7 @@ export const gameState = {
 
     // --- Intelligent Compression Data ---
     choicePatterns: new Map(), // Player ID -> choice pattern analysis
-    relationshipMatrix: new Map(), // Player pair -> relationship data
-    playerArchetypes: new Map(), // Player ID -> determined archetype
     storyBeats: [], // Major story moments for compression
-    worldStateHistory: [], // World changes over time
 
     // --- Combat System ---
     combatChoiceTypes: ['Attack', 'Special', 'Item', 'Run'], // Standard combat choices
@@ -123,18 +120,6 @@ export const gameState = {
     
     // --- Dynamic Location System ---
     dynamicLocationRegistry: null, // Will be initialized by DynamicLocationRegistry
-    
-    // --- Story Continuity System ---
-    storyContinuityAgent: null, // Will be initialized by StoryContinuityAgent
-    
-    // --- Character Development System ---
-    characterDevelopmentAgent: null, // Will be initialized by CharacterDevelopmentAgent
-    
-    // --- World Evolution System ---
-    worldEvolutionAgent: null, // Will be initialized by WorldEvolutionAgent
-    
-    // --- Difficulty Adaptation System ---
-    difficultyAdaptationAgent: null, // Will be initialized by DifficultyAdaptationAgent
     
     // --- God Mode System ---
     godModeManager: null, // Will be initialized by GodModeManager
@@ -632,10 +617,7 @@ export function resetGameState() {
         combatStats: { totalDamageDealt: 0, totalDamageTaken: 0, criticalHits: 0 },
         // Story-graph compression caches (intelligent compression module).
         choicePatterns: new Map(),
-        relationshipMatrix: new Map(),
-        playerArchetypes: new Map(),
         storyBeats: [],
-        worldStateHistory: [],
         // Story hook — picked at game start by storyHooks.pickStoryHook.
         storyHook: null,
         // UI bookkeeping — these MUST be present or showModal crashes
@@ -794,10 +776,7 @@ export async function initializeGameState() {
     
     // Initialize intelligent compression data structures
     if (!gameState.choicePatterns) gameState.choicePatterns = new Map();
-    if (!gameState.relationshipMatrix) gameState.relationshipMatrix = new Map();
-    if (!gameState.playerArchetypes) gameState.playerArchetypes = new Map();
     if (!gameState.storyBeats) gameState.storyBeats = [];
-    if (!gameState.worldStateHistory) gameState.worldStateHistory = [];
     
     log("State: Game state initialization complete with intelligent compression tracking.");
 }
@@ -842,26 +821,15 @@ export function canCurrentPlayerAct() {
  * Records a player choice for pattern analysis
  */
 export function recordPlayerChoice(playerId, choiceType, choiceText, outcome, significance = 0.3) {
-    if (!gameState.choicePatterns.has(playerId)) {
-        gameState.choicePatterns.set(playerId, []);
-    }
-    
-    const choice = {
-        turn: gameState.turn,
-        type: choiceType,
-        text: choiceText,
-        outcome: outcome,
-        significance: significance,
-        timestamp: Date.now()
-    };
-    
-    gameState.choicePatterns.get(playerId).push(choice);
-    
-    // Keep only the last 50 choices per player to prevent memory bloat
+    if (!gameState.choicePatterns.has(playerId)) gameState.choicePatterns.set(playerId, []);
+    // What the end-of-quest reflection reads (reflection.js): the approach,
+    // the danger, how it went, and the words of the choice.
+    const roll = outcome?.roll;
+    const choice = { turn: gameState.turn, type: choiceType, stat: roll ? (roll.stat || 'luck') : null, band: roll?.band || null,
+        text: String(choiceText || '').slice(0, 120), significance };
     const choices = gameState.choicePatterns.get(playerId);
-    if (choices.length > 50) {
-        choices.splice(0, choices.length - 50);
-    }
+    choices.push(choice);
+    if (choices.length > 150) choices.splice(0, choices.length - 150); // a whole long quest (it was 50)
 }
 
 
@@ -888,25 +856,5 @@ export function recordStoryBeat(type, description, significance, involvedPlayers
     }
 }
 
-/**
- * Records a world state change for compression
- */
-export function recordWorldStateChange(changeType, description, location, impact) {
-    const worldChange = {
-        turn: gameState.turn,
-        type: changeType, // 'political', 'environmental', 'economic', 'social', etc.
-        description: description,
-        location: location,
-        impact: impact, // 'local', 'regional', 'global'
-        timestamp: Date.now()
-    };
-    
-    gameState.worldStateHistory.push(worldChange);
-    
-    // Keep only the last 50 world changes to prevent memory bloat
-    if (gameState.worldStateHistory.length > 50) {
-        gameState.worldStateHistory.shift();
-    }
-}
 
 
