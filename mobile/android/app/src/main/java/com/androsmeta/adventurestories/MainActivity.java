@@ -8,6 +8,7 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        registerPlugin(UpdaterPlugin.class); // in-app updates (updates.js)
         super.onCreate(savedInstanceState);
         // The Android back button used to close the app mid-game. Ask the game
         // first (window.__advBack in main.js): it goes back a screen or opens the

@@ -2126,8 +2126,12 @@ body::after { bottom: 0; height: env(safe-area-inset-bottom); }
 .update-banner { border: 1px solid var(--primary-color, #6c5ce7); text-align: center; }
 .update-banner .update-title { font-weight: 700; margin: 0 0 6px; }
 .update-banner .update-notes { white-space: pre-line; text-align: left; font-size: 0.9rem; opacity: 0.85; margin: 0 0 10px; }
-.update-banner .update-btn { width: 100%; }
-.update-banner .update-help { margin: 8px 0 0; opacity: 0.75; }
+/* Buttons side by side, centred (the lone button sat off-centre: the global button margin). */
+.update-banner .update-actions { display: flex; gap: 10px; justify-content: center; }
+.update-banner .update-actions button { margin: 0; }
+.update-banner .update-btn { flex: 2 1 0; }
+.update-banner .update-later { flex: 1 1 0; }
+.update-banner .update-help { margin: 8px 0 0; opacity: 0.75; font-size: 0.85rem; }
 .link-btn { background: none; border: 0; padding: 0; color: inherit; text-decoration: underline; font: inherit; cursor: pointer; box-shadow: none; width: auto; }
 
 /* Sound & Voice: voice picker and speed */

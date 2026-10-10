@@ -43,6 +43,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Short buzz when a hero is hit (fx.js, navigator.vibrate). -->
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- In-app updates (UpdaterPlugin): hand a downloaded release APK to the installer. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- Read-aloud (media.js, @capacitor-community/text-to-speech): Android 11+ hides
          the text-to-speech engine from apps that don't declare it. -->
     <queries>
