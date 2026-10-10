@@ -2293,6 +2293,16 @@ await block(async () => {
   } finally { localStorage.setItem = realSet; }
 });
 
+await block(async () => {
+  // A spell with a status effect (learned Frost Bite, Ward, Haste) threw on an undefined name.
+  const SC = await import('../spellCasting.js');
+  const { p, e } = fresh({ enemy: { hp: 300, maxHp: 300 } }); p.mp = p.maxMp = 50; startFight();
+  const frost = { id: 'fb', name: 'Frost Bite', school: 'ELEMENTAL', type: 'OFFENSIVE', level: 1, mpCost: 7, targeting: 'single', effects: { damage: 10, statusEffects: ['Frost'] } };
+  p.spellcasting = { knownSpells: [frost], preparedSpells: [frost] };
+  pinRandom(0.5); const r = await SC.castSpell(p, frost, e); unpinRandom();
+  check(r?.success && (e.statusEffects || []).some(fx => fx.name === 'Frost'), `Frost Bite casts and leaves the foe frozen (${r?.success ? 'ok' : r?.reason || r?.error})`);
+});
+
 console.error = realError;
 out(`\nfetch attempts blocked: ${fetchCalls}; elapsed ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 out(failed ? `✗ ${failed} mechanics check(s) failed` : '✓ all mechanics checks passed');
