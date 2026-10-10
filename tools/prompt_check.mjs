@@ -180,7 +180,7 @@ Engine.applyDiff([{ op: 'add', path: '/players/0/inventory/-', value: { name: 'P
   const ops = AH.extractGodModeDiffOps('full health, level up');
   check(ops.some(o => o.path === '/players/0/hp' && o.value === 100) && ops.some(o => o.path === '/players/0/level' && o.value === 2), `"full health, level up" -> ${ops.map(o => o.path + '=' + o.value).join(', ')}`);
   Engine.applyDiff(ops, { strict: false });
-  check(h.level === 2 && h.maxHp === 110 && h.hp >= 100, `level op brings level-up gains (level ${h.level}, max HP ${h.maxHp}, HP ${h.hp})`);
+  check(h.level === 2 && h.maxHp === 112 && h.hp >= 100, `level op brings level-up gains (level ${h.level}, max HP ${h.maxHp}, HP ${h.hp})`);
   const ops2 = AH.extractGodModeDiffOps('level 10');
   check(ops2.some(o => o.path === '/players/0/level' && o.value === 10), '"level 10" parsed');
 }

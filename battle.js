@@ -30,11 +30,13 @@ export { xpForLevel } from './progression.js'; // 100, 150, 200... per level (to
 export function levelUp(p, n = 1) {
     for (let i = 0; i < n && (p.level || 1) < 999; i++) {
         p.level = (p.level || 1) + 1;
-        p.maxHp = (p.maxHp || 100) + 10;
+        p.maxHp = (p.maxHp || 100) + 12; // was 10: late fights cost too much (fight_sim L12 boss 84% -> ~91% wins)
         p.maxMp = (p.maxMp || 20) + 4;
         p.baseAtk = (p.baseAtk ?? p.atk ?? 5) + 1;
         p.baseDef = (p.baseDef ?? p.def ?? 2) + (p.level % 2 === 0 ? 1 : 0);
-        p.hp = Math.min(p.maxHp, (p.hp || 0) + Math.round(p.maxHp * 0.25));
+        const hp0 = p.hp || 0;
+        p.hp = Math.min(p.maxHp, hp0 + Math.round(p.maxHp * 0.25));
+        p.levelHealTotal = (p.levelHealTotal || 0) + (p.hp - hp0); // the turn recap shows it apart from harm
         p.mp = Math.min(p.maxMp, (p.mp || 0) + 4);
         // Every 2 levels unlock the next spell level (nothing raised it, so
         // level-2 reward spells could never be cast).

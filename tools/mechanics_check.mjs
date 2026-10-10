@@ -1212,7 +1212,7 @@ await block(async () => {
   const h = Prog.ensureStats({ stats: {}, maxHp: 100, hp: 100, level: 1, xp: 0 });
   const Battle = await import('../battle.js');
   const n = Prog.gainXp(h, 100, Battle.levelUp);
-  check(n === 1 && h.level === 2 && h.statPoints === 1 && h.maxHp === 110, `100 XP -> level ${h.level}, ${h.statPoints} stat point, max HP ${h.maxHp}`);
+  check(n === 1 && h.level === 2 && h.statPoints === 1 && h.maxHp === 112, `100 XP -> level ${h.level}, ${h.statPoints} stat point, max HP ${h.maxHp}`);
   check(Prog.spendStatPoint(h, 'clever') && h.stats.clever === 2 && h.statPoints === 0, `level-up point raises Clever to ${h.stats.clever}`);
   let grew = null; for (let i = 0; i < 6; i++) grew = Prog.addSpark(h, 'kind') || grew;
   check(grew === 'kind' && h.stats.kind === 2, `6 Kind successes raise Kind to ${h.stats.kind}`);
@@ -2131,6 +2131,14 @@ await block(async () => {
   } finally { globalThis.fetch = window.fetch = offline; localStorage.removeItem('adv.update'); }
   check(cmp.join(',') === '1,1,0,-1' && newer?.version === '99.0.0' && /\.apk$/.test(newer.apk) && same === null,
     `updates: version order ${cmp.join(',')}; a newer release offers its APK (${newer?.version}); this version itself is not offered (${same})`);
+});
+
+await block(async () => {
+  // Recap (phone 10-09): a setback cost 17 HP and a level-up healed 27; it said "+10 HP".
+  const before = [{ name: 'Michael', hp: 110, coins: 148, items: [], level: 2, levelHeal: 0 }];
+  const after = [{ name: 'Michael', hp: 120, coins: 168, items: [], level: 3, levelHeal: 27 }];
+  const line = AH.formatTurnRecap(before, after, 'Michael');
+  check(line === 'Michael: −17 HP, ⭐ level 3 (+27 HP), +20 coins', `the recap shows harm and a level-up heal apart (${line})`);
 });
 
 console.error = realError;
