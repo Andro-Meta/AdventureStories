@@ -197,7 +197,11 @@ export async function handlePlayerChoice(actionType, choiceText) {
                 // is also alive, target the goblin shaman, not enemies[0].
                 // Falls back to enemies[0] when no name match is found.
                 let target = aliveEnemies[0];
-                try {
+                // The foe picked in the battle menu (by id: two foes can share a name).
+                const picked = aliveEnemies.find(e => e.id && e.id === gameState.pickedTargetId);
+                gameState.pickedTargetId = null;
+                if (picked) target = picked;
+                else try {
                     const lower = String(choiceText || '').toLowerCase();
                     const named = aliveEnemies.find(e => {
                         const n = String(e?.name || '').toLowerCase();
@@ -1416,8 +1420,13 @@ export async function handleCustomAction(text = '') {
     // in every turn prompt (buildDiffInstructions + the GOD MODE quest block),
     // targeted at the acting player. This used to repeat ~100 lines of them
     // with /players/0 paths, second person and 200-400 words.
+    // Divine will is standing canon (Michael 10-09: he turned the story into
+    // "humans and AI against oppressors", and every later turn drifted back to
+    // man against machine, because the theme, goal and villain re-sent each
+    // turn never changed). Kept and sent with every turn (aiHandler).
+    gameState.playerCanon = [...(gameState.playerCanon || []), String(actionText).trim().slice(0, 240)].slice(-6);
     const actionLog = `[God mode] ${currentPlayer.name} declares: "${actionText}"${refLine}${preAppliedNote}
-The wish succeeds fully and at once, with no cost, catch or twist unless the player asked for one (age policy permitting). Narrate it happening and the world's awe; persist any further tangible change with ops.`;
+The wish succeeds fully and at once, with no cost, catch or twist unless the player asked for one (age policy permitting). Narrate it happening and the world's awe; persist any further tangible change with ops. If it changes what the story is about (who the heroes' allies and enemies are, or what they are fighting for), also replace /adventureGoal with the new goal in one sentence; from now on the story follows the new direction.`;
 
     log(`Custom action prompt (creative mode${matchedNames.length ? `, refs: ${matchedNames.join(', ')}` : ', novel'}): ${actionText.slice(0, 80)}...`);
 

@@ -2141,6 +2141,69 @@ await block(async () => {
   check(line === 'Michael: −17 HP, ⭐ level 3 (+27 HP), +20 coins', `the recap shows harm and a level-up heal apart (${line})`);
 });
 
+await block(async () => {
+  // Phone 10-09: "special moves don't let me choose which foe". The battle menu
+  // now asks; the pick reaches the move by foe id.
+  const B = await import('../battle.js');
+  const two = () => {
+    const { p } = fresh({ enemy: { name: 'Corporate Assassin Alpha', hp: 300, maxHp: 300, atk: 1, def: 0 } });
+    gameState.enemies.push({ ...gameState.enemies[0], id: 'enemy_beta', name: 'Corporate Assassin Beta', hp: 300, maxHp: 300, statusEffects: [] });
+    p.mp = p.maxMp = 99;
+    return p;
+  };
+  const hits = async (setup, type, text) => {
+    const p = two(); setup(p); startFight();
+    gameState.pickedTargetId = 'enemy_beta'; pinRandom(0.5);
+    await AH.handlePlayerChoice(type, text); unpinRandom();
+    const [a, b] = gameState.enemies;
+    return `${300 - a.hp}/${300 - b.hp}`;
+  };
+  const move = await hits(p => { p.specialMoves = [{ id: 'm1', name: 'Arc Smash', mpCost: 0, cooldown: 2, mechanics: { directDamage: 20 } }]; }, 'Special', 'Use Arc Smash');
+  const spell = await hits(p => { p.spellcasting = { knownSpells: [{ id: 's1', name: 'Plasma Lance', school: 'ELEMENTAL', type: 'OFFENSIVE', level: 1, mpCost: 5, targeting: 'single', effects: { damage: 30 } }], preparedSpells: [] }; }, 'Spell', 'Cast Plasma Lance');
+  const bomb = await hits(p => { p.inventory.push({ id: 'b1', name: 'Smoke Bomb', type: 'Consumable', quantity: 1, stats: { throwStatus: 'Blind' } }); }, 'Item', 'Use Smoke Bomb');
+  const strike = await hits(() => {}, 'Special', 'Power Strike');
+  const onlyBeta = (s) => /^0\/[1-9]/.test(s);
+  check([move, spell, bomb, strike].every(onlyBeta), `the picked foe takes the blow (first/second foe damage): move ${move}, spell ${spell}, bomb ${bomb}, Power Strike ${strike}`);
+  // The menu marks what needs a target: single-target specials and throwables, not heals or area spells.
+  const p = two();
+  p.specialMoves = [{ id: 'm1', name: 'Arc Smash', mpCost: 0, mechanics: { directDamage: 20 } }];
+  p.spellcasting = { knownSpells: [
+    { id: 's1', name: 'Plasma Lance', mpCost: 5, targeting: 'single', effects: { damage: 30 } },
+    { id: 's2', name: 'Ion Storm', mpCost: 9, targeting: 'area', effects: { damage: 14 } },
+    { id: 's3', name: 'Nano Repair', mpCost: 8, targeting: 'ally', effects: { healing: 40 } }], preparedSpells: [] };
+  const t = Object.fromEntries(B.battleOptions('Special', p).map(o => [o.label.replace(/ \(.*$/, ''), o.targets]));
+  check(t['Arc Smash'] === 'one' && t['Plasma Lance'] === 'one' && t['Ion Storm'] === 'all' && t['Nano Repair'] === 'self' && t['Power Strike'] === 'one',
+    `which specials ask for a foe: ${JSON.stringify(t)}`);
+});
+
+await block(async () => {
+  // Phone 10-09: divine will turned the story to "humans and AI against the
+  // oppressors", and later turns drifted back to man against machine. It is
+  // now standing canon, sent with every turn, and survives a save.
+  const offline = globalThis.fetch; const bodies = [];
+  globalThis.fetch = window.fetch = async (u, o) => {
+    bodies.push(o.body);
+    const content = JSON.stringify({ narration: 'The AI ally nods.', ops: [], choices: ['brave', 'clever', 'sneaky', 'kind', 'luck'].map(stat => ({ stat, safe: `S ${stat}`, bold: `B ${stat}`, reckless: `R ${stat}` })) });
+    return { ok: true, status: 200, statusText: '200', headers: { get: () => null }, json: async () => ({ choices: [{ message: { content } }] }), text: async () => '' };
+  };
+  localStorage.setItem('adv.cloudProvider', 'groq_qwen'); localStorage.setItem('adv.apiKey.api.groq.com', 'test');
+  const realGet = document.getElementById.bind(document);
+  document.getElementById = (id) => id === 'choicesContainer' ? { querySelectorAll: () => [{}] } : realGet(id);
+  try {
+    fresh(); gameState.allowCustomActions = true;
+    const wish = 'Humans and the AIs are allies now; together we fight the corporate oppressors.';
+    await window.handleGodModeChoice(wish);
+    gameState.isLoading = false;
+    gameState.currentChoices = [['brave', 'Safe'], ['clever', 'Bold'], ['sneaky', 'Reckless'], ['kind', 'Safe'], ['luck', 'Bold']].map(([stat, type]) => ({ stat, type, text: `go ${stat}` }));
+    bodies.length = 0; pinRandom(0.5);
+    await AH.handlePlayerChoice('Safe', 'go brave'); unpinRandom();
+    const sent = bodies.join('\n');
+    const saved = JSON.parse(JSON.stringify(gameState)).playerCanon || [];
+    check(/STORY DIRECTION/.test(sent) && sent.includes('together we fight the corporate oppressors') && saved.length === 1,
+      `divine will stays canon on the next ordinary turn (${/STORY DIRECTION/.test(sent) ? 'sent' : 'NOT sent'}) and is saved (${saved.length})`);
+  } finally { document.getElementById = realGet; globalThis.fetch = window.fetch = offline; localStorage.removeItem('adv.apiKey.api.groq.com'); localStorage.removeItem('adv.cloudProvider'); }
+});
+
 console.error = realError;
 out(`\nfetch attempts blocked: ${fetchCalls}; elapsed ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 out(failed ? `✗ ${failed} mechanics check(s) failed` : '✓ all mechanics checks passed');
