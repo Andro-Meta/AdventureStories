@@ -1962,6 +1962,91 @@ await block(async () => {
     `the items still work (HP 10 -> ${p.hp}, MP 0 -> ${p.mp}, Brave ${brave} -> ${p.stats.brave}); a bomb is kept for a fight (${p.inventory.some(i => i.id === 'bomb')})`);
 });
 
+await block(async () => {
+  // Michael 10-09: no Bag in a fight; the battle Item command is the way to the bag.
+  const qa = UI.elements.quickActionButtons || {};
+  const fake = () => ({ disabled: false, title: '', style: {}, classList: { toggle() {}, add() {}, remove() {} } });
+  const real = { ...qa };
+  for (const k of ['inventoryBtn', 'shopBtn', 'specialBtn', 'menuBtn', 'helpAllyBtn']) qa[k] = qa[k] || fake();
+  UI.elements.quickActionButtons = qa;
+  fresh(); gameState.inCombat = true; UI.updateQuickActions(); const inFight = qa.inventoryBtn.disabled;
+  gameState.inCombat = false; UI.updateQuickActions(); const outside = qa.inventoryBtn.disabled;
+  Object.assign(qa, real);
+  check(inFight && !outside, `the Bag is closed in a fight (${inFight}) and open outside one (${!outside})`);
+});
+
+section('Batch 28: the battle Item command with every kind of item (10-09)');
+
+await block(async () => {
+  const Items = await import('../items.js');
+  const B = await import('../battle.js');
+  // One fight round with one item: what changed?
+  async function useInFight(item) {
+    const { p } = fresh({ enemy: { hp: 300, maxHp: 300, atk: 1 } });
+    p.maxHp = 200; p.hp = 50; p.maxMp = 100; p.mp = 0; p.abilityPicks = 0;
+    p.inventory.push({ quantity: 2, ...item, id: 'it_' + Math.random().toString(36).slice(2) });
+    startFight();
+    Combat.applyStatusEffect(p, 'Poison', 3, {}, 'test');
+    Combat.applyStatusEffect(p, 'Haste', 3, {}, 'test');
+    const st0 = JSON.stringify(p.stats), foe = gameState.enemies[0];
+    pinRandom(0.5);
+    try { await AH.handlePlayerChoice('Item', `Use ${item.name}`); } finally { unpinRandom(); }
+    const left = p.inventory.find(i => i.name === item.name)?.quantity ?? 0;
+    const names = (p.statusEffects || []).map(e => e.name);
+    return { p, foe, left, names, statsUp: JSON.stringify(p.stats) !== st0,
+      foeFx: (foe.statusEffects || []).map(e => e.name), detail: B.battleOptions('Item', p).map(o => o.detail).join(' / ') };
+  }
+  const r = {};
+  r.heal = await useInFight({ name: 'Healing Potion', type: 'Consumable', effect: 'Restores 55 HP.', stats: { heal: 55 } });
+  r.mp = await useInFight({ name: 'Focus Tonic', type: 'Consumable', effect: 'Restores 18 MP.', stats: { mp: 18 } });
+  r.cure = await useInFight({ name: 'Antidote', type: 'Consumable', effect: 'Cures every ailment and restores 22 HP.', stats: { cure: 'All', heal: 22 } });
+  r.buff = await useInFight({ name: 'Swift Brew', type: 'Consumable', effect: 'Grants Shield.', stats: { applyStatus: ['Shield'] } });
+  r.throw = await useInFight({ name: 'Smoke Bomb', type: 'Consumable', effect: 'Throw it at a foe in a fight: Blind.', stats: { throwStatus: 'Blind' } });
+  r.elixir = await useInFight({ name: 'Elixir of Nerve', type: 'Consumable', effect: 'Permanently raises Brave by 1.', stats: { statUp: { brave: 1 } } });
+  r.teach = await useInFight({ name: 'Ancient Scroll', type: 'Consumable', effect: 'Read it to learn a new special.', stats: { teach: 1 } });
+  check(r.heal.p.hp > 50 && r.heal.left === 1, `heal: HP 50 -> ${r.heal.p.hp}, one of two used (${r.heal.left} left)`);
+  check(r.mp.p.mp >= 18 && r.mp.left === 1, `MP tonic: MP 0 -> ${r.mp.p.mp}`);
+  check(!r.cure.names.includes('Poison') && r.cure.names.includes('Haste') && r.cure.p.hp > 50, `cure: poison gone, Haste kept (${r.cure.names.join(',') || 'none'}), HP ${r.cure.p.hp}`);
+  check(r.buff.names.includes('Shield'), `buff: Shield on the hero (${r.buff.names.join(',')})`);
+  check(r.throw.foeFx.includes('Blind') && r.throw.foe.hp < 300 && r.throw.p.hp <= 50 + 0 && !r.throw.names.includes('Blind'), `throw: foe Blind (${r.throw.foeFx.join(',')}), foe HP ${r.throw.foe.hp}, never on the hero`);
+  check(r.elixir.statsUp, 'elixir: a stat rises in a fight too');
+  check(r.teach.p.abilityPicks === 1, `scroll: a special to learn after the fight (${r.teach.p.abilityPicks})`);
+  const vague = Object.entries(r).filter(([, v]) => !/heal|MP|throw|gives|cures|raises|teaches/i.test(v.detail || ''));
+  check(vague.length === 0, `the Item picker says what each does: ${Object.entries(r).map(([k, v]) => `${k}: ${v.detail}`).join(' | ')}`);
+
+  // Only things that work in a fight show in the Item menu (Michael 10-09).
+  const { p } = fresh();
+  p.inventory.push(
+    { id: 'a', name: 'Steel Sword', type: 'Weapon', stats: { atk: 5 } },
+    { id: 'b', name: 'Lucky Rabbit Foot', type: 'Misc', stats: { luck: 1 } },
+    { id: 'c', name: 'Crypt Key', type: 'Quest', effect: 'Opens the crypt door.' },
+    { id: 'd', name: 'Mana Draught', type: 'Consumable', effect: 'Restores focus.' },
+    { id: 'e', name: 'Phoenix Feather', type: 'Consumable', stats: { revive: true } },
+    { id: 'f', name: 'Healing Potion', type: 'Consumable', stats: { heal: 30 } });
+  const menu = B.battleOptions('Item', p).map(o => o.label);
+  check(menu.length === 2 && menu.includes('Healing Potion') && menu.includes('Mana Draught'), `the battle Item menu lists only fight items (${menu.join(', ')}): no gear, charm, quest item or revive`);
+
+  // Quest items can't be sold or dropped.
+  gameState.inCombat = false;
+  AH.sellInventoryItem('c'); try { AH.confirmDropItem('c'); UI.elements.confirmYesBtn?.onclick?.(); } catch (_) {}
+  const kept = p.inventory.some(i => i.id === 'c');
+  check(kept, `the quest key can't be sold or dropped (${kept})`);
+
+  // Every generated consumable, every theme and tier, through the real command.
+  const themes = ['fantasy', 'space', 'pirate', 'haunted', 'cyberpunk', 'wild_west', 'dinosaur', 'arctic', 'custom'];
+  let n = 0, nothing = 0, threw = 0; const dull = [];
+  for (const th of themes) for (const tier of ['Low', 'Medium', 'High', 'Special', 'Legendary']) for (let i = 0; i < 4; i++) {
+    const c = Items.generateThemedItem(th, tier, 'Consumable');
+    if (c.stats?.revive) continue; n++;
+    try {
+      const u = await useInFight(c);
+      const did = u.p.hp !== 50 || u.p.mp > 0 || u.statsUp || u.p.abilityPicks || u.foeFx.length || u.names.some(x => x !== 'Haste') || !u.names.includes('Poison');
+      if (!did) { nothing++; if (dull.length < 4) dull.push(`${c.name} ${JSON.stringify(c.stats)}`); }
+    } catch (e) { threw++; if (dull.length < 4) dull.push(`${c.name} threw ${e.message}`); }
+  }
+  check(nothing === 0 && threw === 0, `${n} generated consumables used in a fight: ${nothing} did nothing, ${threw} threw${dull.length ? ` (${dull.join('; ')})` : ''}`);
+});
+
 console.error = realError;
 out(`\nfetch attempts blocked: ${fetchCalls}; elapsed ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 out(failed ? `✗ ${failed} mechanics check(s) failed` : '✓ all mechanics checks passed');

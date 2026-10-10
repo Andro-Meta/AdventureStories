@@ -111,8 +111,12 @@ if (globalThis.__raw) console.log(`storyteller got the mix right by itself: ${__
 if (globalThis.__mix) console.log(`approach balance: ${__mix.balanced}/${__mix.sets} exploration sets had all five approaches`);
 console.log(`choice types used: ${[...used].join(', ')}`);
 
-// ---- Bag ----
+// ---- Bag ---- (closed in a fight: the Item command is the way there)
 m = await errMark();
+if (await page.$eval('#inventoryBtn', b => b.disabled) && await gs(g => g.inCombat)) {
+  console.log('  bag closed during battle (expected)');
+  await page.evaluate(async () => { const { gameState: g } = await import('/state.js'); g.inCombat = false; g.enemies = []; (await import("/ui.js")).updateQuickActions(); });
+}
 await page.click('#inventoryBtn'); await page.waitForTimeout(800);
 shot('bag'); await displayCheck('bag');
 const bag = await page.evaluate(() => ({ screen: document.querySelector('.screen.active')?.id, cards: document.querySelectorAll('#inventoryDisplay .item-card').length, use: document.querySelectorAll('#inventoryDisplay .useItemBtn').length }));

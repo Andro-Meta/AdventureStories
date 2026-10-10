@@ -6,6 +6,7 @@
 //  - experience and levels: every defeated foe gives XP to the whole party;
 //    a level-up raises max HP/MP, attack, defense and heals a little.
 import { gameState } from './state.js';
+import { battleUsable } from './items.js';
 import { gainXp } from './progression.js';
 import * as Progression from './progression.js';
 import { getCurrentThemeAdaptation } from './adaptiveAbilities.js';
@@ -69,7 +70,7 @@ export function awardXp(enemy) {
  */
 export function battleMenu(hero) {
     const foes = (gameState.enemies || []).filter(e => e && !e.isDefeated && e.hp > 0);
-    const items = (hero?.inventory || []).filter(i => i?.type === 'Consumable' && !i.stats?.revive && (i.quantity == null || i.quantity > 0));
+    const items = (hero?.inventory || []).filter(battleUsable);
     return [
         { type: 'Attack', text: foes.length === 1 ? `Attack ${foes[0].name}` : 'Attack a foe' },
         { type: 'Special', text: 'Use a special move or spell' },
@@ -88,7 +89,7 @@ export function battleOptions(type, hero) {
         return foes.map(e => ({ label: e.name, detail: `${e.hp}/${e.maxHp} HP${e.isBoss ? ' · boss' : ''}`, type: 'Attack', text: `Attack ${e.name}` }));
     }
     if (type === 'Item') {
-        const items = (hero.inventory || []).filter(i => i?.type === 'Consumable' && (i.quantity == null || i.quantity > 0) && !i.stats?.revive);
+        const items = (hero.inventory || []).filter(battleUsable);
         if (!items.length) return [{ label: 'Catch your breath', detail: 'No usable items: recover a little HP', type: 'Item', text: 'Catch a breath' }];
         return items.map(i => ({ label: `${i.name}${i.quantity > 1 ? ` ×${i.quantity}` : ''}`, detail: itemDetail(i), type: 'Item', text: `Use ${i.name}` }));
     }
@@ -131,7 +132,10 @@ function itemDetail(i) {
     if (s.healPercent) bits.push(`heals ${Math.round(s.healPercent * 100)}%`);
     if (s.throwStatus) bits.push(`throw: ${s.throwStatus}`);
     if (s.applyStatus) bits.push(`gives ${[].concat(s.applyStatus).join(', ')}`);
-    if (s.cure) bits.push(`cures ${s.cure}`);
+    if (s.cure) bits.push(s.cure === 'All' ? 'cures ailments' : `cures ${s.cure}`);
+    if (s.mp) bits.push(`+${s.mp} MP`);
+    if (s.statUp) bits.push(`raises ${Object.keys(s.statUp).map(k => Progression.STATS[k]?.name || k).join(', ')} for good`);
+    if (s.teach) bits.push('teaches a new special');
     return bits.join(' · ') || (i.effect || '').slice(0, 60);
 }
 

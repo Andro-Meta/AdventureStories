@@ -1104,9 +1104,10 @@ export function updateQuickActions() {
     // Menu button is only disabled during loading
     const menuDisabled = gameState.isLoading;
 
-    elements.quickActionButtons.inventoryBtn.disabled = baseDisabled;
-    // No shopping mid-battle (classic RPG rule); Bag and Moves still work there,
-    // and using an item or spell from them costs the turn.
+    // No bag or shop mid-battle (Michael 10-09): the battle Item command is the
+    // way to use something from the bag in a fight.
+    elements.quickActionButtons.inventoryBtn.disabled = baseDisabled || !!gameState.inCombat;
+    elements.quickActionButtons.inventoryBtn.title = gameState.inCombat ? 'Use the Item command in a fight' : 'Inventory';
     elements.quickActionButtons.shopBtn.disabled = baseDisabled || !!gameState.inCombat;
     elements.quickActionButtons.shopBtn.title = gameState.inCombat ? 'Shop is closed during battle' : 'Shop';
     elements.quickActionButtons.specialBtn.disabled = baseDisabled;
@@ -1481,7 +1482,7 @@ function createItemCard(item, context) {
                 ${item.type === 'Armor' && !isEquipped && !gameState.inCombat ? `<button class="equipItemBtn" data-slot="armor" ${cannotAct ? 'disabled' : ''}>Equip Armor</button>` : ''}
                 ${isEquipped && !gameState.inCombat ? `<button class="unequipItemBtn" ${cannotAct ? 'disabled' : ''}>Unequip</button>` : ''}
                 ${!isEquipped && item.type !== 'Quest' && !gameState.inCombat ? `<button class="sellItemBtn btn-secondary" ${cannotAct ? 'disabled' : ''}>Sell (${sellValue(item)}💰)</button>` : ''}
-                ${gameState.inCombat ? '' : `<button class="dropItemBtn" ${cannotAct ? 'disabled' : ''}>Drop</button>`}
+                ${gameState.inCombat || item.type === 'Quest' ? '' : `<button class="dropItemBtn" ${cannotAct ? 'disabled' : ''}>Drop</button>`}
             ` : ''}
             ${context === 'shop' ? `
                 <button class="buyItemBtn" ${!item.cost || !canAfford || cannotAct ? 'disabled' : ''}>

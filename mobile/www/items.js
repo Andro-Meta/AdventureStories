@@ -874,6 +874,16 @@ function fillConsumable(item, tier) {
  * none (an exact "restores 27 HP" becomes heal 27). Anything unrecognised
  * refreshes a little HP and MP rather than doing nothing. Mutates and returns item.
  */
+// What the battle Item command can use (Michael 10-09): a consumable that does
+// something in a fight. Gear, lucky charms, quest items and revives (Help
+// Ally) never show there.
+const FIGHT_EFFECTS = ['heal', 'healPercent', 'mp', 'mpPercent', 'cure', 'applyStatus', 'statUp', 'throwStatus', 'teach'];
+export function battleUsable(i) {
+    if (!i || i.type !== 'Consumable' || i.stats?.revive || (i.quantity != null && i.quantity <= 0)) return false;
+    inferItemEffects(i); // words become real effects first (older saves)
+    return FIGHT_EFFECTS.some(k => i.stats?.[k]);
+}
+
 export function inferItemEffects(item) {
     if (!item || item.type !== 'Consumable') return item;
     const st = item.stats || {};

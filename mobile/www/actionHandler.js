@@ -314,7 +314,7 @@ export async function handlePlayerChoice(actionType, choiceText) {
 
                     case 'Item': {
                         cbStep('3-Item', 'enter Item case');
-                        const usable = (currentPlayer.inventory || []).filter(i => i && i.type === 'Consumable' && !i.stats?.revive && (i.quantity == null || i.quantity > 0));
+                        const usable = (currentPlayer.inventory || []).filter(Items.battleUsable);
                         const lowerChoice = String(choiceText || '').toLowerCase();
                         // The item the choice names, else one that heals, else any consumable.
                         // "Catch a breath" (battle menu, empty pack) uses nothing.
@@ -354,7 +354,8 @@ export async function handlePlayerChoice(actionType, choiceText) {
                             if (item.stats?.cure) {
                                 const cure = item.stats.cure;
                                 const n0 = (currentPlayer.statusEffects || []).length;
-                                currentPlayer.statusEffects = (currentPlayer.statusEffects || []).filter(fx => cure !== 'All' && ![].concat(cure).includes(fx.name));
+                                // Cures ailments only: Haste, Shield and other buffs stay (they were stripped too).
+                                currentPlayer.statusEffects = (currentPlayer.statusEffects || []).filter(fx => Combat.lookupStatusEffect(fx?.name)?.type === 'buff' || (cure !== 'All' && ![].concat(cure).includes(fx.name)));
                                 if (n0 !== currentPlayer.statusEffects.length) parts.push(`is cured`);
                             }
                             parts.push(...applyItemExtras(currentPlayer, item));
@@ -1497,7 +1498,7 @@ export async function useInventoryItem(itemId) {
             // A heal item's cure / extra status still apply (the battle path does both).
             if (item.stats?.cure && player.statusEffects?.length) {
                 const cure = item.stats.cure;
-                player.statusEffects = player.statusEffects.filter(e => !(e && (cure === 'All' || e.name === cure)));
+                player.statusEffects = player.statusEffects.filter(e => Combat.lookupStatusEffect(e?.name)?.type === 'buff' || !(e && (cure === 'All' || e.name === cure)));
             }
             for (const name of [].concat(item.stats?.applyStatus || [])) {
                 Combat.applyStatusEffect(player, name, Number(item.stats.duration) || 3, {}, `Used ${item.name}`);
@@ -1845,6 +1846,7 @@ function dropInventoryItem(itemId) {
           return;
      }
      const itemToDrop = player.inventory[itemIndex];
+     if (itemToDrop.type === 'Quest') { UI.showPopup(`${itemToDrop.name} is needed for the quest.`, 'info'); return; }
      log(`Dropping item: ${itemToDrop.name} (ID: ${itemId})`);
      let unequipped = false;
 
