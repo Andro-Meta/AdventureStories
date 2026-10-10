@@ -2268,6 +2268,31 @@ await block(async () => {
   localStorage.removeItem('adv.heroes');
 });
 
+await block(async () => {
+  // Saves after shop, bag and level-up changes (Michael 10-09), grouped: a burst of taps = one save.
+  const { p } = fresh(); gameState.gameId = 'savetest'; gameState.inCombat = false; gameState.isLoading = false;
+  p.coins = 500;
+  p.inventory.push({ id: 'blade', name: 'Test Blade', type: 'Weapon', tier: 'Low', stats: { atk: 7 } });
+  const realSet = localStorage.setItem.bind(localStorage); let writes = 0;
+  localStorage.setItem = (k, v) => { if (String(k).startsWith('AG-')) writes++; return realSet(k, v); };
+  const wait = (ms) => new Promise(r => setTimeout(r, ms));
+  try {
+    AH.equipInventoryItem('blade', 'weapon');
+    AH.buyShopItem({ name: 'Healing Potion', type: 'Consumable', tier: 'Low', cost: 10, stats: { heal: 30 } });
+    AH.buyShopItem({ name: 'Focus Tonic', type: 'Consumable', tier: 'Low', cost: 10, stats: { mp: 18 } });
+    await wait(700);
+    const key = Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i)).find(k => k?.startsWith('AG-') && k.includes('savetest'));
+    const saved = key ? JSON.parse(localStorage.getItem(key)).gameState.players[0] : null;
+    const gotAll = saved && saved.equipment?.weapon === 'blade' && ['Healing Potion', 'Focus Tonic'].every(n => saved.inventory.some(i => i.name === n));
+    check(writes === 1 && gotAll, `equip + 2 buys in a row: ${writes} save, with all three changes (${!!gotAll}; weapon ${saved?.equipment?.weapon}, bag ${(saved?.inventory || []).map(i => i.name).join("|")}, coins ${saved?.coins})`);
+    writes = 0; gameState.isLoading = true;
+    AH.unequipInventoryItem('weapon'); await wait(700);
+    check(writes === 0, `no save while a story turn is in progress (${writes})`);
+    gameState.isLoading = false;
+    if (key) localStorage.removeItem(key);
+  } finally { localStorage.setItem = realSet; }
+});
+
 console.error = realError;
 out(`\nfetch attempts blocked: ${fetchCalls}; elapsed ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 out(failed ? `✗ ${failed} mechanics check(s) failed` : '✓ all mechanics checks passed');

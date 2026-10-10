@@ -67,6 +67,9 @@ if (typeof window !== 'undefined') {
 }
 
 /** HP, coins and item names per player, to diff before/after a turn. */
+/** Save soon after a change outside the story turn (saveLoad.requestAutosave). */
+const saveSoon = () => import('./saveLoad.js').then(m => m.requestAutosave()).catch(() => {});
+
 function snapshotParty() {
     return (gameState.players || []).map(p => ({
         name: p.name, hp: p.hp ?? 0, coins: p.coins ?? 0, level: p.level || 1, levelHeal: p.levelHealTotal || 0,
@@ -1670,6 +1673,7 @@ export async function useInventoryItem(itemId) {
 
      if (exploring) {
          log(`Bag (free, story unchanged): ${actionLog || item.name}`);
+         saveSoon();
          if (consumed && requiresAICall) UI.showPopup(actionLog.replace(/^.*?Result: |^.*?Effect: /, `${item.name}: `), 'info', 3000);
          UI.renderPlayerCards();
          if (gameState.currentChoices?.length && !gameState.isLoading) UI.renderChoices(gameState.currentChoices);
@@ -1781,6 +1785,7 @@ export function equipInventoryItem(itemId, slot) {
      UI.showPopup(`${itemToEquip.name} equipped.`, 'success');
      if (gameState.currentScreen === 'inventoryScreen') UI.renderInventory();
      UI.renderPlayerCards();
+     saveSoon(); // the change is kept even if the app closes now
      log("equipInventoryItem finished.");
  }
 
@@ -1828,6 +1833,7 @@ export function unequipInventoryItem(slot) {
            log(`Nothing equipped in ${slot} slot.`);
            UI.showPopup("Nothing equipped in that slot.", 'info');
       }
+      saveSoon(); // the change is kept even if the app closes now
       log("unequipInventoryItem finished.");
  }
 
@@ -1906,6 +1912,7 @@ function dropInventoryItem(itemId) {
 
      // Always re-render inventory if it's the current screen
      if (gameState.currentScreen === 'inventoryScreen') UI.renderInventory();
+     saveSoon(); // the change is kept even if the app closes now
      log("dropInventoryItem finished.");
  }
 
@@ -1970,6 +1977,7 @@ export function buyShopItem(itemData) {
          const markup = modifiedPrice > itemData.cost ? ` (${Math.round((modifiedPrice/itemData.cost - 1) * 100)}% markup)` : '';
          UI.showPopup(`Not enough coins! Need ${modifiedPrice}${discount}${markup}`, 'error');
      }
+      saveSoon(); // the change is kept even if the app closes now
       log("buyShopItem finished.");
  }
 
@@ -2270,5 +2278,5 @@ export function sellInventoryItem(itemId) {
     UI.renderInventory();
     UI.renderPlayerCards();
     UI.updateContextHeaders();
-    import('./saveLoad.js').then(m => m.autosave()).catch(() => {});
+    saveSoon();
 }

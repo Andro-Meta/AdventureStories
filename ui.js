@@ -836,6 +836,7 @@ export async function promptStatPoints(heroId = null) {
         }
     } finally {
         statPromptOpen = false;
+        import('./saveLoad.js').then(m => m.requestAutosave()).catch(() => {}); // stat and special picks are kept
         renderPlayerCards();
         if (gameState.currentChoices?.length && !gameState.isLoading) renderChoices(gameState.currentChoices);
     }
@@ -1296,6 +1297,7 @@ export function renderShop() {
         btn.addEventListener('click', () => {
             if (gameState.inCombat || (hero.coins || 0) < price) return;
             hero.coins -= price; hero.hp = hero.maxHp; hero.mp = hero.maxMp ?? hero.mp;
+            import('./saveLoad.js').then(m => m.requestAutosave()).catch(() => {});
             hero.statusEffects = (hero.statusEffects || []).filter(e => e?.name !== 'Flustered');
             showPopup(`${hero.name} rests at the inn: fully restored (-${price} coins).`, 'healing', 3000);
             renderPlayerCards(); updateContextHeaders(); renderShop();
