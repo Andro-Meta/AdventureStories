@@ -1,6 +1,6 @@
 {
   "name": "adventure-stories-mobile",
-  "version": "1.2.9",
+  "version": "1.3.0",
   "private": true,
   "description": "Capacitor wrapper for the Adventure Stories Android APK / AAB.",
   "scripts": {

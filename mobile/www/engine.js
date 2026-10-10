@@ -23,6 +23,7 @@ import * as Config from './config.js';
 import { levelUp } from './battle.js';
 import { gainXp, usableType, ensureStats, STAT_MAX } from './progression.js';
 import * as Items from './items.js';
+import { BEATS, isMainBeat, beatBlocked, climaxOpen } from './questDefinitions.js';
 
 /**
  * Phase 1.2: Look up a status effect from Config.STATUS_EFFECTS by name
@@ -495,6 +496,8 @@ const PATHS = [
             const same = (gs.enemies || []).filter(e => String(e.name).trim().toLowerCase() === value.name.trim().toLowerCase());
             if (same.some(e => !e.isDefeated)) return `"${value.name}" is already in the fight`;
             if (same.some(e => e.isBoss) && !gs.isGoalComplete) return `"${value.name}" was already defeated`; // god mode may summon a rematch
+            // The heroes travel to the villain; they don't stumble on them (Michael 10-10).
+            if (isVillain(gs, value.name) && !climaxOpen(gs)) return `${gs.questProgress.villain} is not fought before the final confrontation (they escape)`;
             return null;
         },
         apply: (_m, value, gs) => {
@@ -527,7 +530,12 @@ const PATHS = [
             // and a minion at the climax stays a minion.
             const climaxFoe = !msNames.includes('final_blow') && !(gs.enemies || []).some(e => e.isBoss)
                 && (villain ? sameName(value.name, villain) : msNames.includes('final_confrontation'));
-            if (value.isBoss || climaxFoe) {
+            // isBoss before the climax is just a tough foe; the boss waits in the stronghold.
+            if ((value.isBoss || climaxFoe) && climaxOpen(gs)) {
+                // A boss spawned without the beat: record the confrontation it is.
+                if (!msNames.includes('final_confrontation') && !gs.isGoalComplete && !gs.divineTurn) {
+                    (gs.questProgress.milestones = gs.questProgress.milestones || []).push({ id: `ms_${Date.now()}`, name: 'final_confrontation', displayName: 'final_confrontation', description: 'The final confrontation', turn: gs.turn, completed: true });
+                }
                 const party = Math.max(1, (gs.players || []).length);
                 enemy.isBoss = true;
                 // Fixed size, not "at least": the narrator's 75-HP magistrate took a
@@ -737,6 +745,9 @@ const PATHS = [
             if (norm === 'final blow' && !bossBeaten(gs)) {
                 return 'final_blow must wait until the boss is defeated';
             }
+            // The story spine: one beat at a time, in order, with room between them.
+            const canon = norm.replace(/ /g, '_');
+            if (isMainBeat(canon) && !gs.divineTurn) { const why = beatBlocked(gs, canon); if (why) return why; }
             return null;
         },
         apply: (_m, value, gs) => {
@@ -765,6 +776,7 @@ const PATHS = [
             gs.questProgress.completionPercentage = questPercent(gs);
             if (canonicalName === 'antagonist_revealed' && typeof value.villain === 'string' && value.villain.trim()) {
                 gs.questProgress.villain = value.villain.trim().slice(0, 60); // the final boss, by name
+                if (typeof value.lair === 'string' && value.lair.trim()) gs.questProgress.lair = value.lair.trim().slice(0, 80); // where the journey ends
             }
             try { recordStoryBeat('milestone', canonicalName, 0.7); } catch (_) {}
             // Phase 2: jail mini-quest hook. Pass the canonical name — the
@@ -1009,8 +1021,13 @@ function itemTier(t) {
 }
 
 // Quest progress from milestones reached: each story beat is worth a fixed share.
-const MILESTONE_PCT = { call_to_adventure: 5, world_introduced: 12, stakes_clear: 20, ally_found: 35,
-    first_obstacle_overcome: 50, antagonist_revealed: 65, final_confrontation: 80, final_blow: 100 };
+// Progress bar: each beat of the spine is an equal step.
+const MILESTONE_PCT = Object.fromEntries(BEATS.map((b, i) => [b.name, Math.round(100 * (i + 1) / BEATS.length)]));
+const isVillain = (gs, name) => {
+    const bare = (n) => String(n || '').toLowerCase().replace(/^the\s+/, '').trim();
+    const v = bare(gs.questProgress?.villain), n = bare(name);
+    return !!v && !!n && (n.includes(v) || v.includes(n));
+};
 // God-mode powers: after the main quest is won, or during a Divine Will turn.
 const divine = (gs) => !!(gs?.isGoalComplete || gs?.divineTurn);
 const THEMES = ['fantasy', 'space', 'pirate', 'underwater', 'jungle', 'future_utopia', 'dinosaur', 'arctic', 'steampunk', 'haunted', 'cyberpunk', 'wild_west', 'post_apoc', 'custom'];

@@ -1,235 +1,151 @@
-// questDefinitions.js
-// Phase 3 main-quest scaffolding.
+// questDefinitions.js - the main quest's story spine.
 //
-// Without an actual main quest the player can complete, "god mode unlocked
-// when the main quest finishes" is meaningless because the main quest never
-// finishes. This file defines a generic 3-act structure that any theme can
-// wear. The narrator gets hints about which act we're in via the system
-// prompt, and the diff engine advances the quest by adding milestones and
-// eventually flipping /isGoalComplete to true.
-//
-// We deliberately keep the quest theme-agnostic. The narrator fills in the
-// specifics (an artifact, a villain, a place) based on the campaign theme.
-// The owner can replace this scaffold with hand-authored quests later.
+// The game owns the structure, the storyteller writes the scenes (research
+// 10-10: Facade's drama manager, Hidden Door, beat sheets). The quest is a
+// fixed ladder of story beats; each turn the storyteller is told only the ONE
+// beat that comes next, and the engine refuses beats out of order, too close
+// together, and any boss fight before the heroes have travelled to the
+// villain's stronghold (Michael: "we always stumble upon the boss").
 
-/**
- * Generic three-act arc.
- *
- * Act 1: Call to adventure. Player meets the world, learns the stakes,
- *         discovers what's wrong. Ends when narrator emits the "stakes_clear"
- *         milestone.
- * Act 2: The trial. Player overcomes obstacles, gathers allies/items,
- *         encounters the antagonist or the antagonist's reach. Ends with
- *         "antagonist_revealed" + "trial_passed" milestones.
- * Act 3: The reckoning. Climactic confrontation, resolution, transformation.
- *         Ends when narrator emits "final_blow" milestone and replaces
- *         /isGoalComplete to true.
- */
-export const MAIN_QUEST_ARC = [
-    {
-        id: 'act1',
-        name: 'Act 1 — Call to Adventure',
-        targetMilestones: ['call_to_adventure', 'world_introduced', 'stakes_clear'],
-        targetTurnRange: [1, 12],
-        narratorHint:
-`This is Act 1 of the main quest. You are establishing the world and the threat.
-- STORY CIRCLE 1-2 (You, Need): first show the heroes in their ordinary world, then hit them with a want or problem that breaks it.
-- Introduce 1-2 named NPCs and at least one named location.
-- Plant the inciting incident: something is wrong, the player is the only one who can fix it.
-- By turn 4-6, you MUST set /adventureGoal to a clear sentence ("Restore the X before the Y").
-- Use these EXACT milestone names verbatim, in order, as you reach each beat:
-   1. "call_to_adventure"   — emit on the turn the inciting incident lands.
-   2. "world_introduced"    — emit once 1-2 NPCs and a named location are on stage.
-   3. "stakes_clear"        — emit when the player understands what they must do. THIS IS REQUIRED to advance to Act 2.
-- PACING: emit AT MOST ONE milestone per turn. Turn 1 should establish setting only — usually no milestone, or just call_to_adventure if the player's first action triggers the inciting beat. Don't fire all three Act 1 milestones in the opening scene; that ruins the slow burn.
-- Use snake_case milestone names exactly as listed; never paraphrase ("The Stakes Become Clear" is WRONG, use "stakes_clear").`
-    },
-    {
-        id: 'act2',
-        name: 'Act 2 — The Trial',
-        targetMilestones: ['ally_found', 'first_obstacle_overcome', 'antagonist_revealed'],
-        targetTurnRange: [13, 30],
-        narratorHint:
-`This is Act 2 of the main quest. The player is in the middle of the journey.
-- STORY CIRCLE 3-5 (Go, Search, Find): push them into unfamiliar places, let them try and fail and adapt, then let them find what they sought, but not the way they expected.
-- Introduce the antagonist (NPC) or their reach (location/item).
-- Give the player tangible progress: an ally NPC, a key item, a partial victory.
-- Include at least one combat encounter (spawn an enemy via /enemies/-, set /inCombat: true).
-- Use these EXACT milestone names verbatim, in order:
-   1. "ally_found"              — when an ally NPC joins or commits to help.
-   2. "first_obstacle_overcome" — when the player wins a meaningful trial (combat, puzzle, social).
-   3. "antagonist_revealed"     — when the antagonist's identity is shown. THIS IS REQUIRED to advance to Act 3.
-      The villain must have a NAME native to the theme, and the milestone value must carry it:
-      {"name":"antagonist_revealed","description":"...","villain":"<Villain Name>"}. That villain is the final boss.
-- PACING: emit AT MOST ONE milestone per turn. Space these milestones across multiple turns.
-- Use snake_case milestone names exactly as listed; never paraphrase.`
-    },
-    {
-        id: 'act3',
-        name: 'Act 3 — The Reckoning',
-        targetMilestones: ['final_confrontation', 'final_blow'],
-        targetTurnRange: [31, 50],
-        narratorHint:
-`- The main villain is a BOSS: when the final fight starts, add it with /enemies/- including "isBoss": true.
-  If a MAIN VILLAIN is named below, the boss IS that villain: use that exact name.
-This is Act 3 of the main quest. The player is at the climax.
-- STORY CIRCLE 6-8 (Take, Return, Change): before the victory the heroes pay a real price (a loss, a broken treasure, a hard choice, an ally hurt). Then they win, and the closing beats show how they have changed.
-- Pay off every OPEN THREAD before the final_blow: each setup gets its moment.
-- The climax is a FIGHT with the main villain (the boss). The quest is won only by defeating the boss in battle; the game records the win when the boss falls.
-- Use these EXACT milestone names verbatim, in order:
-   1. "final_confrontation" — when the player faces the antagonist directly; in the same turn add the villain with /enemies/- ("isBoss": true) and replace /inCombat true.
-   2. "final_blow"          — only after the boss has been defeated in the fight (the game adds it itself on the kill).
-- PACING: emit AT MOST ONE milestone per turn. The climactic act deserves multiple beats.
-- Winning UNLOCKS GOD MODE — the player gains the power
-  to type any free-form action and have the world respond. Foreshadow this with awe in the
-  closing prose ("the world bends to your will now").
-- Use snake_case milestone names exactly as listed; never paraphrase.`
-    }
+// Rounds between two beats: the story gets room to breathe (about 40-75
+// rounds to the boss), and a stall nudge pushes the next beat after 5 idle rounds.
+export const BEAT_GAP = 3;
+
+// In order. `beat` is what the storyteller is asked for (VILLAIN and LAIR are
+// filled in once known); `says` is the next step shown to players.
+export const BEATS = [
+    { name: 'call_to_adventure', act: 1, says: 'Find out what is wrong', beat: 'the inciting incident: something breaks the heroes\' ordinary world' },
+    { name: 'world_introduced', act: 1, says: 'Meet the people and places involved', beat: 'bring one or two named people and a named place into the story' },
+    { name: 'villain_glimpsed', act: 1, says: 'Notice the shadow behind it all', beat: 'a sign of the hidden enemy\'s reach (a servant, a mark, a rumour); not the enemy in person, no name yet' },
+    { name: 'stakes_clear', act: 1, says: 'Learn what you must do', beat: 'make clear what the heroes must do, and what happens if they fail' },
+    { name: 'ally_found', act: 2, says: 'Find someone to help you', beat: 'someone joins the heroes or commits to help' },
+    { name: 'first_obstacle_overcome', act: 2, says: 'Get past the first big obstacle', beat: 'the heroes win a meaningful trial (a fight, a puzzle or a hard conversation)' },
+    { name: 'midpoint_twist', act: 2, says: 'Survive a twist', beat: 'a reversal: a betrayal, a loss or a truth that changes the shape of the quest' },
+    { name: 'antagonist_revealed', act: 2, says: 'Discover who is behind it all', beat: 'the enemy appears in person with a name native to the theme, shows their power, and gets away (no fight with them yet). The milestone carries {"villain":"<Name>","lair":"<the stronghold they rule from>"}' },
+    { name: 'all_is_lost', act: 2, says: 'Face the darkest hour', beat: 'the darkest moment: the heroes lose something or someone that matters' },
+    { name: 'path_to_lair', act: 2, says: 'Find the way to the enemy', beat: 'the heroes learn how to reach VILLAIN at LAIR, and a weakness they can use' },
+    { name: 'journey_to_lair', act: 3, says: 'Journey to the stronghold', beat: 'the road to LAIR: VILLAIN\'s power shows in the land, and old threads come back' },
+    { name: 'lair_reached', act: 3, says: 'Reach the stronghold', beat: 'arrive at LAIR; a guardian blocks the way (an ordinary foe, not VILLAIN)' },
+    { name: 'final_confrontation', act: 3, says: 'Face the final challenge', beat: 'face VILLAIN in LAIR: in the same turn add them with /enemies/- ("isBoss": true) and replace /inCombat true' },
+    { name: 'final_blow', act: 3, says: 'Win the final showdown', beat: 'win the fight; the game records the win when the boss falls' }
 ];
+const BEAT_INDEX = Object.fromEntries(BEATS.map((b, i) => [b.name, i]));
+export const isMainBeat = (name) => name in BEAT_INDEX;
+
+export const MAIN_QUEST_ARC = [
+    { id: 'act1', name: 'Act 1 — Call to Adventure' },
+    { id: 'act2', name: 'Act 2 — The Trial' },
+    { id: 'act3', name: 'Act 3 — The Journey and the Reckoning' }
+].map((a, i) => ({ ...a, targetMilestones: BEATS.filter(b => b.act === i + 1).map(b => b.name) }));
+
+const doneNames = (gs) => new Set((gs.questProgress?.milestones || []).map(m => String(m.name || '').toLowerCase()));
+
+/** The next beat: the one after the furthest beat reached (an older save that skipped beats doesn't go back). */
+export function nextBeat(gs) {
+    const done = doneNames(gs);
+    let last = -1;
+    BEATS.forEach((b, i) => { if (done.has(b.name)) last = i; });
+    return BEATS[last + 1] || null;
+}
+
+/** Rounds since the last main-quest beat (or since the quest began). */
+export function roundsSinceBeat(gs) {
+    const ms = (gs.questProgress?.milestones || []).filter(m => isMainBeat(String(m.name || '').toLowerCase()));
+    const last = ms.length ? Math.max(...ms.map(m => m.turn || 0)) : (gs.questProgress?.questStartTurn || 0);
+    return (gs.turn || 1) - last;
+}
+
+const openThreads = (gs) => (gs.storyThreads || []).filter(t => t && !t.resolved);
 
 /**
- * Determines which act the campaign is currently in based on milestones
- * achieved and turn count. Returns the matching MAIN_QUEST_ARC entry.
- *
- * @param {object} gameState
- * @returns {object} the active act definition
+ * May this beat land now? Null if yes, else why not (the engine's refusal and
+ * the prompt's "build toward it" line use the same rule).
  */
+export function beatBlocked(gs, name) {
+    const next = nextBeat(gs);
+    if (!next || name !== next.name) return `the next story beat is "${next?.name || 'none'}"`;
+    if (name === 'final_blow') return null; // the kill decides it
+    const wait = BEAT_GAP - roundsSinceBeat(gs);
+    if (name !== 'call_to_adventure' && wait > 0) return `too soon: ${wait} more round${wait > 1 ? 's' : ''} before the next beat`;
+    if (name === 'final_confrontation' && openThreads(gs).length > 1) return `pay off open threads first (${openThreads(gs).length} open)`;
+    return null;
+}
+
+/** The boss may only be fought at the final confrontation (or after it). */
+export function climaxOpen(gs) {
+    if (gs.isGoalComplete || gs.divineTurn) return true;
+    const done = doneNames(gs);
+    return done.has('final_confrontation') || !beatBlocked(gs, 'final_confrontation');
+}
+
+/** The act the story is in (by beats reached; no turn-count jumps), or null once the quest is won. */
 export function determineCurrentAct(gameState) {
-    const milestoneNames = (gameState.questProgress?.milestones || [])
-        .map(m => (m.name || '').toLowerCase());
-    const turn = (gameState.turn || 1) - (gameState.questProgress?.questStartTurn || 0);
-
-    // If goal complete, the main quest is over — return null so the system
-    // prompt can shift to god-mode framing instead of advancing the quest.
     if (gameState.isGoalComplete) return null;
-
-    // Heuristic: act advances when the milestone signaling its end has been
-    // emitted, OR turn count exceeds the act's range.
-    const act1Done = milestoneNames.some(m => m.includes('stakes clear') || m.includes('stakes_clear'))
-                  || turn > MAIN_QUEST_ARC[0].targetTurnRange[1];
-    const act2Done = milestoneNames.some(m => m.includes('antagonist revealed') || m.includes('antagonist_revealed'))
-                  || turn > MAIN_QUEST_ARC[1].targetTurnRange[1];
-
-    if (act2Done) return MAIN_QUEST_ARC[2];
-    if (act1Done) return MAIN_QUEST_ARC[1];
-    return MAIN_QUEST_ARC[0];
+    return MAIN_QUEST_ARC[(nextBeat(gameState)?.act || 3) - 1];
 }
 
 /**
  * Phase 2: Active jail-escape mini-quest. When the party is imprisoned,
- * this overrides the main quest stage hint — the player must complete the
- * escape before the main quest resumes. The jailSystem module owns the
- * full prompt addon; this is a thin pointer so questDefinitions stays the
- * single dispatch for "what should the narrator focus on right now?".
+ * this overrides the main quest stage hint.
  */
 function buildJailEscapeHint() {
-    // Lazily fetch the jail system prompt so we don't create a circular
-    // import at module load (jailSystem imports state, this file is
-    // imported by aiHandler which also imports jailSystem).
     try {
-        // Use a synchronous module reference — the jailSystem module is
-        // already loaded by the time the AI prompt is built.
         if (typeof window !== 'undefined' && window.__jailSystem?.buildJailSystemPromptAddon) {
             return window.__jailSystem.buildJailSystemPromptAddon();
         }
     } catch (_) { /* fall through */ }
-    // Fallback minimal hint if jail module hasn't registered itself yet.
     return `\n\n=== JAIL ESCAPE (active) ===
 The party is imprisoned. They cannot leave the jail until they: (1) assess the situation, (2) find a weakness, and (3) execute the escape. Equipment was confiscated. Push them toward each objective and emit milestones jail_assessed → jail_weakness_found → jail_escaped as they progress.`;
 }
 
-/**
- * Build the quest-stage hint block to inject into the system prompt.
- * @param {object} gameState
- * @returns {string}
- */
-/**
- * Act 3 had no turn-based fallback: if the narrator never staged the climax,
- * the game never ended. Escalate after 6 rounds in Act 3, then insist.
- */
-function act3Deadline(gameState, act) {
-    if (act?.id !== 'act3') return '';
-    const qp = gameState.questProgress || (gameState.questProgress = {});
-    if (!qp.act3StartTurn) qp.act3StartTurn = gameState.turn || 1; // cleared when a new quest starts
-    const rounds = (gameState.turn || 1) - qp.act3StartTurn;
-    const names = (qp.milestones || []).map(m => String(m.name || '').toLowerCase());
-    const confronted = names.some(n => n.includes('final_confrontation') || n.includes('final confrontation'));
-    // The engine refuses final_blow while the boss stands; mid-fight the game
-    // ends the quest itself on the kill, so don't demand an impossible op.
-    const bossUp = (gameState.enemies || []).some(e => e.isBoss && !e.isDefeated && e.hp > 0);
-    if (bossUp) return '';
-    const villain = qp.villain ? `"${qp.villain}"` : 'the main villain';
-    // Confronted but no boss to beat: final_blow is refused until one falls,
-    // so ask for the fight (it used to demand final_blow forever).
-    if (confronted && rounds >= 2 && !qp.bossDefeated) return `\nDEADLINE: the final confrontation has no fight yet. THIS turn add ${villain} with /enemies/- ("isBoss": true) and replace /inCombat true.`;
-    if (confronted && rounds >= 2) return `\nDEADLINE: the boss has fallen. Close the story THIS turn and add the "final_blow" milestone.`;
-    if (rounds >= 6) return `\nDEADLINE: the story has been in Act 3 for ${rounds} rounds. Bring the final confrontation THIS turn (add "final_confrontation"; if it is a fight, spawn the main threat with /enemies/- and "isBoss": true).`;
-    return '';
-}
-
-// What players see: chapter title and a plain-words next step per milestone.
-const FRIENDLY_MILESTONES = {
-    call_to_adventure: 'Find out what is wrong',
-    world_introduced: 'Meet the people and places involved',
-    stakes_clear: 'Learn what you must do',
-    ally_found: 'Find someone to help you',
-    first_obstacle_overcome: 'Get past the first big obstacle',
-    antagonist_revealed: 'Discover who (or what) is behind it all',
-    final_confrontation: 'Face the final challenge',
-    final_blow: 'Win the final showdown',
-    aftermath: 'See how the world has changed'
-};
-export const friendlyMilestone = (name) => FRIENDLY_MILESTONES[name] || String(name || '').replace(/_/g, ' ').replace(/^./, c => c.toUpperCase());
+// What players see: the plain-words step per milestone.
+const FRIENDLY = Object.fromEntries([...BEATS.map(b => [b.name, b.says]), ['aftermath', 'See how the world has changed']]);
+export const friendlyMilestone = (name) => FRIENDLY[name] || String(name || '').replace(/_/g, ' ').replace(/^./, c => c.toUpperCase());
 
 /** {chapter, next} for the header, or null when the main quest is over. */
 export function describeQuestStep(gameState) {
     if (gameState.imprisoned) return { chapter: 'Captured!', next: 'Escape from captivity' };
     const act = determineCurrentAct(gameState);
     if (!act) return null;
-    const done = new Set((gameState.questProgress?.milestones || []).map(m => m.name));
-    const nextName = act.targetMilestones.find(n => !done.has(n));
-    return { chapter: act.name.replace(' — ', ': '), next: nextName ? friendlyMilestone(nextName) : 'Keep going: the next chapter is close' };
+    const next = nextBeat(gameState);
+    return { chapter: act.name.replace(' — ', ': '), next: next ? next.says : 'Keep going: the next chapter is close' };
 }
 
 /**
- * Any act: 5+ rounds without a milestone means the story is wandering (a live
- * play-through sat at 35% for 8 rounds in Act 2). Point at the next beat.
+ * The quest's part of the system prompt: one beat at a time (it used to send
+ * the whole act's instructions, ~1,400-2,000 characters, every turn).
  */
-function stallNudge(gameState, act) {
-    const ms = gameState.questProgress?.milestones || [];
-    const lastTurn = ms.length ? Math.max(...ms.map(m => m.turn || 0)) : 1;
-    const idle = (gameState.turn || 1) - lastTurn;
-    if (idle < 5) return '';
-    const done = new Set(ms.map(m => m.name));
-    const next = act.targetMilestones.find(n => !done.has(n));
-    return next ? `\nSTALLED: ${idle} rounds have passed without a quest beat. This turn, move the story clearly toward "${next}" and add that milestone when it happens.` : '';
-}
-
 export function buildQuestStageHint(gameState) {
-    // Phase 2: jail mini-quest takes precedence over the main arc.
-    if (gameState.imprisoned) {
-        return buildJailEscapeHint();
-    }
+    if (gameState.imprisoned) return buildJailEscapeHint();
     if (gameState.isGoalComplete) {
-        // Authority and refusal rules only: the op mapping is in the turn's
-        // instructions (aiHandler buildDiffInstructions); sending both cost
-        // ~700 tokens a wish and disagreed on "I gain N" (the game adds N).
         return `\n\n=== GOD MODE ===
 The main quest is won and the player has authorial power: each input is a declaration about the world. Honour it and persist every tangible change with ops (items, skills, places, people, foes, stats), or it vanishes next turn.
 Only refuse what breaks the age-tier content policy, and then in-character (the world resists), with no ops for it. Do not add main-quest milestones or touch /isGoalComplete.`;
     }
     const act = determineCurrentAct(gameState);
-    if (!act) return '';
-    const villain = gameState.questProgress?.villain;
+    const qp = gameState.questProgress || {};
+    const next = nextBeat(gameState);
+    if (!act || !next) return '';
+    const fill = (s) => s.replace(/VILLAIN/g, qp.villain || 'the enemy').replace(/LAIR/g, qp.lair || 'their stronghold');
+    const lines = [`\n\nMAIN QUEST — ${act.name}${qp.villain ? ` · VILLAIN: ${qp.villain}${qp.lair ? ` (rules from ${qp.lair})` : ''}; until the final confrontation they are never fought: if met, they escape` : ''}`];
+    const bossUp = (gameState.enemies || []).some(e => e.isBoss && !e.isDefeated && e.hp > 0);
+    const confronted = doneNames(gameState).has('final_confrontation');
+    if (bossUp) {
+        // the fight decides it
+    } else if (confronted && !qp.bossDefeated) {
+        lines.push(`THIS TURN: ${qp.villain || 'the villain'} fights: add them with /enemies/- ("isBoss": true) and replace /inCombat true.`);
+    } else {
+        const why = beatBlocked(gameState, next.name);
+        const threads = openThreads(gameState);
+        if (!why) lines.push(`STORY BEAT NOW: ${fill(next.beat)}. When it happens, add milestone "${next.name}" with /questProgress/milestones/-.`);
+        else if (/pay off/.test(why)) lines.push(`BEFORE THE FINAL CONFRONTATION: pay off ${threads.map(t => `"${t.text}"`).slice(0, 2).join(' and ')} (mark each resolved).`);
+        else lines.push(`BUILD TOWARD: ${fill(next.beat)} (it lands in a later round; no milestone this turn).`);
+        if (threads.length && act.id !== 'act1' && !/pay off/.test(why || '')) lines.push(`PAY OFF SOON: "${threads[0].text}"`);
+        const idle = roundsSinceBeat(gameState);
+        if (!why && idle >= BEAT_GAP + 2) lines.push(`STALLED for ${idle} rounds: make this beat happen now.`);
+    }
     // Fights were rare (live: 14 turns, no fight, with a goblin chieftain on stage).
     const sinceFight = (gameState.turn || 0) - (gameState.lastCombatTurn || 0);
-    const fightNudge = act.id !== 'act1' && !gameState.inCombat && sinceFight >= 5
-        ? `\nACTION: no fight for ${sinceFight} rounds. Unless the hero is resting somewhere safe, start one this turn: add a foe native to the story with /enemies/- and replace /inCombat true.`
-        : '';
-    return `\n\nMAIN QUEST STAGE — ${act.name}:${villain ? `\nMAIN VILLAIN: ${villain} (the final boss; keep them present in the story)` : ''}${fightNudge}
-${gameState.adventureGoal && gameState.adventureGoal !== 'Not set yet.' ? act.narratorHint.replace(/^- By turn 4-6, you MUST set \/adventureGoal.*\n/m, '') : act.narratorHint}
-
-When you reach a milestone listed above, emit a /questProgress/milestones/- diff op so the
-quest progresses. Adding the final_blow milestone completes the main quest and unlocks the
-god-mode reward.${act3Deadline(gameState, act) || stallNudge(gameState, act)}`;
+    if (act.id !== 'act1' && !gameState.inCombat && sinceFight >= 5) lines.push(`ACTION: no fight for ${sinceFight} rounds; unless resting somewhere safe, start one (a foe native to the story, never ${qp.villain || 'the villain'}).`);
+    return lines.join('\n');
 }

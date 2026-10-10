@@ -404,8 +404,8 @@ async function applySpellEffectToTarget(spell, caster, target) {
                 // Keep the catalog name: a theme rename ("overheating") matched
                 // no catalog entry, so the effect did nothing.
                 StatusEffects.applyStatusEffect(target, statusEffect);
-                result.effects.push({ type: 'status', value: adaptedEffectName });
-                log(`${spell.name} applies ${adaptedEffectName} to ${target.name}`);
+                result.effects.push({ type: 'status', value: effectName });
+                log(`${spell.name} applies ${effectName} to ${target.name}`);
             }
         }
     }
