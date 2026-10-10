@@ -635,6 +635,15 @@ export function generateThemedItem(theme, tier, type) {
                     }
                 }
             }
+            // Every theme's better weapons can carry an element and an on-hit
+            // effect (only themes with an elements list ever did: 7% of weapons).
+            if (!item.stats.element && Math.random() < [0, 0.15, 0.3, 0.5, 0.8][TIER_IDX(actualTier)]) {
+                const element = elementFromName(finalName) || getRandomElement(THEME_ELEMENTS[currentTheme] || THEME_ELEMENTS.fantasy);
+                item.stats.element = element;
+                item.effect += ` Deals ${element} damage.`;
+                const onHit = { Fire: 'Burn', Ice: 'Frost', Lightning: 'Paralysis', Poison: 'Poison', Dark: 'Weakness' }[element];
+                if (onHit && Math.random() < 0.5) { item.stats.onHitStatus = onHit; item.effect += ` Has a chance to inflict ${onHit}.`; }
+            }
             break;
         case 'Armor': 
             if (!item.stats) item.stats = {};
@@ -661,7 +670,13 @@ export function generateThemedItem(theme, tier, type) {
                  item.stats.heal = generateStatValue(actualTier, 'HealAmount');
                  if (item.effect.length < 50) { item.effect = `Restores ${item.stats.heal} HP. ${item.effect}`; }
              }
-             // Temp buff structure implementation deferred.
+             // 76% of generated consumables had no effect at all (item audit 10-09).
+             // Teaching scrolls (10-09): 5% of High-tier-and-up consumables teach a new special.
+             if (TIER_IDX(actualTier) >= 2 && Math.random() < 0.05) {
+                 item.name = ['fantasy', 'haunted'].includes(currentTheme) ? 'Ancient Scroll' : 'Training Manual';
+                 item.stats = { teach: 1 }; item.effect = 'Read it to learn a new special.';
+             }
+             if (!REAL_EFFECTS.some(k => item.stats[k])) fillConsumable(item, actualTier);
             break;
         case 'Misc': delete item.cost; break; // Misc items usually have no cost
     }
@@ -767,6 +782,10 @@ export function itemValue(item) {
     if (s.applyStatus) v += 25;
     if (s.throwStatus) v += 20;
     if (s.luck) v += s.luck >= 2 ? 180 : 60;
+    if (s.mp) v += 1.2 * s.mp;
+    if (s.teach) v += 120;
+    if (s.mpPercent) v += 50 * s.mpPercent;
+    if (s.statUp) v += 150 * Object.values(s.statUp).reduce((a, b) => a + (Number(b) || 0), 0);
     if (s.element) v *= 1.1;
     if (s.onHitStatus) v *= 1.2;
     if (s.resistances) v *= 1.15;
@@ -800,7 +819,55 @@ const EFFECT_RULES = [
     { re: /speed|swift|haste|quick/, add: { applyStatus: 'Haste' } },
     { re: /regenerat|renew|soothing|over time/, add: { applyStatus: 'Regen' } },
 ];
-const REAL_EFFECTS = ['heal', 'healPercent', 'mp', 'mpPercent', 'cure', 'applyStatus', 'statUp', 'throwStatus', 'revive', 'luck'];
+const REAL_EFFECTS = ['heal', 'healPercent', 'mp', 'mpPercent', 'cure', 'applyStatus', 'statUp', 'throwStatus', 'revive', 'luck', 'teach'];
+
+// Elements that fit each theme's weapons (combat.js knows these).
+const THEME_ELEMENTS = {
+    fantasy: ['Fire', 'Ice', 'Lightning', 'Poison', 'Holy', 'Dark'], haunted: ['Holy', 'Dark', 'Ice'],
+    space: ['Lightning', 'Fire'], cyberpunk: ['Lightning', 'Fire'], future_utopia: ['Lightning', 'Holy'], steampunk: ['Lightning', 'Fire'],
+    post_apoc: ['Fire', 'Poison', 'Lightning'], wild_west: ['Fire'], pirate: ['Fire', 'Lightning'], dinosaur: ['Poison', 'Fire'],
+    jungle: ['Poison', 'Fire'], arctic: ['Ice'], underwater: ['Ice', 'Lightning', 'Poison'], custom: ['Fire', 'Ice', 'Lightning', 'Poison']
+};
+
+// Tier-scaled amounts for generated consumables.
+const TIER_IDX = (t) => Math.max(0, ['Low', 'Medium', 'High', 'Special', 'Legendary'].indexOf(t));
+const HEAL_BY_TIER = [30, 55, 85, 120, 180];
+const MP_BY_TIER = [10, 18, 28, 40, 60];
+const STAT_NAMES = { brave: 'Brave', clever: 'Clever', sneaky: 'Sneaky', kind: 'Kind' };
+// What a themed consumable is, from its name, else picked by weight. Elixirs
+// that raise a stat for good only from High tier up.
+const ARCHETYPES = [
+    { kind: 'mp', re: /mana|tonic|energy|focus|battery|stim|cell|coffee|spirit|essence|nectar/i, w: 22 },
+    { kind: 'cure', re: /antidote|cure|purif|cleans|remedy|antitoxin/i, w: 8 },
+    { kind: 'throw', re: /bomb|grenade|dart|powder|flask|net|charge|smoke|flash|caltrop|bola/i, w: 12 },
+    { kind: 'buff', re: /ward|shield|rage|fury|swift|haste|speed|regen|stim|brew|ration/i, w: 16 },
+    { kind: 'elixir', re: /elixir|essence of|ambrosia|philosopher/i, w: 5, minTier: 2 },
+    { kind: 'teach', re: /scroll|manual|tome|codex|chip|schematic|grimoire|textbook/i, w: 4, minTier: 2 },
+    { kind: 'heal', re: /heal|potion|salve|bandage|medi|herb|moss|balm|kit|tea|bread|fruit/i, w: 37 },
+];
+const BUFFS = [['Shield', /ward|shield|guard|barrier/i], ['Berserk', /rage|fury|might|strength/i], ['Haste', /swift|haste|speed|quick/i], ['Regen', /regen|renew|brew|ration/i]];
+const THROWS = ['Stun', 'Burn', 'Poison', 'Frost', 'Blind'];
+
+/** Give a generated consumable a real, tier-scaled effect and say exactly what it does. */
+function fillConsumable(item, tier) {
+    const i = TIER_IDX(tier);
+    const usable = ARCHETYPES.filter(a => !a.minTier || i >= a.minTier);
+    let arch = usable.find(a => a.re.test(item.name));
+    if (!arch) { let r = Math.random() * usable.reduce((n, a) => n + a.w, 0); arch = usable.find(a => (r -= a.w) < 0) || usable[usable.length - 1]; }
+    const st = item.stats || (item.stats = {});
+    let says;
+    switch (arch.kind) {
+        case 'mp': st.mp = MP_BY_TIER[i]; says = `Restores ${st.mp} MP.`; break;
+        case 'cure': st.cure = 'All'; st.heal = Math.round(HEAL_BY_TIER[i] * 0.4); says = `Cures every ailment and restores ${st.heal} HP.`; break;
+        case 'throw': { st.throwStatus = (THROWS.find(t => new RegExp(t, 'i').test(item.name))) || THROWS[Math.floor(Math.random() * THROWS.length)]; says = `Throw it at a foe in a fight: ${st.throwStatus}.`; break; }
+        case 'buff': { const b = (BUFFS.find(([, re]) => re.test(item.name)) || BUFFS[Math.floor(Math.random() * BUFFS.length)])[0]; st.applyStatus = [b]; if (i >= 2) st.heal = Math.round(HEAL_BY_TIER[i] * 0.3); says = `Grants ${b}${st.heal ? ` and restores ${st.heal} HP` : ''}.`; break; }
+        case 'teach': st.teach = 1; says = 'Read it to learn a new special.'; break;
+        case 'elixir': { const keys = Object.keys(STAT_NAMES); const k = keys[Math.floor(Math.random() * keys.length)]; st.statUp = i >= 4 ? { brave: 1, clever: 1, sneaky: 1, kind: 1 } : { [k]: 1 }; says = i >= 4 ? 'Permanently raises every stat by 1.' : `Permanently raises ${STAT_NAMES[k]} by 1.`; break; }
+        default: st.heal = HEAL_BY_TIER[i]; if (i >= 3) st.mp = Math.round(MP_BY_TIER[i] * 0.5); says = `Restores ${st.heal} HP${st.mp ? ` and ${st.mp} MP` : ''}.`;
+    }
+    item.effect = `${says}${item.effect && !/^restores|^grants|^throw|^cures|^permanently|^read it/i.test(item.effect) ? ` ${item.effect}` : ''}`.trim();
+    return item;
+}
 
 /**
  * Give a consumable real effects from its name and description when it has

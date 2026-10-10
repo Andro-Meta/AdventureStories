@@ -166,6 +166,11 @@ export function initializeCombat(enemies) {
  * Advances to the next turn in combat
  * @returns {Promise<string|null>} ID of character whose turn is next, or null if combat ends
  */
+// Classic turn pacing (Michael 10-09: "you attack, pause, they attack, like a
+// normal RPG"): the gap before each foe acts. Tests set it to 0.
+export const pace = { ms: 650 };
+const pause = () => (pace.ms ? new Promise(r => setTimeout(r, pace.ms)) : null);
+
 export async function advanceCombatTurn() {
     const log = window.displayVisualError || console.log;
     
@@ -252,8 +257,10 @@ export async function advanceCombatTurn() {
         log('Error updating UI after turn advance:', e);
     }
 
-    // If it's an enemy's turn, handle it automatically
+    // If it's an enemy's turn, handle it automatically (after a beat, so each
+    // blow can be seen and heard on its own)
     if (nextChar.id.startsWith('enemy')) {
+        await pause();
         await handleEnemyTurn(nextChar.id);
         return null; // Enemy turn is handled automatically
     }

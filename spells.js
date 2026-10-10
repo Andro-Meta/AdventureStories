@@ -279,6 +279,59 @@ async function grantStartingSpells(player) {
     }
 }
 
+// ---------------------------------------------------------------- learning new specials
+// Every 2 levels (and from teaching scrolls) a hero picks 1 of 2 new specials.
+// Kinds unlock with level; names follow the world (no magic outside magic worlds).
+const LEARNABLE = [
+    { kind: 'strike', minLevel: 2, mpCost: 6, targeting: 'single', effects: { damage: 22 }, says: 'a heavy blow at one foe' },
+    { kind: 'area', minLevel: 2, mpCost: 9, targeting: 'area', effects: { damage: 14 }, says: 'hits every foe' },
+    { kind: 'status', minLevel: 2, mpCost: 7, targeting: 'single', effects: { damage: 10 }, status: true, says: 'hits one foe and leaves it' },
+    { kind: 'heal', minLevel: 4, mpCost: 8, targeting: 'ally', effects: { healing: 40 }, says: 'a big heal for the most hurt hero' },
+    { kind: 'partyHeal', minLevel: 4, mpCost: 12, targeting: 'party', effects: { healing: 24 }, says: 'heals the whole party' },
+    { kind: 'ward', minLevel: 4, mpCost: 10, targeting: 'party', effects: { healing: 6, statusEffects: ['Shield'] }, says: 'shields the whole party' },
+    { kind: 'haste', minLevel: 6, mpCost: 10, targeting: 'party', effects: { healing: 6, statusEffects: ['Haste'] }, says: 'speeds up the whole party' },
+    { kind: 'ultimate', minLevel: 8, mpCost: 18, targeting: 'area', effects: { damage: 38 }, says: 'a devastating blow to every foe' },
+];
+const LEARN_NAMES = {
+    fantasy:   { strike: 'Arcane Lance', area: 'Fireball', status: 'Frost Bite', heal: 'Greater Mending', partyHeal: 'Healing Circle', ward: 'Aegis Ward', haste: 'Quicksilver', ultimate: 'Meteor Storm', statusName: 'Frost' },
+    horror:    { strike: 'Banishing Strike', area: 'Holy Nova', status: 'Dread Gaze', heal: 'Blessed Water', partyHeal: 'Candle Vigil', ward: 'Salt Circle', haste: 'Second Wind', ultimate: 'Exorcism', statusName: 'Fear' },
+    scifi:     { strike: 'Plasma Lance', area: 'Ion Storm', status: 'Stun Pulse', heal: 'Nano Repair', partyHeal: 'Med Field', ward: 'Deflector Dome', haste: 'Overdrive', ultimate: 'Orbital Strike', statusName: 'Stun' },
+    cyberpunk: { strike: 'Overclocked Shot', area: 'EMP Burst', status: 'Neural Spike', heal: 'Trauma Patch', partyHeal: 'Swarm Medics', ward: 'Hardlight Barrier', haste: 'Reflex Boost', ultimate: 'System Crash', statusName: 'Stun' },
+    modern:    { strike: 'Pinpoint Shot', area: 'Shockwave', status: 'Flashbang', heal: 'Field Dressing', partyHeal: 'Rally the Team', ward: 'Take Cover', haste: 'Adrenaline Rush', ultimate: 'All-Out Assault', statusName: 'Blind' },
+    mystery:   { strike: 'Telling Blow', area: 'Smoke Bomb', status: 'Pocket Sand', heal: 'Smelling Salts', partyHeal: 'Pep Talk', ward: 'Steady Nerves', haste: 'Quick Thinking', ultimate: 'The Grand Reveal', statusName: 'Blind' },
+    adventure: { strike: 'Mighty Swing', area: 'Whirlwind Strike', status: 'Venom Dart', heal: 'Herbal Remedy', partyHeal: 'Campfire Song', ward: 'Shield Wall', haste: 'Rallying Cry', ultimate: 'Legendary Charge', statusName: 'Poison' },
+};
+
+/** Up to `n` new specials this hero can learn now (kinds it doesn't have, unlocked by level). */
+export function newAbilityChoices(hero, n = 2, rng = Math.random) {
+    const key = AdaptiveAbilities.themeAdaptationKey?.() || 'adventure';
+    const names = LEARN_NAMES[key] || LEARN_NAMES.adventure;
+    const known = new Set((hero?.spellcasting?.knownSpells || []).map(s => s?.learnKind).filter(Boolean));
+    const open = LEARNABLE.filter(a => (hero?.level || 1) >= a.minLevel && !known.has(a.kind));
+    const picks = [];
+    while (open.length && picks.length < n) picks.push(open.splice(Math.floor(rng() * open.length), 1)[0]);
+    return picks.map(a => {
+        const effects = { ...a.effects, statusEffects: a.status ? [names.statusName] : (a.effects.statusEffects || []) };
+        return {
+            id: generateId('spell'), name: names[a.kind], learnKind: a.kind, school: a.effects.damage ? 'ELEMENTAL' : 'DIVINE',
+            type: a.effects.damage ? 'OFFENSIVE' : a.effects.healing > 10 ? 'HEALING' : 'BUFF', level: 1, mpCost: a.mpCost,
+            targeting: a.targeting, range: 'medium', duration: 'instant', effects, uses: 0,
+            description: `${a.says.charAt(0).toUpperCase()}${a.says.slice(1)}${a.status ? ` ${names.statusName === 'Fear' ? 'afraid' : names.statusName === 'Blind' ? 'blinded' : names.statusName === 'Stun' ? 'stunned' : names.statusName === 'Poison' ? 'poisoned' : 'frozen'}` : ''}.`
+        };
+    });
+}
+
+/** Add a special to the hero's known and prepared list. */
+export function learnAbility(hero, spell) {
+    if (!hero || !spell) return false;
+    const sc = hero.spellcasting || (hero.spellcasting = { knownSpells: [], preparedSpells: [] });
+    sc.knownSpells = sc.knownSpells || [];
+    if (sc.knownSpells.some(s => String(s?.name).toLowerCase() === String(spell.name).toLowerCase())) return false;
+    sc.knownSpells.push(spell);
+    (sc.preparedSpells = sc.preparedSpells || []).push(spell);
+    return true;
+}
+
 /**
  * Create a basic spell with standard properties
  * @param {string} spellKey - The spell identifier

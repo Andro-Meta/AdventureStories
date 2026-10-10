@@ -772,7 +772,8 @@ function heroStatsRow(hero) {
         + (Progression.luckOf(hero) ? `<span class="stat-chip" title="Lucky charm: helps luck rolls; crits from ${20 - Progression.luckOf(hero)}">🍀${Progression.luckOf(hero)}</span>` : '');
     return `<div class="hero-stats">${chips}
         <span class="xp-wrap" title="${hero.xp}/${need} XP to level ${hero.level + 1}"><span class="xp-bar"><span style="width:${pct}%"></span></span><small>${hero.xp}/${need} XP</small></span>
-        ${Math.min(hero.statPoints || 0, Progression.statRoom(hero)) > 0 ? `<button class="spend-points" data-hero="${sanitizeText(hero.id)}">⭐ +${Math.min(hero.statPoints, Progression.statRoom(hero))} stat</button>` : ''}</div>`;
+        ${Math.min(hero.statPoints || 0, Progression.statRoom(hero)) > 0 ? `<button class="spend-points" data-hero="${sanitizeText(hero.id)}">⭐ +${Math.min(hero.statPoints, Progression.statRoom(hero))} stat</button>` : ''}
+        ${hero.abilityPicks > 0 ? `<button class="spend-points" data-hero="${sanitizeText(hero.id)}">✨ new special</button>` : ''}</div>`;
 }
 
 /** In the card details: what each stat does, and how close it is to growing. */
@@ -793,7 +794,8 @@ let statPromptOpen = false;
  * which reopened the picker, forever). The ⭐ button still opens it any time.
  */
 export function wantsStatPrompt(players) {
-    return (players || []).some(p => p && Math.min(p.statPoints || 0, Progression.statRoom(p)) > (p.statPromptSnooze || 0));
+    return (players || []).some(p => p && (Math.min(p.statPoints || 0, Progression.statRoom(p)) > (p.statPromptSnooze || 0)
+        || (p.abilityPicks || 0) > (p.abilityPromptSnooze || 0)));
 }
 /** Level-up: let each hero with unspent points pick the stat to raise (battle picker sheet). */
 export async function promptStatPoints(heroId = null) {
@@ -813,6 +815,22 @@ export async function promptStatPoints(heroId = null) {
                 Progression.spendStatPoint(hero, pick.key);
                 showPopup(`${Progression.STATS[pick.key].icon} ${hero.name}'s ${Progression.STATS[pick.key].name} is now ${hero.stats[pick.key]}!`, 'success', 2500);
                 try { (await import('./combat.js')).recalculateCharacterStats(hero); } catch (_) {}
+            }
+            // Every 2 levels (or a teaching scroll): learn 1 of 2 new specials.
+            while (hero.abilityPicks > 0) {
+                const offer = Spells.newAbilityChoices(hero, 2);
+                if (!offer.length) {
+                    hero.abilityPicks--;
+                    if (Progression.masteryBoost(hero)) showPopup(`✨ ${hero.name} knows every special there is: all of them grow stronger!`, 'legendary', 3000);
+                    continue;
+                }
+                const pick = await pickBattleOption(`✨ ${hero.name} can learn a new special`, offer.map(s => ({
+                    label: s.name, detail: `${s.mpCost} MP · ${s.description}`, spell: s
+                })));
+                if (!pick) { Progression.snoozeStatPrompt(hero); break; }
+                Spells.learnAbility(hero, pick.spell);
+                hero.abilityPicks--;
+                showPopup(`✨ ${hero.name} learned ${pick.spell.name}!`, 'legendary', 3000);
             }
         }
     } finally {

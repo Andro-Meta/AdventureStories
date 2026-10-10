@@ -9,7 +9,7 @@ import * as Combat from './combat.js';
 import * as Items from './items.js';
 import * as Progression from './progression.js';
 import * as Media from './media.js';
-import { levelUp } from './battle.js';
+import { levelUp, battleMenu } from './battle.js';
  // May not be needed if all calls go through aiHandler
 import { generateId, getRandomElement, clamp } from './utils.js';
 // Import aiHandler functions statically
@@ -290,7 +290,7 @@ export async function handlePlayerChoice(actionType, choiceText) {
                             const r = Combat.executeWeaponAttack(currentPlayer, target, {});
                             if (!r.missed && !r.blocked) {
                                 const bonus = Math.round((r.actualDamage || 0) * 0.5)
-                                    + (Number(move.mechanics?.directDamage ?? move.mechanics?.damage) || 0);
+                                    + Math.round((Number(move.mechanics?.directDamage ?? move.mechanics?.damage) || 0) * Progression.abilityPower(currentPlayer, move));
                                 const before = target.hp;
                                 target.hp = Math.max(0, target.hp - bonus);
                                 r.actualDamage = (r.actualDamage || 0) + (before - target.hp);
@@ -301,7 +301,9 @@ export async function handlePlayerChoice(actionType, choiceText) {
                                 }
                             }
                             move.currentCooldown = move.cooldown || 2;
-                            const mpCost = move.mpCost || 0;
+                            const ranked = Progression.useAbility(move);
+                            if (ranked) UI.showPopup(`✨ ${currentPlayer.name}'s ${move.name} reached rank ${Progression.ROMAN[ranked]}!`, 'legendary', 3500);
+                            const mpCost = Progression.abilityMpCost(move);
                             if (mpCost) currentPlayer.mp = Math.max(0, (currentPlayer.mp || 0) - mpCost);
                             combatLog = r.missed
                                 ? `${currentPlayer.name} unleashes ${move.name} but misses ${target.name}.`
@@ -452,7 +454,7 @@ export async function handlePlayerChoice(actionType, choiceText) {
                     if (gameState.combat) gameState.combat.isActive = false;
                 } else if (gameState.inCombat && !Combat.isPartyWiped()) {
                     cbStep(8, 'calling advanceCombatTurn (enemy phase)');
-                    await new Promise(r => setTimeout(r, 700)); // let the hero's hit land before the foe answers
+                    if (Combat.pace.ms) await new Promise(r => setTimeout(r, Combat.pace.ms)); // the hero's blow lands, then the foe answers
                     try {
                         await Combat.advanceCombatTurn();
                         cbStep(9, 'advanceCombatTurn returned ok');
@@ -477,18 +479,27 @@ export async function handlePlayerChoice(actionType, choiceText) {
                     gameState.consecutiveWipes = 0;
                     try { UI.clearCombatLog?.(); } catch (_) {}
                 }
-                cbStep(10, `building combatActionLog (deadline left: ${COMBAT_BRANCH_DEADLINE - Date.now()}ms)`);
+                // Classic RPG rounds (Michael 10-09): while the fight goes on there is no
+                // storyteller call. The blow, the pause and the foe's answer are in the
+                // battle log, and the battle menu comes straight back. (Each round used
+                // to wait for a narrated paragraph and four written choices.)
+                if (gameState.inCombat) {
+                    UI.renderChoices(battleMenu(getCurrentPlayer()));
+                    document.querySelectorAll('#choicesContainer .choice-btn').forEach(b => { b.disabled = false; });
+                    cbStep(15, 'battle menu shown (no narration during a fight)');
+                    return;
+                }
+                cbStep(10, `fight over: building the aftermath prompt (deadline left: ${COMBAT_BRANCH_DEADLINE - Date.now()}ms)`);
 
-                // Ask the narrator to dramatize the round and give the next choices.
-                const enemiesAfter = (gameState.enemies || []).filter(e => !e.isDefeated);
-                const combatActionLog = `[Combat Round]
-Player: ${currentPlayer.name} (HP ${currentPlayer.hp}/${currentPlayer.maxHp}, MP ${currentPlayer.mp || 0}/${currentPlayer.maxMp || 0})
-Action chosen: ${actionType} — "${choiceText}"
-Mechanical outcome: ${combatLog}
-Active enemies: ${enemiesAfter.map(e => `${e.name} (HP ${e.hp}/${e.maxHp})`).join(', ') || 'None — combat ended.'}
-Combat status: ${gameState.inCombat ? 'Ongoing' : 'Ended'}
+                // The fight is over: one storyteller call tells how it ended and what comes next.
+                const fallen = (gameState.enemies || []).filter(e => e.isDefeated || e.hp <= 0).map(e => e.name);
+                const escaped = actionType === 'Run' && !Combat.areAllEnemiesDefeated();
+                const combatActionLog = `[Fight over]
+${escaped ? `${currentPlayer.name} escaped the fight.` : `The heroes won.${fallen.length ? ` Defeated: ${fallen.join(', ')}.` : ''}`}
+Last move: ${combatLog}
+Heroes now: ${(gameState.players || []).map(p => `${p.name} (HP ${p.hp}/${p.maxHp})`).join(', ')}
 
-Fight round ${gameState.combat?.round || 1}. Narrate this round so the fight CHANGES: the foe adapts or tries something new, the ground or weather shifts, a hazard, an object or a bystander gets involved. Never describe the same blow or the same reaction as an earlier round.${averagePartyAge() < 15 && !Config.injuryDetailOn() ? ' Kid-safe: no blood or wounds; show hits by their effect.' : ''} Never write HP, MP or other game numbers in the story. Then provide ${gameState.inCombat ? '4 combat choices (Attack/Special/Item/Run)' : '5 exploration choices (one per approach, each with a danger)'} as JSON.`;
+In 2 short paragraphs, show how the fight ends (one vivid moment, not a blow-by-blow recap) and what the heroes notice or face next.${averagePartyAge() < 15 && !Config.injuryDetailOn() ? ' Kid-safe: no blood or wounds.' : ''} Never write HP, MP or other game numbers in the story. Then provide 5 exploration choices (one per approach, each with a danger) as JSON.`;
 
                 cbStep(11, 'showLoading + AI call');
                 UI.showLoading(true, 'Combat unfolding...');
@@ -889,6 +900,7 @@ function applyItemExtras(hero, item) {
         hero.stats[stat] = Math.min(Progression.STAT_MAX, before + (Number(n) || 0));
         if (hero.stats[stat] > before) parts.push(`${Progression.STATS[stat].name} rises to ${hero.stats[stat]}`);
     }
+    if (st.teach) { hero.abilityPicks = (hero.abilityPicks || 0) + 1; parts.push('a new special can be learned (tap ✨ on the hero card)'); }
     if (st.statUp) { try { Combat.recalculateCharacterStats(hero); } catch (_) {} }
     return parts;
 }
@@ -1442,6 +1454,16 @@ export async function useInventoryItem(itemId) {
          return handlePlayerChoice('Item', `Use ${item.name}`);
      }
 
+     // Outside a fight, the bag is free (Michael 10-09): drinking a potion or
+     // reading a scroll changes the hero, never the story. No storyteller call,
+     // no turn used; the same choices stay up (odds refresh for new stats).
+     // Before, most items called the storyteller, which rewrote the scene and
+     // the choices, and plain heals passed the turn.
+     const exploring = !gameState.inCombat;
+     if (exploring && item.stats?.throwStatus) {
+         UI.showPopup(`Save the ${item.name} for a fight: throw it at a foe with the Item command.`, 'info', 3000);
+         return;
+     }
      let consumed = false;
      let requiresAICall = false;
      let actionLog = "";
@@ -1487,8 +1509,7 @@ export async function useInventoryItem(itemId) {
              if (otherStats.length === 0 && simpleDescription) {
                  log("Simple heal item used. Advancing turn.");
                  UI.renderPlayerCards(); // Update UI before advancing
-                 await advanceTurn(); // Simple heal advances turn immediately
-                 turnAdvanced = true;
+                 if (!exploring) { await advanceTurn(); turnAdvanced = true; } // in a fight it uses the turn
              } else {
                  log("Heal item has other effects or complex description. Triggering AI.");
                  requiresAICall = true;
@@ -1569,8 +1590,7 @@ export async function useInventoryItem(itemId) {
                  if (consumed) {
                      log("Simple cure item used. Advancing turn.");
                      UI.renderPlayerCards();
-                     await advanceTurn();
-                     turnAdvanced = true;
+                     if (!exploring) { await advanceTurn(); turnAdvanced = true; }
                  } else {
                      log("Cure item had nothing to cure; turn NOT advanced (item was not consumed).");
                  }
@@ -1615,6 +1635,14 @@ export async function useInventoryItem(itemId) {
      // Update UI (player cards handled within turn advance or AI call completion)
      if (gameState.currentScreen === 'inventoryScreen') UI.renderInventory();
 
+     if (exploring) {
+         log(`Bag (free, story unchanged): ${actionLog || item.name}`);
+         if (consumed && requiresAICall) UI.showPopup(actionLog.replace(/^.*?Result: |^.*?Effect: /, `${item.name}: `), 'info', 3000);
+         UI.renderPlayerCards();
+         if (gameState.currentChoices?.length && !gameState.isLoading) UI.renderChoices(gameState.currentChoices);
+         log("useInventoryItem finished.");
+         return;
+     }
      // Trigger AI or Advance Turn
      if (requiresAICall && actionLog) {
          log("Item use requires AI call for narrative.");
@@ -1960,7 +1988,7 @@ export async function useSpecialMove(moveId) {
     }
 
     // Check MP cost
-    const mpCost = move.mpCost || 0;
+    const mpCost = Progression.abilityMpCost(move);
     if (mpCost > 0 && player.mp < mpCost) {
         log(`Move ${move.name} requires ${mpCost} MP, but player only has ${player.mp} MP.`);
         UI.showPopup(`Not enough MP! ${move.name} costs ${mpCost} MP (you have ${player.mp})`, 'warning');
@@ -1972,6 +2000,9 @@ export async function useSpecialMove(moveId) {
     // code set currentCooldown = undefined and `> 0` evaluates false, letting
     // the move be spammed every turn. Default to 2 (mirrors combat-branch).
     move.currentCooldown = move.cooldown ?? 2;
+    const power = Progression.abilityPower(player, move); // before this use counts
+    const ranked = Progression.useAbility(move);
+    if (ranked) UI.showPopup(`✨ ${player.name}'s ${move.name} reached rank ${Progression.ROMAN[ranked]}!`, 'legendary', 3500);
     let mpSpent = 0;
     if (mpCost > 0) {
         player.mp -= mpCost;
@@ -1987,7 +2018,7 @@ export async function useSpecialMove(moveId) {
         if (move.mechanics.damage) {
             const targetEnemy = gameState.enemies.find(e => !e.isDefeated);
             if (targetEnemy) {
-                const damage = Math.round(move.mechanics.damage * (1 + (player.atk / 100)));
+                const damage = Math.round(move.mechanics.damage * power * (1 + (player.atk / 100)));
                 targetEnemy.hp = Math.max(0, targetEnemy.hp - damage);
                 UI.showPopup(`${move.name} deals ${damage} damage to ${targetEnemy.name}!`, 'damage');
                 
@@ -1999,7 +2030,7 @@ export async function useSpecialMove(moveId) {
         }
 
         if (move.mechanics.healing) {
-            let healing = Math.round(move.mechanics.healing * (1 + (player.def / 100)));
+            let healing = Math.round(move.mechanics.healing * power * (1 + (player.def / 100)));
             
             player.hp = Math.min(player.maxHp, player.hp + healing);
             UI.showPopup(`${move.name} restores ${healing} HP!`, 'healing');

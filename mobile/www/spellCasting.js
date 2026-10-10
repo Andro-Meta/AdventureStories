@@ -55,6 +55,8 @@ export async function castSpell(caster, spell, target = null) {
         
         // Apply spell effects
         const results = await applySpellEffects(spell, caster, targets);
+        const ranked = Progression.useAbility(spell);
+        if (ranked) UI.showPopup(`✨ ${caster.name}'s ${spell.name} reached rank ${Progression.ROMAN[ranked]}!`, 'legendary', 3500);
         
         // Show success feedback
         showSpellResults(spell, caster, targets, results);
@@ -98,7 +100,7 @@ export async function castSpell(caster, spell, target = null) {
  * @returns {number} Actual MP cost
  */
 function calculateActualMpCost(caster, spell) {
-    let cost = spell.mpCost;
+    let cost = Progression.abilityMpCost(spell); // cheaper at mastery ranks III and V
     
     // Apply casting modifiers
     if (caster.spellcasting?.castingModifiers?.mpCostReduction) {
@@ -465,7 +467,8 @@ function calculateSpellPower(spell, caster) {
     }
     
     power *= Progression.cleverPower(caster); // Clever: +10% per point
-    return Math.max(0.5, Math.min(3.0, power)); // Cap between 50% and 300%
+    power *= Progression.abilityPower(caster, spell); // grows with level and mastery rank (10-09)
+    return Math.max(0.5, Math.min(8.0, power));
 }
 
 /**

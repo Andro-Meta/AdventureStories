@@ -25,6 +25,7 @@ globalThis.displayVisualError = logSink;
 
 const { gameState, resetGameState, createNewPlayer } = await import('../state.js');
 const Combat = await import('../combat.js');
+Combat.pace.ms = 0; // no classic-RPG pauses in checks
 const Engine = await import('../engine.js');
 const AH = await import('../actionHandler.js');
 const UI = await import('../ui.js');
@@ -1590,35 +1591,35 @@ await block(async () => {
 });
 
 await block(async () => {
-  // After a multiplayer fight that the STORYTELLER ends (here: the foe is
-  // driven off by its ops), the turn passes to the next hero and choices are
-  // written for them; they were then replaced by the fighter's. (When the
-  // attack itself wins, the story call already writes for the next hero.)
+  // Classic RPG rounds (10-09): no storyteller call while a fight goes on; the
+  // battle menu comes straight back. When the fight ends, one call writes the
+  // aftermath, with the next hero's choices in a 2-hero game.
   const { createNewPlayer } = await import('../state.js');
-  const offline = globalThis.fetch;
+  const offline = globalThis.fetch; const asked = [];
   globalThis.fetch = window.fetch = async (u, o) => {
-    const msgs = JSON.parse(o.body).messages;
-    const forNext = /write the player choices/i.test(msgs[0].content);
-    const content = forNext
-      ? JSON.stringify({ choices: ['brave', 'clever', 'sneaky', 'kind', 'luck'].map(stat => ({ stat, safe: `NEXT ${stat} safe`, bold: `NEXT ${stat} bold`, reckless: `NEXT ${stat} reckless` })) })
-      : JSON.stringify({ narration: 'The goblin turns and flees into the hills.', ops: [{ op: 'replace', path: '/inCombat', value: false }],
-          choices: ['brave', 'clever', 'sneaky', 'kind', 'luck'].map(stat => ({ stat, safe: `FIGHTER ${stat} safe`, bold: `FIGHTER ${stat} bold`, reckless: `FIGHTER ${stat} reckless` })) });
+    asked.push(JSON.parse(o.body).messages[1].content);
+    const content = JSON.stringify({ narration: 'The goblin crumples into the reeds.', ops: [], choices: ['brave', 'clever', 'sneaky', 'kind', 'luck'].map(stat => ({ stat, safe: `NEXT ${stat} safe`, bold: `NEXT ${stat} bold`, reckless: `NEXT ${stat} reckless` })) });
     return { ok: true, status: 200, statusText: '200', headers: { get: () => null }, json: async () => ({ choices: [{ message: { content } }] }), text: async () => '' };
   };
   localStorage.setItem('adv.cloudProvider', 'groq_qwen'); localStorage.setItem('adv.apiKey.api.groq.com', 'test');
-  // The test page has no real buttons; tell the turn's last-resort check that some are on screen.
   const realGet = document.getElementById.bind(document);
   document.getElementById = (id) => id === 'choicesContainer' ? { querySelectorAll: () => [{}] } : realGet(id);
   try {
+    // An ordinary round: the goblin survives.
     const { p } = fresh({ enemy: { hp: 200, maxHp: 200 } });
-    const b = createNewPlayer('Ben', 10);
-    gameState.players = [p, b]; gameState.currentPlayerIndex = 0;
-    startFight();
-    pinRandom(0.5);
+    startFight(); pinRandom(0.5);
+    await AH.handlePlayerChoice('Attack', 'Strike the goblin'); unpinRandom();
+    const menu = (gameState.currentChoices || []).map(c => c.type).sort().join(','); // stored shuffled; shown in battle order
+    check(asked.length === 0 && gameState.inCombat && menu === 'Attack,Item,Run,Special', `a fight round makes no storyteller call (${asked.length}) and brings back the battle menu (${menu})`);
+    // Two heroes; Ava's blow ends the fight: one aftermath call, Ben is up and his choices are written for him.
+    const a2 = fresh({ enemy: { hp: 1, maxHp: 30, def: 0 } }).p;
+    const ben = createNewPlayer('Ben', 10);
+    gameState.players = [a2, ben]; gameState.currentPlayerIndex = 0;
+    startFight(); asked.length = 0; pinRandom(0.5);
     await AH.handlePlayerChoice('Attack', 'Strike the goblin'); unpinRandom();
     const texts = (gameState.currentChoices || []).map(c => c.text);
-    check(!gameState.inCombat && gameState.currentPlayerIndex === 1 && texts.length === 5 && texts.every(t => t.startsWith('NEXT')),
-      `after a 2-hero fight the story ends, Ben gets choices written for him (${texts[0] || 'none'}; hero ${gameState.currentPlayerIndex}, inCombat ${gameState.inCombat})`);
+    check(!gameState.inCombat && asked.length === 1 && /\[Fight over\]/.test(asked[0]) && /NEXT TO ACT: Ben/.test(asked[0]) && gameState.currentPlayerIndex === 1 && texts.every(t => t.startsWith('NEXT')),
+      `the fight ends: one aftermath call (${asked.length}), Ben is up (hero ${gameState.currentPlayerIndex}) with choices written for him`);
   } finally { document.getElementById = realGet; globalThis.fetch = window.fetch = offline; localStorage.removeItem('adv.apiKey.api.groq.com'); localStorage.removeItem('adv.cloudProvider'); }
 });
 
@@ -1845,6 +1846,120 @@ await block(async () => {
   const bad = await SL.importSaves('{"hello":1}');
   check(bad === 0, 'a file that is not an Adventure Stories save file is refused');
   localStorage.removeItem(key);
+});
+
+await block(async () => {
+  // Item audit 10-09: 76% of generated consumables did nothing, none restored MP,
+  // and only fantasy-style weapons had elements.
+  const Items = await import('../items.js');
+  const themes = ['fantasy', 'space', 'pirate', 'haunted', 'cyberpunk', 'wild_west', 'dinosaur', 'arctic', 'custom'];
+  const tiers = ['Low', 'Medium', 'High', 'Special', 'Legendary'];
+  const real = ['heal', 'healPercent', 'mp', 'mpPercent', 'cure', 'applyStatus', 'statUp', 'throwStatus', 'revive', 'teach'];
+  let cons = 0, dead = 0, mp = 0, lowElixir = 0; const elem = {};
+  for (const th of themes) for (const tier of tiers) for (let i = 0; i < 30; i++) {
+    const c = Items.generateThemedItem(th, tier, 'Consumable'); cons++;
+    if (!real.some(k => c.stats?.[k])) dead++;
+    if (c.stats?.mp) mp++;
+    if (c.stats?.statUp && (tier === 'Low' || tier === 'Medium')) lowElixir++;
+    const w = Items.generateThemedItem(th, tier, 'Weapon');
+    elem[tier] = (elem[tier] || 0) + (w.stats?.element ? 1 : 0);
+  }
+  check(dead === 0 && mp > cons * 0.15 && lowElixir === 0, `consumables: ${dead}/${cons} with no effect, ${mp} restore MP, permanent-stat elixirs only from High tier (${lowElixir} below)`);
+  const share = (t) => elem[t] / (themes.length * 30);
+  check(share('Low') < share('High') && share('High') < share('Legendary') && share('Legendary') > 0.6, `weapon elements by tier: Low ${share('Low').toFixed(2)}, High ${share('High').toFixed(2)}, Legendary ${share('Legendary').toFixed(2)}`);
+  const potion = Items.itemValue({ type: 'Consumable', stats: { heal: 55 } }), tonic = Items.itemValue({ type: 'Consumable', stats: { mp: 18 } }), elixir = Items.itemValue({ type: 'Consumable', stats: { statUp: { brave: 1 } } });
+  check(tonic > 12 && elixir > potion * 3, `prices: potion ${potion}, MP tonic ${tonic}, stat elixir ${elixir}`);
+});
+
+section('Batch 27: specials grow: level, mastery ranks, new specials every 2 levels (10-09)');
+
+await block(async () => {
+  const Spells = await import('../spells.js');
+  const B = await import('../battle.js');
+  // Ranks by use: I at 0, II at 3, III at 8 (1 MP cheaper), V at 25 (2 cheaper).
+  const s = { name: 'Bolt', mpCost: 6, effects: { damage: 12 } };
+  let ups = 0;
+  for (let i = 0; i < 25; i++) if (Prog.useAbility(s)) ups++;
+  check(Prog.abilityRank({ uses: 0 }) === 1 && Prog.abilityRank({ uses: 3 }) === 2 && Prog.abilityRank(s) === 5 && ups === 4,
+    `mastery: rank ${Prog.abilityRank({ uses: 0 })} new, ${Prog.abilityRank({ uses: 3 })} after 3 uses, ${Prog.abilityRank(s)} after 25 (${ups} rank-ups)`);
+  check(Prog.abilityMpCost({ mpCost: 6 }) === 6 && Prog.abilityMpCost({ mpCost: 6, uses: 8 }) === 5 && Prog.abilityMpCost({ mpCost: 6, uses: 25 }) === 4 && Prog.abilityMpCost({ mpCost: 1, uses: 25 }) === 1,
+    'mastery makes specials cheaper (6, 5 at rank III, 4 at rank V, never below 1)');
+  check(Prog.abilityPower({ level: 1 }, {}) === 1 && Prog.abilityPower({ level: 9 }, {}) === 3 && Prog.abilityPower({ level: 1 }, { uses: 25 }) > 1.35,
+    `power grows with level (L9 x${Prog.abilityPower({ level: 9 }, {})}) and rank (rank V x${Prog.abilityPower({ level: 1 }, { uses: 25 }).toFixed(1)})`);
+  // A pick every 2 levels, themed, unlocked by level, never a kind already known.
+  const { p } = fresh();
+  p.spellcasting = p.spellcasting || { knownSpells: [], preparedSpells: [] };
+  p.abilityPicks = 0;
+  B.levelUp(p, 4 - (p.level || 1));
+  check(p.abilityPicks === 2, `levels 2 and 4 each give a new special to learn (${p.abilityPicks} at level ${p.level})`);
+  const offer = Spells.newAbilityChoices(p, 2, () => 0);
+  check(offer.length === 2 && offer.every(o => o.name && o.mpCost > 0 && o.description && o.learnKind),
+    `the level-up offer: ${offer.map(o => `${o.name} (${o.learnKind}, ${o.mpCost} MP)`).join(', ')}`);
+  Spells.learnAbility(p, offer[0]);
+  const kinds = new Set();
+  for (let i = 0; i < 40; i++) Spells.newAbilityChoices(p, 2).forEach(o => kinds.add(o.learnKind));
+  check(!kinds.has(offer[0].learnKind) && !kinds.has('haste') && !kinds.has('ultimate') && kinds.has('heal'),
+    `never offered again once learned (${offer[0].learnKind}); haste/ultimate wait for level 6/8; heals open at 4 (${[...kinds].join(',')})`);
+  check(!Spells.learnAbility(p, { ...offer[0] }), 'the same special cannot be learned twice');
+  const opts = B.battleOptions('Special', p).map(o => o.label);
+  check(opts.some(l => l.startsWith(offer[0].name)), `a learned special shows in the fight picker (${opts.join(' | ')})`);
+  // Every kind learned: a pick sharpens everything instead.
+  const big = fresh().p; big.level = 12; big.spellcasting = { knownSpells: [], preparedSpells: [] }; big.specialMoves = [];
+  let n = 0; for (let o; (o = Spells.newAbilityChoices(big, 1)).length && n < 20; n++) Spells.learnAbility(big, o[0]);
+  Prog.masteryBoost(big);
+  check(n === 8 && Spells.newAbilityChoices(big).length === 0 && big.spellcasting.knownSpells.every(x => x.uses === 5),
+    `all 8 kinds learnable by level 12 (${n}), then a pick gives +5 uses to each`);
+  big.spellcasting.knownSpells[0].uses = 8;
+  const lbl = B.battleOptions('Special', big).map(o => o.label);
+  check(lbl.some(l => / III \(/.test(l)), `rank III shows in the fight picker (${lbl[0]})`);
+});
+
+await block(async () => {
+  // Teaching scrolls: High tier and up; reading one gives a special to learn.
+  const Items = await import('../items.js');
+  let teach = 0, lowTeach = 0;
+  for (const tier of ['Low', 'Medium', 'High', 'Special', 'Legendary']) for (let i = 0; i < 200; i++) {
+    const c = Items.generateThemedItem('fantasy', tier, 'Consumable');
+    if (c.stats?.teach) { teach++; if (tier === 'Low' || tier === 'Medium') lowTeach++; }
+  }
+  const { p } = fresh();
+  p.abilityPicks = 0;
+  p.inventory.push({ id: 'scroll1', name: 'Scroll of Insight', type: 'Consumable', quantity: 1, effect: 'Read it to learn a new special.', stats: { teach: 1 } });
+  await AH.useInventoryItem('scroll1');
+  check(teach > 5 && lowTeach === 0 && p.abilityPicks === 1, `teaching scrolls: ${teach} in 1000 drops, none below High (${lowTeach}); reading one gives a special to learn (${p.abilityPicks})`);
+});
+
+await block(async () => {
+  // Michael 10-09: opening the bag, equipping or shopping mid-story must not
+  // change the story or the choices. Before, most items called the storyteller
+  // (new scene, new choices) and plain heals passed the turn.
+  const { p } = fresh();
+  const ben = createNewPlayer('Ben', 10);
+  gameState.players = [p, ben]; gameState.currentPlayerIndex = 0; gameState.inCombat = false;
+  const shown = [['brave', 'Safe'], ['clever', 'Bold'], ['sneaky', 'Reckless'], ['kind', 'Safe'], ['luck', 'Bold']].map(([stat, type]) => ({ type, stat, text: `KEEP ${stat}` }));
+  gameState.currentChoices = shown.map(c => ({ ...c }));
+  const offline = globalThis.fetch; let calls = 0;
+  globalThis.fetch = window.fetch = async () => { calls++; throw new Error('offline'); };
+  const turn = gameState.turn; const story = JSON.stringify(gameState.conversationHistory || []);
+  p.maxHp = 100; p.hp = 10; p.maxMp = 50; p.mp = 0;
+  p.inventory.push(
+    { id: 'pot', name: 'Healing Potion', type: 'Consumable', quantity: 2, effect: 'Restores 30 HP.', stats: { heal: 30 } },
+    { id: 'ton', name: 'Focus Tonic', type: 'Consumable', quantity: 1, effect: 'Restores 18 MP.', stats: { mp: 18 } },
+    { id: 'eli', name: 'Elixir of Nerve', type: 'Consumable', quantity: 1, effect: 'Permanently raises Brave by 1.', stats: { statUp: { brave: 1 } } },
+    { id: 'buf', name: 'Swift Brew', type: 'Consumable', quantity: 1, effect: 'Grants Haste.', stats: { applyStatus: ['Haste'] } },
+    { id: 'bomb', name: 'Smoke Bomb', type: 'Consumable', quantity: 1, effect: 'Throw it at a foe in a fight: Blind.', stats: { throwStatus: 'Blind' } },
+    { id: 'swd', name: 'Steel Sword', type: 'Weapon', quantity: 1, stats: { atk: 5 } });
+  const brave = p.stats.brave;
+  try {
+    for (const id of ['pot', 'ton', 'eli', 'buf', 'bomb']) await AH.useInventoryItem(id);
+    AH.equipInventoryItem('swd', 'weapon');
+    AH.buyShopItem?.({ name: 'Rope', type: 'Misc', price: 1, stats: {} });
+  } finally { globalThis.fetch = window.fetch = offline; }
+  const same = JSON.stringify((gameState.currentChoices || []).map(c => c.text).sort()) === JSON.stringify(shown.map(c => c.text).sort()); // the screen orders them; same five
+  check(calls === 0 && same && gameState.turn === turn && gameState.currentPlayerIndex === 0 && JSON.stringify(gameState.conversationHistory || []) === story,
+    `bag, equip and shop mid-story: ${calls} storyteller calls, choices unchanged (${same}), turn ${turn} -> ${gameState.turn}, still ${gameState.players[gameState.currentPlayerIndex].name}'s turn`);
+  check(p.hp === 40 && p.mp === 18 && p.stats.brave === brave + 1 && p.inventory.some(i => i.id === 'bomb'),
+    `the items still work (HP 10 -> ${p.hp}, MP 0 -> ${p.mp}, Brave ${brave} -> ${p.stats.brave}); a bomb is kept for a fight (${p.inventory.some(i => i.id === 'bomb')})`);
 });
 
 console.error = realError;

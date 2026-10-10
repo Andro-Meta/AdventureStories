@@ -153,6 +153,39 @@ export function pickBeat({ hpFrac = 1, mpFrac = 1, sinceRest = 99 } = {}, rng = 
     return null;
 }
 
+// ---------------------------------------------------------------- specials
+// Michael 10-09: "you start with a bunch of special moves but don't gain more
+// or level them up". A special's power now grows with the hero's level and
+// with practice (mastery ranks), and every 2 levels the hero learns a new one.
+export const RANK_USES = [0, 3, 8, 15, 25];           // uses to reach rank I..V
+export const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V'];
+export const abilityRank = (a) => RANK_USES.filter(u => (a?.uses || 0) >= u).length;
+/** Power multiplier for a special: level (foes grow 40%/level in HP; specials 25%) x rank (+10% each). */
+export function abilityPower(hero, a) {
+    return (1 + 0.25 * ((hero?.level || 1) - 1)) * (1 + 0.1 * (abilityRank(a) - 1));
+}
+/** MP cost after mastery: one less at rank III, another at rank V (never below 1). */
+export function abilityMpCost(a) {
+    const base = Number(a?.mpCost) || 0;
+    if (!base) return 0;
+    const r = abilityRank(a);
+    return Math.max(1, base - (r >= 3 ? 1 : 0) - (r >= 5 ? 1 : 0));
+}
+/** One more use; returns the new rank when it went up, else 0. */
+/** When every special is already known, a pick sharpens them all instead (+5 uses each). */
+export function masteryBoost(hero) {
+    const all = [...(hero?.spellcasting?.knownSpells || []), ...(hero?.specialMoves || [])];
+    all.forEach(a => { a.uses = (a.uses || 0) + 5; });
+    return all.length;
+}
+export function useAbility(a) {
+    if (!a) return 0;
+    const before = abilityRank(a);
+    a.uses = (a.uses || 0) + 1;
+    const after = abilityRank(a);
+    return after > before ? after : 0;
+}
+
 /** The plan a shown set actually has ({ stat: danger }), or null if it isn't a full set. */
 export function planOf(choices) {
     const plan = Object.fromEntries((choices || []).filter(c => APPROACHES.includes(c?.stat) && DANGERS.includes(c?.type)).map(c => [c.stat, c.type]));
@@ -422,7 +455,7 @@ export function statRoom(hero) {
 }
 
 /** "Later" on the level-up picker: don't ask again until another point is earned. */
-export function snoozeStatPrompt(hero) { hero.statPromptSnooze = hero.statPoints || 0; }
+export function snoozeStatPrompt(hero) { hero.statPromptSnooze = hero.statPoints || 0; hero.abilityPromptSnooze = hero.abilityPicks || 0; }
 
 /** Spend a level-up point. */
 export function spendStatPoint(hero, stat) {

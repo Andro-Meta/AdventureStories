@@ -7,6 +7,7 @@
 //    a level-up raises max HP/MP, attack, defense and heals a little.
 import { gameState } from './state.js';
 import { gainXp } from './progression.js';
+import * as Progression from './progression.js';
 import { getCurrentThemeAdaptation } from './adaptiveAbilities.js';
 
 /**
@@ -37,6 +38,8 @@ export function levelUp(p, n = 1) {
         // Every 2 levels unlock the next spell level (nothing raised it, so
         // level-2 reward spells could never be cast).
         if (p.spellcasting) p.spellcasting.maxSpellLevel = Math.max(p.spellcasting.maxSpellLevel || 1, Math.min(9, Math.ceil(p.level / 2)));
+        // Every 2 levels: learn a new special (chosen on the level-up sheet).
+        if (p.level % 2 === 0) p.abilityPicks = (p.abilityPicks || 0) + 1;
     }
 }
 
@@ -60,6 +63,21 @@ export function awardXp(enemy) {
     return { xp, ups };
 }
 
+/**
+ * The battle menu: fixed commands, like a classic RPG (the storyteller no longer
+ * writes choices every round). Defend is added at render time (ui.js).
+ */
+export function battleMenu(hero) {
+    const foes = (gameState.enemies || []).filter(e => e && !e.isDefeated && e.hp > 0);
+    const items = (hero?.inventory || []).filter(i => i?.type === 'Consumable' && !i.stats?.revive && (i.quantity == null || i.quantity > 0));
+    return [
+        { type: 'Attack', text: foes.length === 1 ? `Attack ${foes[0].name}` : 'Attack a foe' },
+        { type: 'Special', text: 'Use a special move or spell' },
+        { type: 'Item', text: items.length ? 'Use an item from your bag' : 'Catch your breath (no items)' },
+        { type: 'Run', text: 'Try to escape' }
+    ];
+}
+
 // ------------------------------------------------------------ command pickers
 /** Options for a battle command, or null when the command needs no picker. */
 export function battleOptions(type, hero) {
@@ -79,17 +97,19 @@ export function battleOptions(type, hero) {
         const round = gameState.combat?.round || 0;
         const opts = (hero.specialMoves || []).map(m => {
             const cd = m.currentCooldown || 0;
-            const noMp = (m.mpCost || 0) > (hero.mp || 0);
-            return { label: m.name, detail: cd > 0 ? `ready in ${cd}` : `${m.mpCost ? m.mpCost + ' MP · ' : ''}${m.description || 'special move'}`.slice(0, 70), type: 'Special', text: `Use ${m.name}`, disabled: cd > 0 || noMp };
+            const cost = Progression.abilityMpCost(m), rank = Progression.abilityRank(m);
+            const noMp = cost > (hero.mp || 0);
+            return { label: `${m.name}${rank > 1 ? ` ${Progression.ROMAN[rank]}` : ''}`, detail: cd > 0 ? `ready in ${cd}` : `${cost ? cost + ' MP · ' : ''}${m.description || 'special move'}`.slice(0, 70), type: 'Special', text: `Use ${m.name}`, disabled: cd > 0 || noMp };
         });
-        const listed = new Set(opts.map(o => o.label.toLowerCase()));
+        const listed = new Set((hero.specialMoves || []).map(m => String(m?.name).toLowerCase()));
         for (const s of hero.spellcasting?.knownSpells || []) {
             if (listed.has(String(s?.name).toLowerCase())) continue; // a spell learned twice shows once
             listed.add(String(s?.name).toLowerCase());
-            const cost = s.mpCost || 0;
+            const cost = Progression.abilityMpCost(s);
             const area = isAreaSpell(s) ? (s.effects?.healing > 0 && !(s.effects?.damage > 0) ? 'whole party · ' : 'hits all foes · ') : '';
             const kind = abilityKind();
-            opts.push({ label: `${s.name} (${kind})`, detail: `${cost} MP · ${area}${s.description || s.effect || ''}`.slice(0, 80), type: 'Spell', text: `Cast ${s.name}`, disabled: (hero.mp || 0) < cost });
+            const rank = Progression.abilityRank(s);
+            opts.push({ label: `${s.name}${rank > 1 ? ` ${Progression.ROMAN[rank]}` : ''} (${kind})`, detail: `${cost} MP · ${area}${s.description || s.effect || ''}`.slice(0, 80), type: 'Spell', text: `Cast ${s.name}`, disabled: (hero.mp || 0) < cost });
         }
         const winded = round - (hero.lastPowerStrikeRound ?? -99) < 2;
         opts.push({ label: 'Power Strike', detail: winded ? 'winded: a normal hit this round' : 'heavy blow, every other round', type: 'Special', text: 'Power Strike' });

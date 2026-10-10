@@ -67,5 +67,37 @@ for (const L of [1, 3, 5, 8, 12]) {
     if (!ok) bad++;
     out(`${CHECK ? (ok ? '  ✓ ' : '  ✗ ') : ''}L${String(L).padEnd(2)} | ${lootTier(L).padEnd(9)} | ${String(f.gear.atk).padStart(3)} ${String(f.gear.def).padStart(3)} ${String(f.gear.hp).padStart(3)} | foe ${f.foe.hp}/${f.foe.atk}/${f.foe.def}: ${f.hits.toFixed(1)} hits, ${f.lost.toFixed(0)}% HP | boss ${b.foe.hp}/${b.foe.atk}/${b.foe.def}: ${b.hits.toFixed(1)} hits, ${b.lost.toFixed(0)}% HP, win ${b.win.toFixed(0)}%`);
 }
-if (CHECK) out(bad ? `✗ ${bad} level(s) outside the fight ranges (ordinary foe 5-30% HP; boss >=25% HP, >=75% wins)` : '✓ fights stay fights at every level');
+// Specials (10-09): the hero's first attack special, cast through the real
+// spell code, as % of an ordinary foe's HP at rank I and at rank V. Before
+// 10-09 it did a fixed ~12 at every level (11% of a level-10 foe).
+const SpellCasting = await import('../spellCasting.js');
+const Spells = await import('../spells.js');
+const Progression = await import('../progression.js');
+async function special(level, uses, n = 60) {
+    let dealt = 0, foeHp = 0;
+    for (let i = 0; i < n; i++) {
+        const p = hero(level);
+        await Spells.initializePlayerSpellcasting(p); // offline: the themed starting set
+        const s = (p.spellcasting?.knownSpells || []).find(x => x?.effects?.damage > 0);
+        if (!s) return null;
+        s.uses = uses; p.mp = 999; p.maxMp = 999;
+        gameState.enemies = []; gameState.inCombat = true;
+        Engine.applyDiff([{ op: 'add', path: '/enemies/-', value: { ...NARRATOR_FOE, hp: 9999, maxHp: 9999 } }], { strict: false });
+        const e = gameState.enemies[0]; const before = e.hp;
+        await SpellCasting.castSpell(p, s, e);
+        dealt += before - e.hp;
+        gameState.enemies = [];
+        Engine.applyDiff([{ op: 'add', path: '/enemies/-', value: { ...NARRATOR_FOE } }], { strict: false });
+        foeHp += gameState.enemies[0].maxHp;
+    }
+    return 100 * dealt / foeHp;
+}
+out('level | first attack special, % of an ordinary foe HP: rank I, rank V');
+for (const L of [1, 3, 5, 8, 12]) {
+    const r1 = await special(L, 0), r5 = await special(L, 25);
+    const ok = r1 != null && r1 >= 20 && r5 >= r1 * 1.3;
+    if (!ok) bad++;
+    out(`${CHECK ? (ok ? '  ✓ ' : '  ✗ ') : ''}L${String(L).padEnd(2)} | rank I ${r1?.toFixed(0)}% | rank V ${r5?.toFixed(0)}%`);
+}
+if (CHECK) out(bad ? `✗ ${bad} level(s) outside the fight ranges (ordinary foe 5-30% HP; boss >=25% HP, >=75% wins; a special >=20% of a foe, rank V >=1.3x rank I)` : '✓ fights stay fights at every level');
 process.exit(CHECK && bad ? 1 : 0);
