@@ -716,7 +716,11 @@ await block(async () => {
   const S = await import('../spellCasting.js');
   const bolt = { id: 'sp_bolt', name: 'Bolt', level: 1, mpCost: 4, targeting: 'single', effects: { damage: 10 } };
   p.spellcasting.knownSpells.push(bolt); p.spellcasting.preparedSpells.push(bolt); p.mp = 20;
-  await S.castSpell(p, bolt, p); // invalid target: a damage spell on yourself
+  const foeHp0 = gameState.enemies[0].hp;
+  await S.castSpell(p, bolt, p); // aimed at yourself: a damage spell goes to the foe instead
+  check(gameState.enemies[0].hp < foeHp0, `a damage spell aimed at yourself hits the foe (foe HP ${foeHp0} -> ${gameState.enemies[0].hp})`);
+  gameState.enemies.forEach(en => { en.hp = 0; en.isDefeated = true; }); p.mp = 20;
+  await S.castSpell(p, bolt, p); // no foe left: nothing to hit
   check(p.mp === 20, `a spell with no valid target costs no MP (MP 20 -> ${p.mp})`);
 });
 await block(async () => {
@@ -1252,10 +1256,10 @@ await block(async () => {
   check(p.xp === 50 && p.coins >= 15, `milestone: +${p.xp} XP, +${p.coins} coins`);
 });
 await block(async () => {
-  // Stats in fights: Brave adds attack, Kind heals more.
+  // Stats in fights: Brave +10% attack per point, Kind heals more.
   const { p } = fresh(); p.stats = { brave: 3, clever: 0, sneaky: 0, kind: 0 };
   Combat.recalculateCharacterStats(p);
-  check(p.atk === 5 + 3, `Brave 3: ATK 5 -> ${p.atk}`);
+  check(p.atk === Math.round(5 * 1.3), `Brave 3: ATK 5 -> ${p.atk} (+30%)`);
   const k = fresh(); k.p.stats = { brave: 0, clever: 0, sneaky: 0, kind: 5 }; k.p.hp = 40;
   k.p.inventory.push({ id: 'pk', name: 'Healing Potion', type: 'Consumable', stats: { heal: 20 }, quantity: 1, effect: 'Restores HP.' });
   await AH.useInventoryItem('pk');
@@ -2469,6 +2473,89 @@ await block(async () => {
     if (e.chapters.length !== 3 || !/The Pale Regent has fallen/.test(e.text) || !/Mira/.test(e.text)) bad.push(`${th}: fallback ending`);
   }
   check(bad.length === 0, `all ${themes.length} themes (custom too): beat, people and villain in the brief, 8 new specials named for the world, an ending even if the storyteller fails${bad.length ? ' | ' + bad.slice(0, 4).join(' | ') : ''}`);
+});
+
+await block(async () => {
+  // Phone 10-10: a boost-only special aimed at the boss gave it +97 ATK; a buff gave the hero +200 DEF.
+  const SC = await import('../spellCasting.js');
+  const { p, e } = fresh({ enemy: { name: 'Directorate Heavy Enforcer', hp: 300, maxHp: 300, atk: 30, def: 20 } });
+  p.mp = p.maxMp = 99; p.level = 9; startFight();
+  const pulse = { id: 'rp', name: "Vesper's Resonance Pulse", school: 'ELEMENTAL', type: 'BUFF', level: 1, mpCost: 5, targeting: 'single', uses: 25, effects: { modifiers: { atk: 40 } } };
+  const uplink = { id: 'up', name: 'Vesper Core Uplink', school: 'ELEMENTAL', type: 'BUFF', level: 1, mpCost: 5, targeting: 'self', uses: 25, effects: { modifiers: { def: 60 } } };
+  p.spellcasting = { knownSpells: [pulse, uplink], preparedSpells: [pulse, uplink] };
+  pinRandom(0.5);
+  await SC.castSpell(p, pulse, e); // aimed at the foe, but it is a boost
+  await SC.castSpell(p, uplink, p);
+  unpinRandom();
+  const foeBoost = (e.statusEffects || []).some(fx => fx.effectTickData?.atkMod > 0);
+  const atkMod = (p.statusEffects || []).find(fx => fx.name === pulse.name)?.effectTickData?.atkMod || 0;
+  const defMod = (p.statusEffects || []).find(fx => fx.name === uplink.name)?.effectTickData?.defMod || 0;
+  check(!foeBoost && atkMod > 0 && defMod > 0 && defMod <= Math.max(3, Math.round(0.5 * (p.def || 10))) + 1,
+    `boosts go to the hero, never the foe (foe boosted ${foeBoost}); sizes stay sane (ATK +${atkMod}, DEF +${defMod}, hero DEF ${p.def})`);
+});
+
+section('Batch 33: every special does something; self-revive; the foe name (phone 10-10)');
+
+await block(async () => {
+  const SC = await import('../spellCasting.js');
+  const B = await import('../battle.js');
+  // Storyteller-made specials from Michael's saves, as they were stored.
+  const kit = [
+    { name: 'Sub-Net Scraper', description: 'Scrapes enemy telemetry.', targeting: 'single', effects: { damage: 0, healing: 0, statusEffects: [], modifiers: {} } },
+    { name: 'Overclocked Thermal Pulse', description: 'Sears the foe.', targeting: 'single', effects: { statusEffects: ['Thermal Burn', 'Armor Melt'], modifiers: { DEF: -3 } } },
+    { name: 'Disruptor Surge', description: 'Blinds and stuns.', targeting: 'self', effects: { statusEffects: ['blinded', 'stunned'], modifiers: { DEF: -2 } } },
+    { name: 'Data-Scrape', description: 'Reads the enemy.', targeting: 'area', effects: { damage: 0, healing: 0, statusEffects: [], modifiers: {} } },
+    { name: 'Basic Ability', description: 'A simple move.', targeting: 'self', effects: { damage: 5, healing: 5 } },
+    { name: 'Stun Pulse', description: 'A stunning pulse.', targeting: 'single', duration: 'instant', effects: { damage: 10, statusEffects: ['Stun'] } }
+  ];
+  const results = [];
+  for (const k of kit) {
+    const { p, e } = fresh({ enemy: { name: 'Dummy', hp: 900, maxHp: 900, atk: 1, def: 0 } });
+    const s = { id: k.name, school: 'ELEMENTAL', type: 'OFFENSIVE', level: 1, mpCost: 3, range: 'medium', duration: k.duration || 'instant', ...k };
+    p.mp = p.maxMp = 99; p.hp = Math.round(p.maxHp / 2); p.spellcasting = { knownSpells: [s], preparedSpells: [s] };
+    startFight(); gameState.pickedTargetId = e.id; pinRandom(0.5);
+    const hp0 = p.hp;
+    await AH.handlePlayerChoice('Spell', `Cast ${s.name}`); unpinRandom();
+    const foeFx = (e.statusEffects || []).map(x => x.name), heroFx = (p.statusEffects || []).map(x => x.name);
+    results.push({ name: k.name, foeHit: e.hp < 900, healed: p.hp > hp0 - 1, foeFx, heroFx, summary: SC.abilitySummary(s, p) });
+  }
+  const r = Object.fromEntries(results.map(x => [x.name, x]));
+  check(r['Sub-Net Scraper'].foeFx.includes('Vulnerability') && r['Data-Scrape'].foeFx.length && !r['Data-Scrape'].heroFx.some(n => ['Blind', 'Vulnerability', 'Stun'].includes(n)),
+    `effect-less specials get a real effect from their words, on the foe (Scraper: ${r['Sub-Net Scraper'].foeFx}, Data-Scrape: ${r['Data-Scrape'].foeFx})`);
+  check(r['Overclocked Thermal Pulse'].foeFx.includes('Burn') && r['Disruptor Surge'].foeFx.some(n => n === 'Blind' || n === 'Stun') && !r['Disruptor Surge'].heroFx.includes('Blind'),
+    `made-up status names become real ones, aimed at the foe (Thermal Pulse: ${r['Overclocked Thermal Pulse'].foeFx}; Disruptor Surge: foe ${r['Disruptor Surge'].foeFx}, hero ${r['Disruptor Surge'].heroFx})`);
+  check(r['Basic Ability'].foeHit && r['Basic Ability'].healed, 'a special that hurts and heals drains: the foe takes the hit, the caster heals');
+  check(r['Stun Pulse'].foeFx.includes('Stun'), `an "instant" stun still stuns the foe through its next turn (${r['Stun Pulse'].foeFx})`);
+  check(results.every(x => x.summary && x.summary !== 'no effect in a fight') && /≈\d+ damage/.test(r['Stun Pulse'].summary), `the picker shows what each really does: ${results.map(x => `${x.name}: ${x.summary}`).join(' | ').slice(0, 300)}`);
+});
+
+await block(async () => {
+  // Brave adds 10% attack per point now (like Clever and Kind), stated as such.
+  const Prog = await import('../progression.js');
+  check(/\+10% attack per point/.test(Prog.STATS.brave.fight), `Brave says what it does: "${Prog.STATS.brave.fight}"`);
+  // A consumable's bare stat ("clever": 2) does something now, and item cards say what MP/stat/teach items do.
+  const Items = await import('../items.js');
+  const pad = Items.inferItemEffects({ name: 'Corporate Datapad', type: 'Consumable', stats: { clever: 2 } });
+  check(pad.stats.statUp?.clever === 1 && !pad.stats.clever, `a bare stat on a consumable becomes a permanent +1 (${JSON.stringify(pad.stats)})`);
+});
+
+await block(async () => {
+  // Michael 10-10: a revive item can bring you back yourself; it takes your turn.
+  const { createNewPlayer } = await import('../state.js');
+  const B = await import('../battle.js');
+  const { p, e } = fresh({ enemy: { name: 'Brute', hp: 900, maxHp: 900, atk: 80, def: 0 } });
+  p.hp = 1; p.maxHp = 100;
+  p.inventory.push({ id: 'phx', name: 'Phoenix Feather', type: 'Consumable', quantity: 1, stats: { revive: true, healPercent: 0.4 } });
+  startFight(); pinRandom(0.5);
+  await AH.handlePlayerChoice('Attack', 'Attack Brute'); // the brute answers and downs the hero
+  const downed = p.isDowned, wiped = Combat.isPartyWiped(), menu = B.battleMenu(p).map(c => c.type).join(',');
+  await AH.handlePlayerChoice('SelfRevive', 'Use Phoenix Feather'); unpinRandom();
+  const up = !p.isDowned || p.hp > 0;
+  check(downed && !wiped && menu === 'SelfRevive' && up && !p.inventory.some(i => i.id === 'phx'),
+    `downed with a revive item: not the end (wiped ${wiped}), the only move is to get up (${menu}), and the feather is used (up ${up}, HP ${p.hp})`);
+  // Without one, a downed solo hero is out.
+  const g = fresh().p; g.isDowned = true; g.hp = 0;
+  check(Combat.isPartyWiped(), 'without a revive item, a downed solo hero is out');
 });
 
 console.error = realError;

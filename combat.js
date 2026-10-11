@@ -234,7 +234,7 @@ export async function advanceCombatTurn() {
     const nextChar = findCharacterById(nextCharId);
 
     // Skip turn if character is defeated/downed
-    if ((nextChar?.isDowned && nextChar?.id.startsWith('player')) || 
+    if ((nextChar?.isDowned && nextChar?.id.startsWith('player') && !selfReviveItem(nextChar)) || 
         (nextChar?.isDefeated && nextChar?.id.startsWith('enemy'))) {
         log(`${nextChar.name} is unable to act, skipping turn`);
         return advanceCombatTurn(); // Recursively find next valid turn
@@ -907,8 +907,8 @@ export function recalculateCharacterStats(character) {
         const armorBonus = armor?.stats?.def || 0;
         currentAtk += weaponBonus;
         currentDef += armorBonus;
-        currentAtk += Progression.braveAttack(character); // +1 attack per point of Brave
         if (weaponBonus !== 0 || armorBonus !== 0) log(` -> After Equip: ATK=${currentAtk} (+${weaponBonus}), DEF=${currentDef} (+${armorBonus})`);
+        currentAtk = Math.round(currentAtk * Progression.bravePower(character)); // Brave: +10% attack per point
      }
      let flatAtkMod = 0, flatDefMod = 0, atkMultiplier = 1.0, defMultiplier = 1.0;
      character.statusEffects?.forEach(effect => {
@@ -947,10 +947,13 @@ export function areAllEnemiesDefeated() {
  * Checks if the entire player party is downed.
  * @returns {boolean} True if all players are downed, false otherwise.
  */
+/** The revive item a downed hero carries (they may use it on themselves; it takes their turn). */
+export const selfReviveItem = (p) => (p?.isDowned && (p.inventory || []).find(i => i?.stats?.revive && (i.quantity ?? 1) > 0)) || null;
+
 export function isPartyWiped() {
-    // (Unchanged)
     if (!gameState.players || gameState.players.length === 0) return false;
-    return gameState.players.every(player => player?.isDowned);
+    // Not over while a downed hero still carries a revive item: they get their turn.
+    return gameState.players.every(player => player?.isDowned && !selfReviveItem(player));
 }
 
 /**

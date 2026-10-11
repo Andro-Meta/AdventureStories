@@ -11,6 +11,7 @@ import * as AdaptiveAbilities from './adaptiveAbilities.js';
 import * as Progression from './progression.js';
 import * as Media from './media.js';
 import * as Roster from './roster.js';
+import * as SpellCasting from './spellCasting.js';
 // Import specific utils needed
 import { sanitizeText } from './utils.js';
 import { describeQuestStep, friendlyMilestone } from './questDefinitions.js';
@@ -887,7 +888,7 @@ export function renderChoices(choices, handler = null) {
     // Battle menu in a fixed order (Michael): Attack, Special, Item, Defend,
     // Run. Defend is a fixed command added here at render time (never
     // stored, so it costs the storyteller no words and can't be reshuffled).
-    if (gameState.inCombat && !handler && Array.isArray(choices) && choices.length) {
+    if (gameState.inCombat && !handler && Array.isArray(choices) && choices.length && !choices.some(c => c?.type === 'SelfRevive')) {
         const ORDER = ['Attack', 'Special', 'Item', 'Defend', 'Run'];
         const rank = (c) => { const i = ORDER.indexOf(c?.type); return i === -1 ? ORDER.length : i; };
         choices = [...choices, { type: 'Defend', text: 'Raise your guard: half damage until your next turn, and catch your breath' }]
@@ -947,7 +948,7 @@ export function renderChoices(choices, handler = null) {
         }
         // In a fight the move type is shown: Attack/Special/Item/Run are
         // mechanics, not hidden story options.
-        const badge = { Attack: '⚔️ Attack', Special: '✨ Special', Item: '🧪 Item', Run: '🏃 Run', Defend: '🛡️ Defend' }[choice.type];
+        const badge = { Attack: '⚔️ Attack', Special: '✨ Special', Item: '🧪 Item', Run: '🏃 Run', Defend: '🛡️ Defend', SelfRevive: '💫 Get up' }[choice.type];
         if (badge) {
             const tag = document.createElement('span');
             tag.className = 'choice-badge';
@@ -1274,6 +1275,7 @@ export function renderSpecialMoves() {
             card.innerHTML = `
                 <h4>${sanitizeText(spell.name || 'Unnamed Spell')}</h4>
                 <p>${sanitizeText(spell.description || spell.effect || 'A learned spell.')}</p>
+                <p class="move-mechanics">In a fight: ${sanitizeText(SpellCasting.abilitySummary(spell, player))}</p>
                 <p class="meta">School: ${sanitizeText(spell.school || 'Arcane')} · MP: ${Progression.abilityMpCost(spell)} · Rank ${Progression.ROMAN[Progression.abilityRank(spell)]}${Progression.abilityRank(spell) < 5 ? ` (${spell.uses || 0}/${Progression.RANK_USES[Progression.abilityRank(spell)]} uses to rank ${Progression.ROMAN[Progression.abilityRank(spell) + 1]})` : ' (mastered)'}</p>
             `;
             // Cast from here (the Book/Cast quick buttons were only ever added
@@ -1369,12 +1371,16 @@ function createItemCard(item, context) {
     const statsString = [
         st.atk ? `⚔️ ATK +${st.atk}` : '',
         st.def ? `🛡️ DEF +${st.def}` : '',
-        st.revive ? `Revives a downed ally (${Math.round((st.healPercent || 0.25) * 100)}% HP)` : '',
+        st.revive ? `Revives a downed ally, or yourself on your turn (${Math.round((st.healPercent || 0.25) * 100)}% HP)` : '',
         st.heal && !(item.effect || '').includes(` ${st.heal} HP`) ? `Heals ${st.heal} HP` : '', // shop showed "Restores 27 HP" then "Heals 27 HP"
         st.healPercent && !st.revive ? `Heals ${Math.round(st.healPercent * 100)}% HP` : '',
         st.cure ? `Cures ${sanitizeText(String(st.cure))}` : '',
         st.applyStatus ? `Gives ${sanitizeText([].concat(st.applyStatus).join(', '))}` : '',
         st.throwStatus ? `Throw: ${sanitizeText(String(st.throwStatus))}` : '',
+        st.mp && !(item.effect || '').includes(` ${st.mp} MP`) ? `Restores ${st.mp} MP` : '',
+        st.mpPercent ? `Restores ${Math.round(st.mpPercent * 100)}% MP` : '',
+        st.statUp ? `Raises ${Object.entries(st.statUp).map(([k, n]) => `${sanitizeText(Progression.STATS[k]?.name || k)} +${n}`).join(', ')} for good` : '',
+        st.teach ? 'Teaches a new special' : '',
         st.luck ? `🍀 Luck +${st.luck}` : '',
         st.onHitStatus ? `On hit: ${sanitizeText(String(st.onHitStatus))}` : '',
         st.resistances ? `Resists ${Object.entries(st.resistances).map(([e, r]) => `${sanitizeText(e)} ${Math.round(r * 100)}%`).join(', ')}` : ''
