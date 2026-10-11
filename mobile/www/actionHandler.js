@@ -926,6 +926,15 @@ function applyItemExtras(hero, item) {
         hero.stats[stat] = Math.min(Progression.STAT_MAX, before + (Number(n) || 0));
         if (hero.stats[stat] > before) parts.push(`${Progression.STATS[stat].name} rises to ${hero.stats[stat]}`);
     }
+    if (st.maxHpUp) { hero.maxHp = (hero.maxHp || 100) + Number(st.maxHpUp); hero.hp = (hero.hp || 0) + Number(st.maxHpUp); parts.push(`max HP rises to ${hero.maxHp}`); }
+    if (st.maxMpUp) { hero.maxMp = (hero.maxMp || 0) + Number(st.maxMpUp); hero.mp = (hero.mp || 0) + Number(st.maxMpUp); parts.push(`max MP rises to ${hero.maxMp}`); }
+    if (st.rankUp) {
+        const all = [...(hero.spellcasting?.knownSpells || []), ...(hero.specialMoves || [])];
+        let up = 0;
+        for (const a of all) { const r = Progression.abilityRank(a); if (r < 5) { a.uses = Math.max(a.uses || 0, Progression.RANK_USES[r]); up++; } }
+        if (!up) Progression.masteryBoost(hero);
+        parts.push(up ? `${up} special${up > 1 ? 's go' : ' goes'} up a rank` : 'every special is already rank V: they all sharpen');
+    }
     if (st.teach) { hero.abilityPicks = (hero.abilityPicks || 0) + 1; parts.push('a new special can be learned (tap ✨ on the hero card)'); }
     if (st.statUp) { try { Combat.recalculateCharacterStats(hero); } catch (_) {} }
     return parts;
@@ -1504,6 +1513,12 @@ export async function useInventoryItem(itemId) {
      // Before, most items called the storyteller, which rewrote the scene and
      // the choices, and plain heals passed the turn.
      const exploring = !gameState.inCombat;
+     // Full bars: a potion would be used up for nothing (phone 10-11: a Universal Fix at full HP and MP).
+     if (Items.wouldBeWasted(item, player)) {
+         const s = item.stats, what = (s.mp || s.mpPercent) ? ((s.heal || s.healPercent) ? 'HP and MP' : 'MP') : 'HP';
+         UI.showPopup(`${player.name} is already at full ${what}: ${item.name} is kept.`, 'info', 3000);
+         return;
+     }
      if (exploring && item.stats?.throwStatus) {
          UI.showPopup(`Save the ${item.name} for a fight: throw it at a foe with the Item command.`, 'info', 3000);
          return;
