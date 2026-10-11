@@ -104,6 +104,22 @@ export function formatTurnRecap(before, after, actorName) {
 }
 
 /**
+ * The new world a Divine Will describes, or null: "...transported everyone into a
+ * new dimension where witches and magic and ghosts prevail" -> "a new dimension
+ * where witches and magic and ghosts prevail".
+ */
+export function worldShiftOf(text) {
+    const t = String(text || '');
+    const m = t.match(/\b(transport\w*|teleport\w*|portal|warp\w*|time.?travel\w*|another world|new world|other world|dimension|realm|wakes? up in|woke up in|sent (?:back|forward) (?:in time )?to|step\w* through)\b/i);
+    if (!m) return null;
+    const rest = t.slice(m.index + m[0].length);
+    // The place comes after the first "into / to / through / in" ("...a portal into a haunted mansion").
+    const p = rest.match(/\b(?:into|to|through|in)\s+([\s\S]+)$/i);
+    const where = (/\b(in|to)$/i.test(m[0]) ? rest : p ? p[1] : `${m[0]}${rest}`).replace(/[.!]+\s*$/, '').trim();
+    return where.length >= 8 ? where.slice(0, 220) : null;
+}
+
+/**
  * A next chapter picked from the ending: a fresh three-act quest (Divine Will
  * stays), then the storyteller opens it.
  */
@@ -1418,8 +1434,19 @@ The wish succeeds fully and at once, with no cost, catch or twist unless the pla
 
     // --- Trigger AI for Narrative ---
     UI.showLoading(true, 'Narrating outcome...');
+    const worldBefore = `${gameState.adventureTheme}|${gameState.customThemeDescription || ''}`;
     try {
         await makeAICallForSystemAction(actionLog, false); // Let turn advance normally after AI response
+        // A described trip to another world happens even if the storyteller forgot
+        // the world op (phone 10-11: "transported everyone into a new dimension where
+        // witches and magic and ghosts prevail" kept the old world, and the story
+        // drifted back to machines).
+        const shift = worldShiftOf(actionText);
+        if (shift && `${gameState.adventureTheme}|${gameState.customThemeDescription || ''}` === worldBefore) {
+            const { applyDiff } = await import('./engine.js');
+            applyDiff([{ op: 'replace', path: '/adventureTheme', value: { theme: 'custom', description: shift } }], { strict: false });
+            log(`Divine Will: the world itself changed to "${shift}" (the storyteller did not send it).`);
+        }
     } catch (error) {
         log(`CRITICAL ERROR in handleCustomAction: ${error.message}`);
         UI.showPopup(`Custom Action Failed: ${error.message}. The AI could not process your custom action. Please try a different action.`, 'error', 8000);
