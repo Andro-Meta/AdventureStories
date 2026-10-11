@@ -18,7 +18,7 @@ import { describeQuestStep, friendlyMilestone } from './questDefinitions.js';
 // Import functions from other new modules
 import { getCurrentPlayer } from './state.js';
 // Import themedItemData directly if it's exported from items.js
-import { themedItemData, itemValue } from './items.js';
+import { themedItemData, itemValue, effectWords, inferItemEffects } from './items.js';
 // Import reputation price calculation
 import { calculateItemPrice } from './actionHandler.js';
 
@@ -1165,7 +1165,7 @@ function itemIcon(item) {
     if (s.luck && item.type !== 'Consumable') return '🍀';
     if (s.revive) return '💫';
     if (s.teach) return '📜';
-    if (s.statUp) return '⭐';
+    if (s.statUp || s.maxHpUp || s.maxMpUp || s.rankUp) return '⭐';
     if (s.throwStatus) return '💣';
     if (s.cure) return '🌿';
     if (s.applyStatus) return '✨';
@@ -1187,20 +1187,10 @@ function itemLine(item, hero) {
         else if (!mine) bits.push('▲ you have none');
         if (s.element) bits.push(`${s.element}${s.onHitStatus ? ` · ${s.onHitStatus} on hit` : ''}`);
     }
-    if (s.revive) bits.push(`revives an ally or you (${Math.round((s.healPercent || 0.25) * 100)}% HP)`);
-    else {
-        if (s.heal) bits.push(`+${s.heal} HP`);
-        if (s.healPercent) bits.push(`+${Math.round(s.healPercent * 100)}% HP`);
-    }
-    if (s.mp) bits.push(`+${s.mp} MP`);
-    if (s.mpPercent) bits.push(`+${Math.round(s.mpPercent * 100)}% MP`);
-    if (s.cure) bits.push(s.cure === 'All' ? 'cures ailments' : `cures ${s.cure}`);
-    if (s.applyStatus) bits.push(`gives ${[].concat(s.applyStatus).join(', ')}`);
-    if (s.throwStatus) bits.push(`throw: ${s.throwStatus} on a foe`);
-    if (s.statUp) bits.push(`${Object.entries(s.statUp).map(([k, n]) => `${Progression.STATS[k]?.name || k} +${n}`).join(', ')} for good`);
-    if (s.teach) bits.push('teaches a new special');
+    const words = effectWords(item);
+    if (words) bits.push(words);
     if (s.luck) bits.push(`🍀 luck +${s.luck}`);
-    return bits.join(' · ') || (item.type === 'Quest' ? 'needed for the quest' : 'a keepsake');
+    return bits.join(' · ') || (item.type === 'Quest' ? 'needed for the quest' : 'story item: use it in a choice');
 }
 
 /** One row. `actions` = [{label, cls, disabled, data, primary}]; `more` = details shown when opened. */
@@ -1242,6 +1232,7 @@ function kitHeader(hero, extra = '') {
 function createItemCard(item, context) {
     let hero; try { hero = getCurrentPlayer(); } catch (_) {}
     item.type = Progression.usableType(item); // older saves: an invented type had no buttons
+    inferItemEffects(item); // older saves: the +15% guess on story items is read again
     const tier = String(item.tier ?? 'Low');
     const equippedSlot = hero?.equipment?.weapon === item.id ? 'weapon' : hero?.equipment?.armor === item.id ? 'armor' : null;
     const cannotAct = hero?.isDowned || gameState.isLoading;

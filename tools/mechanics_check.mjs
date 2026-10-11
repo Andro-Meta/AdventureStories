@@ -555,7 +555,7 @@ await block(async () => {
   check(gameState.inCombat === true, 'cannot run from a boss (still in combat after a lucky roll)');
   p.inventory = [{ id: 'pot', name: 'Health Potion', type: 'Consumable', stats: { heal: 30 }, quantity: 2 }];
   const items = Battle.battleOptions('Item', p);
-  check(items.length === 1 && items[0].label.includes('×2') && items[0].detail.includes('heals 30'), `Item menu lists real items (${items.map(o => o.label + ': ' + o.detail).join('; ')})`);
+  check(items.length === 1 && items[0].label.includes('×2') && /heals 30/i.test(items[0].detail), `Item menu lists real items (${items.map(o => o.label + ': ' + o.detail).join('; ')})`);
   const specials = Battle.battleOptions('Special', p);
   check(specials.some(o => o.label === 'Power Strike'), 'Special menu always offers Power Strike');
   check(Battle.battleOptions('Attack', p) === null, 'one foe: Attack needs no target menu');
@@ -1813,7 +1813,8 @@ await block(async () => {
   await AH.handlePlayerChoice('Item', 'Use Mana Draught'); unpinRandom();
   check(b.p.mp >= 12, `Mana Draught in a fight restores MP (2 -> ${b.p.mp})`);
   const odd = Items.inferItemEffects({ type: 'Consumable', name: 'Odd Pebble', effect: 'It hums softly', stats: {} });
-  check(odd.stats.healPercent > 0 && odd.stats.mpPercent > 0, 'an item with no recognisable effect still refreshes a little HP and MP');
+  // Michael 10-11: an item whose words name no effect is a story item, not a small potion.
+  check(odd.type === 'Misc' && !odd.stats.healPercent, `an item with no recognisable effect is a story item (${odd.type})`);
 
   // Story moments: rests are likelier when hurt, never back to back.
   const rate = (o) => { let n = 0; for (let i = 0; i < 4000; i++) if (Prog.pickBeat(o) === 'rest') n++; return n / 4000; };
@@ -1865,7 +1866,7 @@ await block(async () => {
   const Items = await import('../items.js');
   const themes = ['fantasy', 'space', 'pirate', 'haunted', 'cyberpunk', 'wild_west', 'dinosaur', 'arctic', 'custom'];
   const tiers = ['Low', 'Medium', 'High', 'Special', 'Legendary'];
-  const real = ['heal', 'healPercent', 'mp', 'mpPercent', 'cure', 'applyStatus', 'statUp', 'throwStatus', 'revive', 'teach'];
+  const real = ['heal', 'healPercent', 'mp', 'mpPercent', 'cure', 'applyStatus', 'statUp', 'throwStatus', 'revive', 'teach', 'maxHpUp', 'maxMpUp', 'rankUp'];
   let cons = 0, dead = 0, mp = 0, lowElixir = 0; const elem = {};
   for (const th of themes) for (const tier of tiers) for (let i = 0; i < 30; i++) {
     const c = Items.generateThemedItem(th, tier, 'Consumable'); cons++;
@@ -2026,7 +2027,7 @@ await block(async () => {
   check(r.throw.foeFx.includes('Blind') && r.throw.foe.hp < 300 && r.throw.p.hp <= 50 + 0 && !r.throw.names.includes('Blind'), `throw: foe Blind (${r.throw.foeFx.join(',')}), foe HP ${r.throw.foe.hp}, never on the hero`);
   check(r.elixir.statsUp, 'elixir: a stat rises in a fight too');
   check(r.teach.p.abilityPicks === 1, `scroll: a special to learn after the fight (${r.teach.p.abilityPicks})`);
-  const vague = Object.entries(r).filter(([, v]) => !/heal|MP|throw|gives|cures|raises|teaches/i.test(v.detail || ''));
+  const vague = Object.entries(r).filter(([, v]) => !/heal|MP|throw|gives|cures|raises|teaches|for good/i.test(v.detail || ''));
   check(vague.length === 0, `the Item picker says what each does: ${Object.entries(r).map(([k, v]) => `${k}: ${v.detail}`).join(' | ')}`);
 
   // Only things that work in a fight show in the Item menu (Michael 10-09).
@@ -2598,6 +2599,32 @@ await block(async () => {
     await window.handleGodModeChoice('I summon a phoenix to fight beside me.');
     check(gameState.customThemeDescription === before, 'an ordinary wish leaves the world alone');
   } finally { document.getElementById = realGet; globalThis.fetch = window.fetch = offline; localStorage.removeItem('adv.apiKey.api.groq.com'); localStorage.removeItem('adv.cloudProvider'); }
+});
+
+await block(async () => {
+  // Phone 10-11: items read like max-HP raises, a Universal Fix was used up at full
+  // HP and MP, and a "Corporate Datapad" (story item, +15% guess) was drunk for 0 HP.
+  const Items = await import('../items.js');
+  const { p } = fresh(); p.hp = p.maxHp; p.mp = p.maxMp = 30;
+  check(Items.effectWords?.({ stats: { heal: 44 } }) === 'Heals 44 HP' && Items.effectWords?.({ stats: { healPercent: 0.15, mpPercent: 0.15 } }) === 'Heals 15% HP · Restores 15% MP', `restoring reads as healing: "${Items.effectWords?.({ stats: { heal: 44 } })}"`);
+  p.inventory.push({ id: 'fix', name: 'Universal Fix', type: 'Consumable', effect: 'Restores 60 MP. Completely restores target.', stats: { mp: 60 }, quantity: 1 });
+  await AH.useInventoryItem('fix');
+  check(p.inventory.some(i => i.id === 'fix'), 'a restore item at full HP and MP is kept, not used up');
+  const pad = { id: 'pad', name: 'Corporate Datapad', type: 'Consumable', effect: 'Decrypts localized security sub-routines', stats: {} };
+  const notes = { id: 'notes', name: 'Maintenance Sequence Notes', type: 'Consumable', effect: 'Unlocks master-level system overrides', stats: { healPercent: 0.15, mpPercent: 0.15 } };
+  const manual = { id: 'man', name: 'Training Manual', type: 'Consumable', effect: 'Grants temporary mastery of one special move', stats: { healPercent: 0.15, mpPercent: 0.15 } };
+  [pad, notes, manual].forEach(i => Items.inferItemEffects(i));
+  check(pad.type === 'Misc' && notes.type === 'Misc' && !notes.stats.healPercent, `story items stay story items (${pad.type}, ${notes.type} ${JSON.stringify(notes.stats)})`);
+  check(manual.stats.teach && !manual.stats.healPercent, `a manual about special moves teaches one (${JSON.stringify(manual.stats)})`);
+  // Rare growth: max HP, max MP, special ranks; one is in the shop from level 8.
+  p.level = 9; p.hp = p.maxHp = 100;
+  p.specialMoves = [{ id: 'm', name: 'Arc Smash', uses: 4 }];
+  p.inventory.push({ id: 'v', name: 'Vigor Draught', type: 'Consumable', stats: { maxHpUp: 25 } }, { id: 'k', name: "Master's Notes", type: 'Consumable', stats: { rankUp: 1 } }, { id: 'f', name: 'Focus Crystal', type: 'Consumable', stats: { maxMpUp: 12 } });
+  await AH.useInventoryItem('v'); await AH.useInventoryItem('k'); await AH.useInventoryItem('f');
+  const Prog = await import('../progression.js');
+  check(p.maxHp === 125 && p.hp === 125 && p.maxMp === 42 && Prog.abilityRank(p.specialMoves[0]) === 3, `growth items: max HP 100 -> ${p.maxHp}, max MP 30 -> ${p.maxMp}, Arc Smash rank 2 -> ${Prog.abilityRank(p.specialMoves[0])}`);
+  const grow = Items.generateShopItems('custom', 40).find(i => ['statUp', 'maxHpUp', 'maxMpUp', 'rankUp'].some(k => i.stats?.[k]));
+  check(grow && grow.cost > 150, `a rare growth item is on the shelf at level 9 (${grow?.name}: ${grow && Items.effectWords?.(grow)}, ${grow?.cost} coins)`);
 });
 
 console.error = realError;

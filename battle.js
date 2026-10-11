@@ -6,7 +6,7 @@
 //  - experience and levels: every defeated foe gives XP to the whole party;
 //    a level-up raises max HP/MP, attack, defense and heals a little.
 import { gameState } from './state.js';
-import { battleUsable } from './items.js';
+import { battleUsable, effectWords } from './items.js';
 import { abilitySummary, normalizeSpell, isHarmfulSpell } from './spellCasting.js';
 import { gainXp } from './progression.js';
 import * as Progression from './progression.js';
@@ -136,17 +136,7 @@ function abilityKind() {
 }
 
 function itemDetail(i) {
-    const s = i.stats || {};
-    const bits = [];
-    if (s.heal) bits.push(`heals ${s.heal}`);
-    if (s.healPercent) bits.push(`heals ${Math.round(s.healPercent * 100)}%`);
-    if (s.throwStatus) bits.push(`throw: ${s.throwStatus}`);
-    if (s.applyStatus) bits.push(`gives ${[].concat(s.applyStatus).join(', ')}`);
-    if (s.cure) bits.push(s.cure === 'All' ? 'cures ailments' : `cures ${s.cure}`);
-    if (s.mp) bits.push(`+${s.mp} MP`);
-    if (s.statUp) bits.push(`raises ${Object.keys(s.statUp).map(k => Progression.STATS[k]?.name || k).join(', ')} for good`);
-    if (s.teach) bits.push('teaches a new special');
-    return bits.join(' · ') || (i.effect || '').slice(0, 60);
+    return effectWords(i) || (i.effect || '').slice(0, 60);
 }
 
 /**

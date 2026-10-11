@@ -753,6 +753,13 @@ export function generateShopItems(theme, turn) {
     }
 
     if (window.displayVisualError) displayVisualError(`Generated ${shopItems.length} shop items after ${attempts} attempts.`);
+    // From level 8 one rare growth item is on the shelf, priced to save up for.
+    if (partyLevel >= 8) {
+        const [kind, name] = [['vigor', 'Vigor Draught'], ['mind', 'Focus Crystal'], ['mastery', "Master's Notes"], ['elixir', 'Elixir of Growth']][Math.floor(Math.random() * 4)];
+        const g = fillConsumable({ name, type: 'Consumable', tier: 'Special', stats: {} }, 'Special', kind);
+        g.cost = priceTag(itemValue(g));
+        shopItems.push(g);
+    }
     // A lucky charm is always on the shelf (a better one later in the story).
     shopItems.push(makeLuckyCharm(theme, (turn || 0) >= 15 ? 2 : 1));
     return shopItems.filter(item => item != null).map(item => ({ ...item, id: generateId('shop') }));
@@ -785,6 +792,9 @@ export function itemValue(item) {
     if (s.mp) v += 1.2 * s.mp;
     if (s.teach) v += 120;
     if (s.mpPercent) v += 50 * s.mpPercent;
+    if (s.maxHpUp) v += 8 * s.maxHpUp;
+    if (s.maxMpUp) v += 15 * s.maxMpUp;
+    if (s.rankUp) v += 250;
     if (s.statUp) v += 150 * Object.values(s.statUp).reduce((a, b) => a + (Number(b) || 0), 0);
     if (s.element) v *= 1.1;
     if (s.onHitStatus) v *= 1.2;
@@ -805,6 +815,11 @@ const TIER_ORDER = ['Low', 'Medium', 'High', 'Special', 'Legendary', 'God'];
 // need real effects"; the storyteller's "Orb of Zenith - maxes out stats"
 // did nothing but talk). Only for consumables with no real stats yet.
 const EFFECT_RULES = [
+    { re: /(max(imum)?|permanent(ly)?|forever).{0,25}(\bhp\b|health|vitality|life)|(\bhp\b|health|vitality).{0,15}(permanent|forever|for good)/, add: { maxHpUp: 20 } },
+    { re: /(max(imum)?|permanent(ly)?|forever).{0,25}(\bmp\b|mana|energy|focus)|(\bmp\b|mana).{0,15}(permanent|forever|for good)/, add: { maxMpUp: 10 } },
+    { re: /rank(s)? up|(raises?|improves?|sharpens?|hones?|empowers?).{0,25}(special|moves?|techniques?)/, add: { rankUp: 1 } },
+    { re: /special move|new (skill|technique|move|ability)|training manual|teaches/, add: { teach: 1 } },
+    { re: /(fully|completely) (restor|heal|refresh)|full restor|restores? (all|everything)/, add: { healPercent: 1, mpPercent: 1 } },
     { re: /max(es|ed)? out|all (of )?(your |his |her |their )?(stats|abilities|skills)|transcend|ascend/, add: { statUp: { brave: 1, clever: 1, sneaky: 1, kind: 1 } } },
     { re: /(permanent|forever|raises?|increases?|boosts?|grants?).{0,30}(strength|brav|courage)/, add: { statUp: { brave: 1 } } },
     { re: /(permanent|forever|raises?|increases?|boosts?|grants?).{0,30}(wisdom|intellect|mind|clever|cunning)/, add: { statUp: { clever: 1 } } },
@@ -819,7 +834,8 @@ const EFFECT_RULES = [
     { re: /speed|swift|haste|quick/, add: { applyStatus: 'Haste' } },
     { re: /regenerat|renew|soothing|over time/, add: { applyStatus: 'Regen' } },
 ];
-const REAL_EFFECTS = ['heal', 'healPercent', 'mp', 'mpPercent', 'cure', 'applyStatus', 'statUp', 'throwStatus', 'revive', 'luck', 'teach'];
+const REAL_EFFECTS = ['heal', 'healPercent', 'mp', 'mpPercent', 'cure', 'applyStatus', 'statUp', 'throwStatus', 'revive', 'luck', 'teach', 'maxHpUp', 'maxMpUp', 'rankUp'];
+const PERMANENT = ['statUp', 'maxHpUp', 'maxMpUp', 'rankUp', 'teach'];
 
 // Elements that fit each theme's weapons (combat.js knows these).
 const THEME_ELEMENTS = {
@@ -843,16 +859,20 @@ const ARCHETYPES = [
     { kind: 'buff', re: /ward|shield|rage|fury|swift|haste|speed|regen|stim|brew|ration/i, w: 16 },
     { kind: 'elixir', re: /elixir|essence of|ambrosia|philosopher/i, w: 5, minTier: 2 },
     { kind: 'teach', re: /scroll|manual|tome|codex|chip|schematic|grimoire|textbook/i, w: 4, minTier: 2 },
+    // Rare growth (Michael 10-11): max HP, max MP and special ranks for good.
+    { kind: 'vigor', re: /vigor|vitality|fortitude|titan|giant|heartstone/i, w: 4, minTier: 2 },
+    { kind: 'mind', re: /focus crystal|mindstone|wellspring|font of/i, w: 4, minTier: 2 },
+    { kind: 'mastery', re: /master'?s notes|mastery|whetstone of skill|kata/i, w: 3, minTier: 2 },
     { kind: 'heal', re: /heal|potion|salve|bandage|medi|herb|moss|balm|kit|tea|bread|fruit/i, w: 37 },
 ];
 const BUFFS = [['Shield', /ward|shield|guard|barrier/i], ['Berserk', /rage|fury|might|strength/i], ['Haste', /swift|haste|speed|quick/i], ['Regen', /regen|renew|brew|ration/i]];
 const THROWS = ['Stun', 'Burn', 'Poison', 'Frost', 'Blind'];
 
 /** Give a generated consumable a real, tier-scaled effect and say exactly what it does. */
-function fillConsumable(item, tier) {
+function fillConsumable(item, tier, kind = null) {
     const i = TIER_IDX(tier);
     const usable = ARCHETYPES.filter(a => !a.minTier || i >= a.minTier);
-    let arch = usable.find(a => a.re.test(item.name));
+    let arch = (kind && ARCHETYPES.find(a => a.kind === kind)) || usable.find(a => a.re.test(item.name));
     if (!arch) { let r = Math.random() * usable.reduce((n, a) => n + a.w, 0); arch = usable.find(a => (r -= a.w) < 0) || usable[usable.length - 1]; }
     const st = item.stats || (item.stats = {});
     let says;
@@ -863,9 +883,12 @@ function fillConsumable(item, tier) {
         case 'buff': { const b = (BUFFS.find(([, re]) => re.test(item.name)) || BUFFS[Math.floor(Math.random() * BUFFS.length)])[0]; st.applyStatus = [b]; if (i >= 2) st.heal = Math.round(HEAL_BY_TIER[i] * 0.3); says = `Grants ${b}${st.heal ? ` and restores ${st.heal} HP` : ''}.`; break; }
         case 'teach': st.teach = 1; says = 'Read it to learn a new special.'; break;
         case 'elixir': { const keys = Object.keys(STAT_NAMES); const k = keys[Math.floor(Math.random() * keys.length)]; st.statUp = i >= 4 ? { brave: 1, clever: 1, sneaky: 1, kind: 1 } : { [k]: 1 }; says = i >= 4 ? 'Permanently raises every stat by 1.' : `Permanently raises ${STAT_NAMES[k]} by 1.`; break; }
+        case 'vigor': st.maxHpUp = [10, 15, 25, 40, 60][i]; says = `Raises max HP by ${st.maxHpUp} for good.`; break;
+        case 'mind': st.maxMpUp = [5, 8, 12, 18, 25][i]; says = `Raises max MP by ${st.maxMpUp} for good.`; break;
+        case 'mastery': st.rankUp = 1; says = 'Every special you know goes up a rank.'; break;
         default: st.heal = HEAL_BY_TIER[i]; if (i >= 3) st.mp = Math.round(MP_BY_TIER[i] * 0.5); says = `Restores ${st.heal} HP${st.mp ? ` and ${st.mp} MP` : ''}.`;
     }
-    item.effect = `${says}${item.effect && !/^restores|^grants|^throw|^cures|^permanently|^read it/i.test(item.effect) ? ` ${item.effect}` : ''}`.trim();
+    item.effect = `${says}${item.effect && !/^restores|^grants|^throw|^cures|^permanently|^read it|^raises|^every special/i.test(item.effect) ? ` ${item.effect}` : ''}`.trim();
     return item;
 }
 
@@ -877,7 +900,7 @@ function fillConsumable(item, tier) {
 // What the battle Item command can use (Michael 10-09): a consumable that does
 // something in a fight. Gear, lucky charms, quest items and revives (Help
 // Ally) never show there.
-const FIGHT_EFFECTS = ['heal', 'healPercent', 'mp', 'mpPercent', 'cure', 'applyStatus', 'statUp', 'throwStatus', 'teach'];
+const FIGHT_EFFECTS = ['heal', 'healPercent', 'mp', 'mpPercent', 'cure', 'applyStatus', 'statUp', 'throwStatus', 'teach', 'maxHpUp', 'maxMpUp', 'rankUp'];
 export function battleUsable(i) {
     if (!i || i.type !== 'Consumable' || i.stats?.revive || (i.quantity != null && i.quantity <= 0)) return false;
     inferItemEffects(i); // words become real effects first (older saves)
@@ -887,6 +910,10 @@ export function battleUsable(i) {
 export function inferItemEffects(item) {
     if (!item || item.type !== 'Consumable') return item;
     const st = item.stats || {};
+    if (st.healing && !st.heal) { st.heal = Number(st.healing) || 0; delete st.healing; } // the storyteller's word for it
+    // The old guess for words it couldn't read (+15% HP and MP) made story items
+    // ("Unlocks master-level system overrides") look like potions; read them again.
+    if (Object.keys(st).length === 2 && st.healPercent === 0.15 && st.mpPercent === 0.15) { delete st.healPercent; delete st.mpPercent; }
     const bare = ['brave', 'clever', 'sneaky', 'kind'].filter(k => Number(st[k]) > 0);
     if (bare.length && !st.statUp) { st.statUp = Object.fromEntries(bare.map(k => [k, 1])); bare.forEach(k => delete st[k]); item.stats = st; }
     if (REAL_EFFECTS.some(k => st[k])) return item;
@@ -902,9 +929,42 @@ export function inferItemEffects(item) {
     }
     const hp = text.match(/(\d+)\s*(hp|health|hit points)/);
     if (hp && out.healPercent) { out.heal = Number(hp[1]); delete out.healPercent; }
-    if (!Object.keys(out).length) { out.healPercent = 0.15; out.mpPercent = 0.15; } // unknown: a small refresh, never nothing
+    // Words that name no effect are a story item, not a potion (phone 10-11: a
+    // "Corporate Datapad" was drunk for 0 HP). It stays in the bag for the story.
+    if (!Object.keys(out).length) { item.type = 'Misc'; item.stats = st; return item; }
     item.stats = { ...st, ...out };
     return item;
+}
+
+/** What a usable item does, in plain words: restoring says "Heals"/"Restores", growth says "for good". */
+export function effectWords(item) {
+    const s = item?.stats || {};
+    const bits = [];
+    const amt = (n, pct) => [n ? `${n}` : '', pct ? `${Math.round(pct * 100)}%` : ''].filter(Boolean).join(' + ');
+    if (s.revive) bits.push(`revives an ally or you (${Math.round((s.healPercent || 0.25) * 100)}% HP)`);
+    else if (s.healPercent >= 1 && s.mpPercent >= 1) bits.push('Heals all HP and MP');
+    else {
+        if (s.heal || s.healPercent) bits.push(`Heals ${amt(s.heal, s.healPercent)} HP`);
+        if (s.mp || s.mpPercent) bits.push(`Restores ${amt(s.mp, s.mpPercent)} MP`);
+    }
+    if (s.cure) bits.push(s.cure === 'All' ? 'cures ailments' : `cures ${s.cure}`);
+    if (s.applyStatus) bits.push(`gives ${[].concat(s.applyStatus).join(', ')}`);
+    if (s.throwStatus) bits.push(`throw: ${s.throwStatus} on a foe`);
+    if (s.maxHpUp) bits.push(`⬆ Max HP +${s.maxHpUp} for good`);
+    if (s.maxMpUp) bits.push(`⬆ Max MP +${s.maxMpUp} for good`);
+    if (s.statUp) bits.push(`⬆ ${Object.entries(s.statUp).map(([k, n]) => `${STAT_NAMES[k] || k} +${n}`).join(', ')} for good`);
+    if (s.rankUp) bits.push('⬆ every special +1 rank');
+    if (s.teach) bits.push('teaches a new special');
+    return bits.join(' · ');
+}
+
+/** True when using it now changes nothing (it only restores, and those bars are full): keep it. */
+export function wouldBeWasted(item, hero) {
+    const s = item?.stats || {};
+    if (!hero || s.revive || ['cure', 'applyStatus', 'throwStatus', 'luck', ...PERMANENT].some(k => s[k])) return false;
+    const hp = s.heal || s.healPercent, mp = s.mp || s.mpPercent;
+    if (!hp && !mp) return false;
+    return (!hp || hero.hp >= hero.maxHp) && (!mp || (hero.mp ?? 0) >= (hero.maxMp ?? 0));
 }
 
 /** The better of two tiers. */
