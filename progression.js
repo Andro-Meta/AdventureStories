@@ -268,16 +268,19 @@ function checkOf(type, stat) {
 }
 
 /**
- * Lucky charms: the best one carried counts (cap LUCK_MAX). Luck adds to luck
- * rolls (choices tagged luck) and widens the critical range by its whole
- * points: with luck 1 a natural 19 is a crit too. (Fighting Fantasy's Luck,
- * as an item.) Charms fuse (fuseCharms), so luck can be fractional (4.4).
+ * Lucky charms: the best one carried counts. Luck adds to luck rolls (choices
+ * tagged luck) and widens the critical range by its whole points: with luck 1
+ * a natural 19 is a crit too, down to 15+ (CRIT_WIDEST). Luck itself has no
+ * cap (Michael 10-11: a charm bought at the old cap of 6 did nothing); the
+ * 95% success ceiling is the natural limit. Charms fuse (fuseCharms), so luck
+ * can be fractional (4.4).
  */
-export const LUCK_MAX = 6;
+const CRIT_WIDEST = 5;
 export function luckOf(hero) {
-    return Math.min(LUCK_MAX, Math.max(0, ...(hero?.inventory || []).map(i => Number(i?.stats?.luck) || 0)));
+    return Math.max(0, ...(hero?.inventory || []).map(i => Number(i?.stats?.luck) || 0));
 }
-const critFrom = (hero) => 20 - Math.min(5, Math.floor(luckOf(hero))); // a natural 15+ at most
+export const critFromLuck = (luck) => 20 - Math.min(CRIT_WIDEST, Math.floor(luck)); // a natural 15+ at most
+const critFrom = (hero) => critFromLuck(luckOf(hero));
 
 /**
  * Charms fuse (Michael 10-09): the best charm stays and every other one adds
@@ -291,10 +294,10 @@ export function fuseCharms(hero) {
     if (charms.length < 2) return null;
     charms.sort((a, b) => Number(b.stats.luck) - Number(a.stats.luck));
     const [top, ...rest] = charms;
-    const luck = Math.min(LUCK_MAX, Math.round((Number(top.stats.luck) + 0.2 * rest.reduce((n, c) => n + Number(c.stats.luck), 0)) * 10) / 10);
+    const luck = Math.round((Number(top.stats.luck) + 0.2 * rest.reduce((n, c) => n + Number(c.stats.luck), 0)) * 10) / 10;
     top.stats = { ...top.stats, luck };
     top.fused = (top.fused || 0) + rest.length;
-    top.effect = `Fused lucky charm: luck +${luck} (helps 🍀 rolls; a natural ${critFrom(hero) === 20 ? 20 : `${20 - Math.min(5, Math.floor(luck))}+`} is a critical success).`;
+    top.effect = `Fused lucky charm: luck +${luck} (helps 🍀 rolls; a natural ${critFromLuck(luck)}+ is a critical success).`;
     hero.inventory = inv.filter(i => !rest.includes(i));
     return { name: top.name, luck, fused: rest.length };
 }

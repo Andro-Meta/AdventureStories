@@ -1791,9 +1791,14 @@ await block(async () => {
   // The mansion save: five candle stubs (2, 2, 2, 2, 3) become one.
   const m = Prog.ensureStats({ stats: {}, inventory: [2, 2, 2, 2, 3].map((l, i) => ({ id: `s${i}`, name: 'Blessed Candle Stub', type: 'Misc', stats: { luck: l } })) });
   check(m.inventory.length === 1 && m.inventory[0].stats.luck === 4.6, `five candle stubs fuse into one: luck ${m.inventory[0].stats.luck}`);
-  const big = { inventory: [6, 5, 5].map((l, i) => ({ id: `b${i}`, name: 'C', type: 'Misc', stats: { luck: l } })) };
+  // Phone 10-11: luck 6 + a bought 2-luck charm stayed 6 (the charm vanished for nothing).
+  const big = { inventory: [6, 2].map((l, i) => ({ id: `b${i}`, name: 'C', type: 'Misc', stats: { luck: l } })) };
   Prog.fuseCharms(big);
-  check(Prog.luckOf(big) === Prog.LUCK_MAX, `fused luck is capped at ${Prog.LUCK_MAX} (${Prog.luckOf(big)})`);
+  check(Prog.luckOf(big) === 6.4, `a charm bought at luck 6 still counts: 6 + 2 -> ${Prog.luckOf(big)}`);
+  check(Prog.rollCheck('Bold', { inventory: [{ stats: { luck: 9 } }] }, () => 0.65, null).band === 'success', 'crit range stops at 15+ even with luck 9 (a natural 14 is no crit)');
+  const { applyDiff } = await import('../engine.js');
+  fresh(); applyDiff([{ op: 'add', path: '/players/0/inventory/-', value: { name: 'Lucky Star Charm', type: 'Misc', stats: { luck: 6 } } }], { strict: false });
+  check(gameState.players[0].inventory.find(i => i.name === 'Lucky Star Charm')?.stats.luck === 3, 'a storyteller charm carries luck 3 at most');
   const r = Prog.rollCheck('Bold', h, () => 0.75, null); // die 16 + luck 4.4 vs 14 (luck = long shot +3)
   check(r.band === 'crit' && /🍀\+4\.4/.test(Prog.describeRoll(r)), `luck 4.4: a natural 16 is a crit (crit range 16-20): ${Prog.describeRoll(r)}`);
 

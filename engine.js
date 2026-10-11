@@ -134,6 +134,9 @@ const PATHS = [
             };
             player.inventory = player.inventory || [];
             Items.inferItemEffects(item); // its words become real effects ("maxes out stats", "restores mana")
+            // Luck is earned from the game's own charms; a storyteller charm is at most a
+            // reckless find (phone 10-11: it added a "luck 6" charm with no roll).
+            if (Number(item.stats.luck) > 3) item.stats.luck = 3;
             // Consumables stack by name instead of filling the pack with copies.
             const stack = item.type === 'Consumable'
                 && player.inventory.find(i => i?.type === 'Consumable' && String(i.name).trim().toLowerCase() === item.name.trim().toLowerCase());
