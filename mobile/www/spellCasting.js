@@ -26,11 +26,78 @@ import * as Progression from './progression.js';
  * @param {object} [target] - Optional specific target
  * @returns {Promise<object>} Casting result
  */
+
+// ---------------------------------------------------------------- every special does something real
+// Phone 10-10 kit audit: storyteller-made specials had all-zero effects, status
+// names the game doesn't know ("Thermal Burn", "System Cleansed"), stat keys in
+// capitals ("DEF"), and debuffs that landed on the hero. normalizeSpell maps
+// them onto real mechanics once (in place), and gives an effect-less special a
+// fitting one from its own words. Harmful effects go to the foe, helpful ones
+// to the caster's side (determineSpellTargets).
+const STATUS_WORDS = [
+    ['Burn', /burn|thermal|fire|flame|scorch|ignite|melt(?!.*armou?r)/i], ['Frost', /frost|freez|ice|chill|cryo/i],
+    ['Poison', /poison|toxin|venom|acid/i], ['Bleed', /bleed|lacerat/i],
+    ['Stun', /stun|glitch|disrupt|jam|overload|emp|daze|shock/i], ['Paralysis', /paraly/i], ['Sleep', /sleep|drows/i],
+    ['Blind', /blind|dazzl|flash|smoke/i], ['Confusion', /confus|scramble|spoof/i], ['Silence', /silence|mute/i],
+    ['Vulnerability', /vulnerab|armou?r.?(melt|break|crack|shred)|expos|weak.?spot|breach|scan|analy|insight|target/i],
+    ['Weakness', /weak|drain|sap|enfeebl/i], ['Slow', /slow|sluggish|hobble/i], ['Fear', /fear|terror|dread|panic/i],
+    ['Haste', /haste|speed|quick|overdrive|accelerat|reflex/i], ['Berserk', /berserk|rage|fury|empower|overclock/i],
+    ['Shield', /shield|ward|protect|barrier|armou?r|stabiliz|fortif|aegis|deflect|guard/i],
+    ['Regen', /regen|cleans|repair|restor|renew|purif|heal|mend|recover/i]
+];
+const HARMFUL = new Set(['Burn', 'Frost', 'Poison', 'Bleed', 'Stun', 'Paralysis', 'Sleep', 'Blind', 'Confusion', 'Silence', 'Vulnerability', 'Weakness', 'Slow', 'Fear']);
+const toStatus = (name) => Combat.lookupStatusEffect(String(name || ''))?.name || (STATUS_WORDS.find(([, re]) => re.test(String(name || ''))) || [])[0] || null;
+
+export function normalizeSpell(spell) {
+    if (!spell || spell._normal) return spell;
+    const fx = spell.effects = spell.effects || {};
+    // Stat changes: atk/def in any spelling.
+    const mods = {};
+    for (const [k, v] of Object.entries(fx.modifiers || {})) {
+        const key = /^(atk|attack|str|power)/i.test(k) ? 'atk' : /^(def|defen|armou?r)/i.test(k) ? 'def' : null;
+        if (key && Number(v)) mods[key] = (mods[key] || 0) + Number(v);
+    }
+    fx.modifiers = mods;
+    // Statuses the game knows (deduped).
+    fx.statusEffects = [...new Set([].concat(fx.statusEffects || []).map(s => toStatus(typeof s === 'string' ? s : s?.name)).filter(Boolean))];
+    const words = `${spell.name || ''} ${spell.description || ''}`;
+    const nothing = !(Number(fx.damage) > 0) && !(Number(fx.healing) > 0) && !fx.statusEffects.length && !Object.keys(mods).length;
+    if (nothing) {
+        // An effect from its own words; scans, hacks and appraisals expose a weak spot.
+        if (/heal|mend|restor|repair|cure|recover/i.test(words)) { fx.healing = 20; spell.fightNote = 'heals you'; }
+        else if (/ward|shield|protect|barrier|aegis|deflect|guard|faraday/i.test(words)) { fx.statusEffects = ['Shield']; spell.fightNote = 'shields you'; }
+        else if (/strike|blast|bolt|burn|fire|shock|lance|slash|smash|beam|explo|attack|damage|pulse|surge/i.test(words)) { fx.damage = 12; spell.fightNote = 'hits one foe'; }
+        else { const st = toStatus(words); fx.statusEffects = [st && HARMFUL.has(st) ? st : 'Vulnerability']; spell.fightNote = `leaves the foe ${fx.statusEffects[0] === 'Vulnerability' ? 'exposed' : fx.statusEffects[0].toLowerCase()}`; }
+    }
+    spell._normal = true;
+    return spell;
+}
+
+/** Does this special hurt foes (damage, a harmful status, or a stat drain)? */
+export function isHarmfulSpell(spell) {
+    const fx = spell?.effects || {};
+    return Number(fx.damage) > 0 || Object.values(fx.modifiers || {}).some(v => Number(v) < 0) || (fx.statusEffects || []).some(s => HARMFUL.has(toStatus(s)));
+}
+
+/** What a special really does now, in a few words ("≈96 damage · Stun", "heals ≈119", "ATK +3 for you"). */
+export function abilitySummary(spell, caster) {
+    normalizeSpell(spell);
+    const fx = spell.effects || {};
+    const power = (() => { try { return calculateSpellPower(spell, caster); } catch (_) { return 1; } })();
+    const bits = [];
+    if (Number(fx.damage) > 0) bits.push(`≈${Math.round(fx.damage * power)} damage${isAreaSpell(spell) ? ' to every foe' : ''}`);
+    if (Number(fx.healing) > 0) bits.push(`heals ≈${Math.round(fx.healing * power * Progression.kindHealing(caster) / Progression.cleverPower(caster))}${isAreaSpell(spell) ? ' each' : ''}`);
+    for (const s of fx.statusEffects || []) bits.push(HARMFUL.has(s) ? `${s} on the foe` : `${s} for you`);
+    for (const [k, v] of Object.entries(fx.modifiers || {})) bits.push(`${k.toUpperCase()} ${v > 0 ? '+' : ''}${v}${v > 0 ? ' for you' : ' on the foe'}`);
+    return bits.join(' · ') || 'no effect in a fight';
+}
+
 export async function castSpell(caster, spell, target = null) {
     const log = window.displayVisualError || console.log;
     log(`Casting spell: ${spell.name} by ${caster.name}`);
     
     try {
+        normalizeSpell(spell); // real mechanics for storyteller-made specials
         // Validate casting ability
         const canCast = Spells.canCastSpell(caster, spell);
         if (!canCast.success) {
@@ -135,12 +202,19 @@ function calculateActualMpCost(caster, spell) {
  * @returns {object[]} Array of valid targets
  */
 function determineSpellTargets(spell, caster, specificTarget = null) {
+    // Helpful specials land on the caster's side and harmful ones on a foe,
+    // whatever was aimed at (phone 10-10: a boost buffed the boss; "blind and
+    // stun the foe" blinded the hero).
+    if (!isAreaSpell(spell)) {
+        const foes = (gameState.enemies || []).filter(e => e && !e.isDefeated && e.hp > 0);
+        if (isHarmfulSpell(spell) && foes.length) return [foes.includes(specificTarget) ? specificTarget : foes[0]]; // (a heal in it goes to the caster)
+        if (!isHarmfulSpell(spell)) return [specificTarget && (gameState.players || []).includes(specificTarget) ? specificTarget : caster];
+    }
     if (isAreaSpell(spell)) {
         // Damage or afflictions go to every foe; heals and buffs to the party.
-        const debuff = Object.values(spell.effects?.modifiers || {}).some(v => Number(v) < 0);
-        const harmful = spell.effects?.damage > 0 || debuff || (!(spell.effects?.healing > 0) && !spell.effects?.modifiers && (spell.effects?.statusEffects || []).length > 0);
+        // (an empty modifiers {} counted as "has stat changes": Data-Scrape blinded the party)
         const foes = (gameState.enemies || []).filter(e => e && !e.isDefeated && e.hp > 0);
-        return harmful && spell.targeting !== 'party' && foes.length ? foes : gameState.players.filter(p => p && !p.isDowned);
+        return isHarmfulSpell(spell) && foes.length ? foes : gameState.players.filter(p => p && !p.isDowned);
     }
     const targets = [];
     
@@ -389,11 +463,13 @@ async function applySpellEffectToTarget(spell, caster, target) {
     
     // Apply healing
     if (spell.effects.healing) {
+        // A special that both hurts and heals drains: the foe takes the hit, the caster gets the heal.
+        const healed = (gameState.enemies || []).includes(target) ? caster : target;
         const healing = Math.round(spell.effects.healing * spellPower * Progression.kindHealing(caster) / Progression.cleverPower(caster)); // heals scale with Kind, not Clever
-        const actualHealing = Math.min(healing, target.maxHp - target.hp);
-        target.hp = Math.min(target.maxHp, target.hp + healing);
+        const actualHealing = Math.min(healing, healed.maxHp - healed.hp);
+        healed.hp = Math.min(healed.maxHp, healed.hp + healing);
         result.effects.push({ type: 'healing', value: actualHealing });
-        log(`${spell.name} heals ${actualHealing} HP to ${target.name}`);
+        log(`${spell.name} heals ${actualHealing} HP to ${healed.name}`);
     }
     
     // Apply status effects
@@ -414,11 +490,21 @@ async function applySpellEffectToTarget(spell, caster, target) {
     if (spell.effects.modifiers) {
         // As a 3-turn effect (atkMod/defMod): a raw stat edit was wiped at the
         // next recalculation on heroes and never wore off on foes.
+        // A boost always helps the caster's side and a drain always hits the foe,
+        // whatever the spell's targeting (phone 10-10: "Resonance Pulse" gave the
+        // boss +97 ATK). Sizes grow a little with power (at most 1.5x; the 8x
+        // special multiplier is for damage and healing: it made +200 DEF) and
+        // never exceed half the stat they change.
+        const foe = (gameState.enemies || []).includes(target);
         const data = {};
         Object.entries(spell.effects.modifiers).forEach(([stat, value]) => {
-            const modifier = Math.round(Number(value) * spellPower) || 0;
-            if (stat === 'atk' || stat === 'def') data[`${stat}Mod`] = modifier;
-            result.effects.push({ type: 'modifier', stat: stat, value: modifier });
+            if (stat !== 'atk' && stat !== 'def') return;
+            const v = Number(value) || 0;
+            if (!v || (v > 0) === foe) return; // a boost on a foe or a drain on a friend: skip
+            const cap = Math.max(3, Math.round(0.5 * (Number(target[stat]) || 10)));
+            const modifier = Math.sign(v) * Math.min(cap, Math.round(Math.abs(v) * Math.min(1.5, spellPower)));
+            data[`${stat}Mod`] = modifier;
+            result.effects.push({ type: 'modifier', stat, value: modifier });
         });
         if (Object.keys(data).length) {
             Combat.applyStatusEffect(target, `${spell.name}`, 3, data, 'spell');
@@ -487,7 +573,9 @@ function createStatusEffectFromSpell(effectName, spell, caster) {
     const turns = getDurationInTurns(spell.duration);
     return {
         name: entry.name,
-        duration: turns > 0 ? Math.min(turns, 10) : (entry.defaultDuration || 2),
+        // At least 2: a 1-turn status ran out before the foe's turn ("instant"
+        // stun specials never stunned anything, kit audit 10-10).
+        duration: Math.max(2, turns > 0 ? Math.min(turns, 10) : (entry.defaultDuration || 2)),
         effectTickData: {},
         source: `${spell.name} (${caster.name})`
     };

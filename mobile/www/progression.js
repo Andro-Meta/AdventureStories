@@ -19,7 +19,7 @@
 // Pure functions over a hero object; callers apply UI and story.
 
 export const STATS = {
-    brave:  { icon: '💪', name: 'Brave',  does: 'fight, climb, face danger', fight: '+1 attack per point' },
+    brave:  { icon: '💪', name: 'Brave',  does: 'fight, climb, face danger', fight: '+10% attack per point' },
     clever: { icon: '🧠', name: 'Clever', does: 'search, solve, know things', fight: '+10% power for specials and spells per point' },
     sneaky: { icon: '🥷', name: 'Sneaky', does: 'hide, trick, take shortcuts', fight: '3% dodge per point, easier escapes' },
     kind:   { icon: '💛', name: 'Kind',   does: 'help, talk, make friends', fight: '+10% healing per point' }
@@ -467,7 +467,7 @@ export function spendStatPoint(hero, stat) {
 }
 
 // ---------------------------------------------------------------- fights
-export const braveAttack = (hero) => statOf(hero, 'brave');
+export const bravePower = (hero) => 1 + 0.10 * statOf(hero, 'brave'); // +10% attack per point (was +1 flat)
 export const sneakyDodge = (hero) => Math.min(0.25, 0.03 * statOf(hero, 'sneaky')); // capped: Sneaky 10 would dodge 30%
 export const cleverPower = (hero) => 1 + 0.10 * statOf(hero, 'clever');
 export const kindHealing = (hero) => 1 + 0.10 * statOf(hero, 'kind');

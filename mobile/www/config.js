@@ -16,7 +16,7 @@ export const AI_REQUEST_CONFIG = {
 };
 
 // Shown in the log header of every game (keep in step with package.json / build.gradle).
-export const APP_VERSION = '1.4.1';
+export const APP_VERSION = '1.4.2';
 
 export const AI_DEFAULT_PARAMS = { max_tokens: 2048, temperature: 0.7, top_p: 0.95 };
 

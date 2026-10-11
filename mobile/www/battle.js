@@ -7,6 +7,7 @@
 //    a level-up raises max HP/MP, attack, defense and heals a little.
 import { gameState } from './state.js';
 import { battleUsable } from './items.js';
+import { abilitySummary, normalizeSpell, isHarmfulSpell } from './spellCasting.js';
 import { gainXp } from './progression.js';
 import * as Progression from './progression.js';
 import { getCurrentThemeAdaptation } from './adaptiveAbilities.js';
@@ -71,6 +72,9 @@ export function awardXp(enemy) {
  * writes choices every round). Defend is added at render time (ui.js).
  */
 export function battleMenu(hero) {
+    // Downed with a revive item: the only move is to get back up (it takes the turn).
+    const revive = hero?.isDowned && (hero.inventory || []).find(i => i?.stats?.revive && (i.quantity ?? 1) > 0);
+    if (revive) return [{ type: 'SelfRevive', text: `Use ${revive.name} to get back up (this takes your turn)` }];
     const foes = (gameState.enemies || []).filter(e => e && !e.isDefeated && e.hp > 0);
     const items = (hero?.inventory || []).filter(battleUsable);
     return [
@@ -113,8 +117,9 @@ export function battleOptions(type, hero) {
             const area = isAreaSpell(s) ? (s.effects?.healing > 0 && !(s.effects?.damage > 0) ? 'whole party · ' : 'hits all foes · ') : '';
             const kind = abilityKind();
             const rank = Progression.abilityRank(s);
-            const selfish = s.targeting === 'self' || s.targeting === 'ally' || (s.effects?.healing > 0 && !(s.effects?.damage > 0));
-            opts.push({ label: `${s.name}${rank > 1 ? ` ${Progression.ROMAN[rank]}` : ''} (${kind})`, detail: `${cost} MP · ${area}${s.description || s.effect || ''}`.slice(0, 80), type: 'Spell', text: `Cast ${s.name}`, disabled: (hero.mp || 0) < cost,
+            normalizeSpell(s);
+            const selfish = !isHarmfulSpell(s); // helpful specials never ask "which foe?"
+            opts.push({ label: `${s.name}${rank > 1 ? ` ${Progression.ROMAN[rank]}` : ''} (${kind})`, detail: `${cost} MP · ${abilitySummary(s, hero)}`.slice(0, 90), type: 'Spell', text: `Cast ${s.name}`, disabled: (hero.mp || 0) < cost,
                 targets: isAreaSpell(s) ? 'all' : selfish ? 'self' : 'one' });
         }
         const winded = round - (hero.lastPowerStrikeRound ?? -99) < 2;

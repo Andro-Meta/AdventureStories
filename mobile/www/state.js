@@ -808,7 +808,8 @@ export function syncTurnStates() {
 export function canCurrentPlayerAct() {
     const player = getCurrentPlayer();
     if (!player) return false;
-    if (player.isDowned) return false;
+    // Downed: only to get back up with a revive item from their own bag, in a fight.
+    if (player.isDowned && !(gameState.inCombat && (player.inventory || []).some(i => i?.stats?.revive && (i.quantity ?? 1) > 0))) return false;
     if (gameState.isLoading) return false;
     return true;
 }

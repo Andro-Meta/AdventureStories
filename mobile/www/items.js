@@ -887,6 +887,8 @@ export function battleUsable(i) {
 export function inferItemEffects(item) {
     if (!item || item.type !== 'Consumable') return item;
     const st = item.stats || {};
+    const bare = ['brave', 'clever', 'sneaky', 'kind'].filter(k => Number(st[k]) > 0);
+    if (bare.length && !st.statUp) { st.statUp = Object.fromEntries(bare.map(k => [k, 1])); bare.forEach(k => delete st[k]); item.stats = st; }
     if (REAL_EFFECTS.some(k => st[k])) return item;
     const text = `${item.name || ''} ${item.effect || ''}`.toLowerCase();
     const out = {};
