@@ -1148,158 +1148,247 @@ export function generateNameInputs() {
 
 // --- Item/Move/Save Rendering ---
 
-/** Renders the inventory items for the current player. */
+// ---------------------------------------------------------------- Bag, Shop, Moves (redesign 10-11)
+// One compact row per thing: an icon for what it is, the name, one line of what
+// it really does (computed, never the storyteller's prose), and the main action
+// right there. Tapping the row opens the description and the rarer actions.
+// Class hooks stay (.item-card + data-item-id, .useItemBtn..., .move-card +
+// .useMoveBtn) so the click handlers in main.js work unchanged.
+const kitFilter = { inventory: 'all' };
+
+/** What an item is, as an icon. */
+function itemIcon(item) {
+    const s = item.stats || {};
+    if (item.type === 'Weapon') return '⚔️';
+    if (item.type === 'Armor') return '🛡️';
+    if (item.type === 'Quest') return '🗝️';
+    if (s.luck && item.type !== 'Consumable') return '🍀';
+    if (s.revive) return '💫';
+    if (s.teach) return '📜';
+    if (s.statUp) return '⭐';
+    if (s.throwStatus) return '💣';
+    if (s.cure) return '🌿';
+    if (s.applyStatus) return '✨';
+    if ((s.mp || s.mpPercent) && !(s.heal || s.healPercent)) return '🔷';
+    if (item.type === 'Consumable') return '🧪';
+    return '📦';
+}
+
+/** What an item really does, in a few words; gear is compared with what the hero wears. */
+function itemLine(item, hero) {
+    const s = item.stats || {};
+    const bits = [];
+    const worn = (slot) => (hero?.inventory || []).find(i => i?.id === hero?.equipment?.[slot]);
+    if (item.type === 'Weapon' || item.type === 'Armor') {
+        const slot = item.type === 'Weapon' ? 'weapon' : 'armor', key = slot === 'weapon' ? 'atk' : 'def';
+        const mine = worn(slot), v = Number(s[key]) || 0;
+        bits.push(`${key.toUpperCase()} +${v}`);
+        if (mine && mine.id !== item.id) { const d = v - (Number(mine.stats?.[key]) || 0); bits.push(d > 0 ? `▲${d} vs yours` : d < 0 ? `▼${-d} vs yours` : 'same as yours'); }
+        else if (!mine) bits.push('▲ you have none');
+        if (s.element) bits.push(`${s.element}${s.onHitStatus ? ` · ${s.onHitStatus} on hit` : ''}`);
+    }
+    if (s.revive) bits.push(`revives an ally or you (${Math.round((s.healPercent || 0.25) * 100)}% HP)`);
+    else {
+        if (s.heal) bits.push(`+${s.heal} HP`);
+        if (s.healPercent) bits.push(`+${Math.round(s.healPercent * 100)}% HP`);
+    }
+    if (s.mp) bits.push(`+${s.mp} MP`);
+    if (s.mpPercent) bits.push(`+${Math.round(s.mpPercent * 100)}% MP`);
+    if (s.cure) bits.push(s.cure === 'All' ? 'cures ailments' : `cures ${s.cure}`);
+    if (s.applyStatus) bits.push(`gives ${[].concat(s.applyStatus).join(', ')}`);
+    if (s.throwStatus) bits.push(`throw: ${s.throwStatus} on a foe`);
+    if (s.statUp) bits.push(`${Object.entries(s.statUp).map(([k, n]) => `${Progression.STATS[k]?.name || k} +${n}`).join(', ')} for good`);
+    if (s.teach) bits.push('teaches a new special');
+    if (s.luck) bits.push(`🍀 luck +${s.luck}`);
+    return bits.join(' · ') || (item.type === 'Quest' ? 'needed for the quest' : 'a keepsake');
+}
+
+/** One row. `actions` = [{label, cls, disabled, data, primary}]; `more` = details shown when opened. */
+function kitRow({ icon, name, qty, tier, line, actions = [], more = '', cls = '', data = {} }) {
+    const row = document.createElement('div');
+    row.className = `kit-row ${cls}${tier ? ` tier-${String(tier).toLowerCase()}` : ''}`;
+    Object.entries(data).forEach(([k, v]) => { if (v != null) row.dataset[k] = v; });
+    const primary = actions.filter(a => a.primary), rest = actions.filter(a => !a.primary);
+    const btn = (a) => `<button class="${a.cls || ''}${a.primary ? ' kit-act' : ' kit-act2'}" ${a.disabled ? 'disabled' : ''} ${Object.entries(a.data || {}).map(([k, v]) => `data-${k}="${sanitizeText(String(v))}"`).join(' ')}>${sanitizeText(a.label)}</button>`;
+    row.innerHTML = `
+        <div class="kit-main">
+            <span class="kit-icon" aria-hidden="true">${icon}</span>
+            <div class="kit-text">
+                <div class="kit-name">${sanitizeText(name)}${qty > 1 ? ` <span class="kit-qty">×${qty}</span>` : ''}${tier ? ` <span class="kit-tier">${sanitizeText(String(tier))}</span>` : ''}</div>
+                <div class="kit-line">${sanitizeText(line)}</div>
+            </div>
+            ${primary.map(btn).join('')}
+        </div>
+        ${more || rest.length ? `<div class="kit-more">${more ? `<p>${more}</p>` : ''}${rest.length ? `<div class="kit-more-acts">${rest.map(btn).join('')}</div>` : ''}</div>` : ''}`;
+    // Tap the row (not a button) to open or close its details.
+    row.addEventListener('click', (e) => { if (!e.target.closest?.('button') && e.target.closest?.('.kit-main')) row.classList.toggle('open'); });
+    return row;
+}
+
+const kitNote = (box, cls, text) => { const p = document.createElement('p'); p.className = cls; p.textContent = text; box.appendChild(p); };
+const section = (title, n) => { const h = document.createElement('h3'); h.className = 'kit-section'; h.textContent = n != null ? `${title} (${n})` : title; return h; };
+
+/** The hero's wallet and gear at the top of the Bag and the Shop. */
+function kitHeader(hero, extra = '') {
+    const worn = (slot) => (hero.inventory || []).find(i => i?.id === hero.equipment?.[slot]);
+    const w = worn('weapon'), a = worn('armor');
+    const div = document.createElement('div');
+    div.className = 'kit-header';
+    div.innerHTML = `<span>⚔️ ${w ? `${sanitizeText(w.name)} +${w.stats?.atk || 0}` : 'no weapon'}</span><span>🛡️ ${a ? `${sanitizeText(a.name)} +${a.stats?.def || 0}` : 'no armour'}</span>${extra ? `<span class="kit-note">${extra}</span>` : ''}`;
+    return div;
+}
+
+/** Item rows for the Bag (context 'inventory') or the Shop ('shop'). */
+function createItemCard(item, context) {
+    let hero; try { hero = getCurrentPlayer(); } catch (_) {}
+    item.type = Progression.usableType(item); // older saves: an invented type had no buttons
+    const tier = String(item.tier ?? 'Low');
+    const equippedSlot = hero?.equipment?.weapon === item.id ? 'weapon' : hero?.equipment?.armor === item.id ? 'armor' : null;
+    const cannotAct = hero?.isDowned || gameState.isLoading;
+    const actions = [];
+    if (context === 'shop') {
+        const price = calculateItemPrice(item);
+        const short = price - (hero?.coins || 0);
+        actions.push({ label: short > 0 ? `Need ${short} more` : `Buy ${price} 💰`, cls: 'buyItemBtn', primary: true, disabled: short > 0 || cannotAct || !item.cost });
+    } else {
+        if (item.type === 'Consumable' && !item.stats?.revive) actions.push({ label: 'Use', cls: 'useItemBtn', primary: true, disabled: cannotAct });
+        if ((item.type === 'Weapon' || item.type === 'Armor') && !equippedSlot && !gameState.inCombat) actions.push({ label: 'Equip', cls: 'equipItemBtn', primary: true, disabled: cannotAct, data: { slot: item.type === 'Weapon' ? 'weapon' : 'armor' } });
+        if (equippedSlot && !gameState.inCombat) actions.push({ label: 'Unequip', cls: 'unequipItemBtn', disabled: cannotAct });
+        if (!equippedSlot && item.type !== 'Quest' && !gameState.inCombat) actions.push({ label: `Sell ${sellValue(item)} 💰`, cls: 'sellItemBtn', disabled: cannotAct });
+        if (!gameState.inCombat && item.type !== 'Quest') actions.push({ label: 'Drop', cls: 'dropItemBtn', disabled: cannotAct });
+    }
+    const row = kitRow({
+        icon: itemIcon(item), name: item.name, qty: item.quantity, tier, line: `${equippedSlot ? 'Worn · ' : ''}${itemLine(item, hero)}`,
+        actions, more: sanitizeText(item.effect || item.description || ''), cls: `item-card${equippedSlot ? ' equipped' : ''}`,
+        data: { itemId: item.id, slot: equippedSlot }
+    });
+    return row;
+}
+
+/** Bag: what you carry, grouped, with filters. */
 export function renderInventory() {
-    const log = window.displayVisualError || console.log; // Use logger
     updateContextHeaders();
     if (!elements.inventoryDisplay) return;
-    log("UI: Rendering inventory.");
-    elements.inventoryDisplay.innerHTML = '';
-    let player;
-    try { player = getCurrentPlayer(); } catch(e) {}
-    if (!player || !player.inventory || player.inventory.length === 0) {
-        elements.inventoryDisplay.innerHTML = '<p class="info-message">Inventory is empty.</p>';
-        return;
+    const box = elements.inventoryDisplay;
+    box.innerHTML = '';
+    let hero; try { hero = getCurrentPlayer(); } catch (_) {}
+    if (!hero) return;
+    box.appendChild(kitHeader(hero));
+    const items = (hero.inventory || []).filter(Boolean);
+    if (!items.length) { kitNote(box, 'info-message', 'Your bag is empty.'); return; }
+    const groups = [
+        ['use', 'Use', (i) => i.type === 'Consumable'],
+        ['gear', 'Gear', (i) => i.type === 'Weapon' || i.type === 'Armor'],
+        ['keep', 'Keep', (i) => i.type !== 'Consumable' && i.type !== 'Weapon' && i.type !== 'Armor']
+    ];
+    const chips = document.createElement('div');
+    chips.className = 'kit-chips';
+    for (const [key, label] of [['all', 'All'], ...groups.map(([k, l]) => [k, l])]) {
+        const n = key === 'all' ? items.length : items.filter(groups.find(g => g[0] === key)[2]).length;
+        if (key !== 'all' && !n) continue;
+        const c = document.createElement('button');
+        c.className = `kit-chip${kitFilter.inventory === key ? ' on' : ''}`;
+        c.textContent = `${label} ${n}`;
+        c.addEventListener('click', () => { kitFilter.inventory = key; renderInventory(); });
+        chips.appendChild(c);
     }
-    // Sort inventory? Optional (e.g., by type then name)
-    const sortedInventory = [...player.inventory].sort((a, b) => {
-         if (!a || !b) return 0;
-         if (a.type !== b.type) return a.type.localeCompare(b.type);
-         return a.name.localeCompare(b.name);
-    });
-    sortedInventory.forEach(item => {
-        if (!item) return;
-        const itemCard = createItemCard(item, 'inventory');
-        elements.inventoryDisplay.appendChild(itemCard);
-    });
+    box.appendChild(chips);
+    for (const [key, label, test] of groups) {
+        if (kitFilter.inventory !== 'all' && kitFilter.inventory !== key) continue;
+        const list = items.filter(test).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+        if (!list.length) continue;
+        box.appendChild(section(label, list.length));
+        list.forEach(i => box.appendChild(createItemCard(i, 'inventory')));
+    }
 }
 
-/** Renders the items available in the shop. */
+/** Shop: the inn, then potions, gear and charms, cheapest first. */
 export function renderShop() {
-    const log = window.displayVisualError || console.log; // Use logger
     updateContextHeaders();
     if (!elements.shopDisplay) return;
-    log("UI: Rendering shop.");
-    elements.shopDisplay.innerHTML = '';
-    const nextStock = 5 - ((gameState.turn || 1) % 5); // restocks when the turn reaches a multiple of 5
-    const note = document.createElement('p');
-    note.className = 'shop-note';
-    note.textContent = `New stock in ${nextStock} turn${nextStock === 1 ? '' : 's'} (it follows your level). Sell from your Bag for half price.`;
-    elements.shopDisplay.appendChild(note);
+    const box = elements.shopDisplay;
+    box.innerHTML = '';
     const hero = gameState.players?.[gameState.currentPlayerIndex];
-    if (hero) {
-        const price = Progression.innPrice(hero);
-        const rested = hero.hp >= hero.maxHp && (hero.mp ?? 0) >= (hero.maxMp ?? 0) && !(hero.statusEffects || []).some(e => e?.name === 'Flustered');
-        const inn = document.createElement('div');
-        inn.className = 'item-card inn-card';
-        inn.innerHTML = `<h4>🛏️ Rest at the inn</h4><p>Full HP and MP, and shake off being Flustered.</p><p class="item-cost">${price} 💰</p>`;
-        const btn = document.createElement('button');
-        btn.textContent = gameState.inCombat ? 'Not during a fight' : rested ? 'Already rested' : (hero.coins || 0) < price ? `Need ${price} coins` : `Rest (${price} coins)`;
-        btn.disabled = gameState.inCombat || rested || (hero.coins || 0) < price;
-        btn.addEventListener('click', () => {
-            if (gameState.inCombat || (hero.coins || 0) < price) return;
-            hero.coins -= price; hero.hp = hero.maxHp; hero.mp = hero.maxMp ?? hero.mp;
-            import('./saveLoad.js').then(m => m.requestAutosave()).catch(() => {});
-            hero.statusEffects = (hero.statusEffects || []).filter(e => e?.name !== 'Flustered');
-            showPopup(`${hero.name} rests at the inn: fully restored (-${price} coins).`, 'healing', 3000);
-            renderPlayerCards(); updateContextHeaders(); renderShop();
-        });
-        inn.appendChild(btn);
-        elements.shopDisplay.appendChild(inn);
-    }
-    if (!gameState.shopItems || gameState.shopItems.length === 0) {
-        elements.shopDisplay.innerHTML = '<p class="info-message">The shop is currently empty.</p>';
-        return;
-    }
-     // Sort shop items? Optional (e.g., by cost or type)
-     // Gear and charms this hero already bought are gone from their shop.
-     const shopper = gameState.players?.[gameState.currentPlayerIndex];
-     const sortedShop = gameState.shopItems.filter(i => i && !(i.boughtBy || []).includes(shopper?.id)).sort((a, b) => {
-          if (!a || !b) return 0;
-          if ((a.cost ?? Infinity) !== (b.cost ?? Infinity)) return (a.cost ?? Infinity) - (b.cost ?? Infinity);
-          if (a.type !== b.type) return a.type.localeCompare(b.type);
-          return a.name.localeCompare(b.name);
-     });
-    sortedShop.forEach(item => {
-        if (!item) return;
-        const itemCard = createItemCard(item, 'shop');
-        elements.shopDisplay.appendChild(itemCard);
+    if (!hero) return;
+    const nextStock = 5 - ((gameState.turn || 1) % 5);
+    box.appendChild(kitHeader(hero, `New stock in ${nextStock} turn${nextStock === 1 ? '' : 's'}`));
+    // The inn.
+    const price = Progression.innPrice(hero);
+    const rested = hero.hp >= hero.maxHp && (hero.mp ?? 0) >= (hero.maxMp ?? 0) && !(hero.statusEffects || []).some(e => e?.name === 'Flustered');
+    const inn = kitRow({ icon: '🛏️', name: 'Rest at the inn', line: rested ? 'You are already fully rested' : 'Full HP and MP, and shake off Flustered', cls: 'inn-card',
+        actions: [{ label: gameState.inCombat ? 'Not in a fight' : rested ? 'Rested' : (hero.coins || 0) < price ? `Need ${price - (hero.coins || 0)} more` : `Rest ${price} 💰`, cls: 'innRestBtn', primary: true, disabled: gameState.inCombat || rested || (hero.coins || 0) < price }] });
+    inn.addEventListener('click', (e) => {
+        if (!e.target.closest?.('.innRestBtn') || gameState.inCombat || (hero.coins || 0) < price) return;
+        hero.coins -= price; hero.hp = hero.maxHp; hero.mp = hero.maxMp ?? hero.mp;
+        hero.statusEffects = (hero.statusEffects || []).filter(e => e?.name !== 'Flustered');
+        import('./saveLoad.js').then(m => m.requestAutosave()).catch(() => {});
+        showPopup(`${hero.name} rests at the inn: fully restored (-${price} coins).`, 'healing', 3000);
+        renderPlayerCards(); updateContextHeaders(); renderShop();
     });
+    box.appendChild(inn);
+    // Gear and charms this hero already bought are gone from their shop.
+    const stock = (gameState.shopItems || []).filter(i => i && !(i.boughtBy || []).includes(hero.id));
+    if (!stock.length) { kitNote(box, 'info-message', 'The shelves are empty: new stock soon.'); return; }
+    const groups = [['Potions & tools', (i) => i.type === 'Consumable'], ['Gear', (i) => i.type === 'Weapon' || i.type === 'Armor'], ['Charms & curios', (i) => i.type !== 'Consumable' && i.type !== 'Weapon' && i.type !== 'Armor']];
+    for (const [label, test] of groups) {
+        const list = stock.filter(test).sort((a, b) => (a.cost ?? Infinity) - (b.cost ?? Infinity));
+        if (!list.length) continue;
+        box.appendChild(section(label));
+        list.forEach(i => box.appendChild(createItemCard(i, 'shop')));
+    }
+    kitNote(box, 'kit-note kit-foot', 'Sell from your Bag for half price.');
 }
 
-/** Renders the special moves for the current player. */
+/** Moves: every special, grouped by what it does, with its rank and real effect. */
 export function renderSpecialMoves() {
-    const log = window.displayVisualError || console.log; // Use logger
     updateContextHeaders();
     if (!elements.specialMovesDisplay) return;
-    log("UI: Rendering special moves + known spells.");
-    elements.specialMovesDisplay.innerHTML = '';
-    let player;
-    try { player = getCurrentPlayer(); } catch (e) {}
-
-    const moves = (player?.specialMoves || []);
-    const spells = (player?.spellcasting?.knownSpells || []);
-
-    if (!player || (moves.length === 0 && spells.length === 0)) {
-        elements.specialMovesDisplay.innerHTML = '<p class="info-message">No special moves or spells known yet.</p>';
-        return;
-    }
-
-    // Render special moves (legacy slot)
-    if (moves.length > 0) {
-        const movesHeader = document.createElement('h3');
-        movesHeader.className = 'spec-section-header';
-        movesHeader.textContent = 'Special Moves';
-        elements.specialMovesDisplay.appendChild(movesHeader);
-        const sortedMoves = [...moves].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-        sortedMoves.forEach(move => {
-            if (!move) return;
-            const moveCard = createSpecialMoveCard(move);
-            elements.specialMovesDisplay.appendChild(moveCard);
+    const box = elements.specialMovesDisplay;
+    box.innerHTML = '';
+    let hero; try { hero = getCurrentPlayer(); } catch (_) {}
+    const moves = (hero?.specialMoves || []).filter(Boolean);
+    const spells = (hero?.spellcasting?.knownSpells || []).filter(Boolean);
+    if (!hero || (!moves.length && !spells.length)) { box.innerHTML = '<p class="info-message">No special moves yet: you learn new ones every 2 levels.</p>'; return; }
+    const pips = (a) => { const r = Progression.abilityRank(a); return `${'●'.repeat(r)}${'○'.repeat(5 - r)}`; };
+    const toNext = (a) => { const r = Progression.abilityRank(a); return r < 5 ? `${a.uses || 0}/${Progression.RANK_USES[r]} uses to rank ${Progression.ROMAN[r + 1]}` : 'mastered'; };
+    const verb = AdaptiveAbilities.isMagicWorld() ? 'Cast' : 'Use';
+    const rows = [];
+    for (const s of spells) {
+        const sum = SpellCasting.abilitySummary(s, hero);
+        const fx = s.effects || {};
+        const kind = Number(fx.damage) > 0 ? 'attack' : Number(fx.healing) > 0 ? 'heal' : 'trick';
+        const cost = Progression.abilityMpCost(s);
+        const row = kitRow({ icon: kind === 'attack' ? '💥' : kind === 'heal' ? '💚' : '🌀', name: s.name, line: `${pips(s)} · ${cost} MP · ${sum}`,
+            actions: [{ label: (hero.mp ?? 0) >= cost ? `${verb}` : `Need ${cost} MP`, cls: 'castSpellCardBtn', primary: true, disabled: (hero.mp ?? 0) < cost || gameState.isLoading || hero.isDowned }],
+            more: `${sanitizeText(s.description || '')}<br><small>Rank ${Progression.ROMAN[Progression.abilityRank(s)]} · ${toNext(s)}</small>`, cls: 'spell-card' });
+        row.addEventListener('click', async (e) => {
+            if (!e.target.closest?.('.castSpellCardBtn')) return;
+            showScreen('gameScreen');
+            if (gameState.inCombat) { const { handlePlayerChoice } = await import('./actionHandler.js'); return handlePlayerChoice('Spell', `Cast ${s.name}`); } // costs the turn
+            const res = await SpellCasting.castSpell(hero, s);
+            showPopup(res?.success ? `${hero.name} uses ${s.name}!` : `${s.name} fizzles${res?.reason ? ': ' + res.reason : ''}`, res?.success ? 'skill' : 'warning');
+            renderPlayerCards();
         });
+        rows.push([kind, row]);
     }
-
-    // Also list known spells here so the Spec. button isn't a dead-end for
-    // spellcasters. The dedicated Book/Cast UI in spellUI.js has richer
-    // affordances; this is a discoverability hint. Phase 0 audit P1 #16.
-    if (spells.length > 0) {
-        const spellsHeader = document.createElement('h3');
-        spellsHeader.className = 'spec-section-header';
-        spellsHeader.textContent = `Known ${AdaptiveAbilities.getCurrentThemeAdaptation().abilityNamePlural || 'Abilities'}`;
-        elements.specialMovesDisplay.appendChild(spellsHeader);
-        const sortedSpells = [...spells].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-        sortedSpells.forEach(spell => {
-            if (!spell) return;
-            const card = document.createElement('div');
-            card.className = 'special-move-card spell-card';
-            card.innerHTML = `
-                <h4>${sanitizeText(spell.name || 'Unnamed Spell')}</h4>
-                <p>${sanitizeText(spell.description || spell.effect || 'A learned spell.')}</p>
-                <p class="move-mechanics">In a fight: ${sanitizeText(SpellCasting.abilitySummary(spell, player))}</p>
-                <p class="meta">School: ${sanitizeText(spell.school || 'Arcane')} · MP: ${Progression.abilityMpCost(spell)} · Rank ${Progression.ROMAN[Progression.abilityRank(spell)]}${Progression.abilityRank(spell) < 5 ? ` (${spell.uses || 0}/${Progression.RANK_USES[Progression.abilityRank(spell)]} uses to rank ${Progression.ROMAN[Progression.abilityRank(spell) + 1]})` : ' (mastered)'}</p>
-            `;
-            // Cast from here (the Book/Cast quick buttons were only ever added
-            // when a save was loaded, so new games could never cast).
-            const castBtn = document.createElement('button');
-            castBtn.className = 'castSpellCardBtn';
-            const player = getCurrentPlayer();
-            const enoughMp = (player?.mp ?? 0) >= Progression.abilityMpCost(spell);
-            castBtn.textContent = enoughMp ? `${AdaptiveAbilities.isMagicWorld() ? 'Cast' : 'Use'} (${Progression.abilityMpCost(spell)} MP)` : `Need ${Progression.abilityMpCost(spell)} MP`;
-            castBtn.disabled = !enoughMp || gameState.isLoading;
-            castBtn.addEventListener('click', async () => {
-                showScreen('gameScreen');
-                if (gameState.inCombat) {
-                    const { handlePlayerChoice } = await import('./actionHandler.js');
-                    return handlePlayerChoice('Spell', `Cast ${spell.name}`); // costs the turn
-                }
-                const SpellCasting = await import('./spellCasting.js');
-                const res = await SpellCasting.castSpell(player, spell);
-                showPopup(res?.success ? `${player.name} casts ${spell.name}!` : `${spell.name} fizzles${res?.reason ? ': ' + res.reason : ''}`, res?.success ? 'skill' : 'warning');
-                renderPlayerCards();
-            });
-            card.appendChild(castBtn);
-            elements.specialMovesDisplay.appendChild(card);
-        });
+    for (const m of moves) {
+        const mech = m.mechanics || {};
+        const cost = Progression.abilityMpCost(m), cd = m.currentCooldown || 0;
+        const wrongPlace = (m.usageContext === 'exploration' && gameState.inCombat) || (m.usageContext === 'combat' && !gameState.inCombat);
+        const dmg = Number(mech.directDamage ?? mech.damage) || 0;
+        const kind = dmg > 0 ? 'attack' : Number(mech.healing) > 0 ? 'heal' : 'trick';
+        const bits = [dmg ? `weapon hit ×1.5 + ${Math.round(dmg * Progression.abilityPower(hero, m))}` : '', mech.healing ? `heals ${mech.healing}` : '', ...(mech.statusEffects || []).map(x => typeof x === 'string' ? x : x?.name).filter(Boolean)];
+        const row = kitRow({ icon: kind === 'attack' ? '💥' : kind === 'heal' ? '💚' : '🌀', name: m.name,
+            line: `${pips(m)} · ${cost ? `${cost} MP · ` : ''}${bits.filter(Boolean).join(' · ') || 'a special move'}${cd > 0 ? ` · ready in ${cd}` : ''}`,
+            actions: [{ label: cd > 0 ? `In ${cd}` : wrongPlace ? (gameState.inCombat ? 'Not in fights' : 'Fights only') : 'Use', cls: 'useMoveBtn', primary: true, disabled: hero.isDowned || cd > 0 || (cost > (hero.mp || 0)) || gameState.isLoading || wrongPlace }],
+            more: `${sanitizeText(m.effect || m.description || '')}<br><small>Rank ${Progression.ROMAN[Progression.abilityRank(m)]} · ${toNext(m)} · cooldown ${m.cooldown ?? 2}</small>`, cls: 'move-card', data: { moveId: m.id } });
+        rows.push([kind, row]);
+    }
+    for (const [kind, title] of [['attack', 'Attacks'], ['heal', 'Heals'], ['trick', 'Tricks & boosts']]) {
+        const list = rows.filter(r => r[0] === kind);
+        if (!list.length) continue;
+        box.appendChild(section(title, list.length));
+        list.forEach(([, r]) => box.appendChild(r));
     }
 }
 
@@ -1348,148 +1437,6 @@ export function renderSavedGamesList(saves) {
         `;
         elements.savedGamesList.appendChild(card);
     });
-}
-
-/** Creates the HTML structure for an item card (Inventory or Shop). Helper. */
-function createItemCard(item, context) {
-    const card = document.createElement('div');
-    // Narrator items can carry a numeric tier (live: tier 1 crashed the Bag screen).
-    const tierName = String(item.tier ?? 'Low');
-    card.className = `item-card tier-${tierName.toLowerCase()}`;
-    card.dataset.itemId = item.id;
-    let player; try { player = getCurrentPlayer(); } catch(e) {}
-    const isEquipped = player?.equipment && (player.equipment.weapon === item.id || player.equipment.armor === item.id);
-    const equippedSlot = isEquipped ? (player.equipment.weapon === item.id ? 'weapon' : 'armor') : null;
-
-    if (isEquipped) card.classList.add('equipped');
-    if (equippedSlot) card.dataset.slot = equippedSlot; // Store slot if equipped for unequip button
-
-    // Build stats string, filtering out zero/false values unless specifically needed
-    // Plain words ("Revives a downed ally", "Heals 25%"), not "revive | HEALPERCENT: 0.25".
-    item.type = Progression.usableType(item); // older saves: an invented type ("Artifact") had no buttons
-    const st = item.stats || {};
-    const statsString = [
-        st.atk ? `⚔️ ATK +${st.atk}` : '',
-        st.def ? `🛡️ DEF +${st.def}` : '',
-        st.revive ? `Revives a downed ally, or yourself on your turn (${Math.round((st.healPercent || 0.25) * 100)}% HP)` : '',
-        st.heal && !(item.effect || '').includes(` ${st.heal} HP`) ? `Heals ${st.heal} HP` : '', // shop showed "Restores 27 HP" then "Heals 27 HP"
-        st.healPercent && !st.revive ? `Heals ${Math.round(st.healPercent * 100)}% HP` : '',
-        st.cure ? `Cures ${sanitizeText(String(st.cure))}` : '',
-        st.applyStatus ? `Gives ${sanitizeText([].concat(st.applyStatus).join(', '))}` : '',
-        st.throwStatus ? `Throw: ${sanitizeText(String(st.throwStatus))}` : '',
-        st.mp && !(item.effect || '').includes(` ${st.mp} MP`) ? `Restores ${st.mp} MP` : '',
-        st.mpPercent ? `Restores ${Math.round(st.mpPercent * 100)}% MP` : '',
-        st.statUp ? `Raises ${Object.entries(st.statUp).map(([k, n]) => `${sanitizeText(Progression.STATS[k]?.name || k)} +${n}`).join(', ')} for good` : '',
-        st.teach ? 'Teaches a new special' : '',
-        st.luck ? `🍀 Luck +${st.luck}` : '',
-        st.onHitStatus ? `On hit: ${sanitizeText(String(st.onHitStatus))}` : '',
-        st.resistances ? `Resists ${Object.entries(st.resistances).map(([e, r]) => `${sanitizeText(e)} ${Math.round(r * 100)}%`).join(', ')}` : ''
-    ].filter(Boolean).join(' · ');
-
-    const playerIsDowned = player?.isDowned ?? true; // Assume downed if no player
-    
-    // Calculate reputation-modified price for shop items
-    const actualPrice = context === 'shop' ? calculateItemPrice(item) : item.cost;
-    const canAfford = player?.coins >= (actualPrice ?? Infinity);
-    
-    // General disabled state for actions (not buy button cost check)
-    const cannotAct = playerIsDowned || gameState.isLoading;
-
-    card.innerHTML = `
-        <h4>${sanitizeText(item.name)} ${item.quantity ? `(x${item.quantity})` : ''}</h4>
-        <p class="item-tier tier-${tierName.toLowerCase()}">${sanitizeText(tierName)} ${sanitizeText(item.type)}</p>
-        <p class="item-effect">${sanitizeText(item.effect || 'An item of interest.')}</p>
-        ${statsString ? `<p class="item-stats">${statsString}</p>` : ''}
-        ${context === 'shop' && item.cost !== undefined ? `<p class="item-cost">${actualPrice} 💰${actualPrice !== item.cost ? ` <span class="price-modifier">(was ${item.cost})</span>` : ''}</p>` : ''}
-        <div class="button-container vertical">
-            ${context === 'inventory' ? `
-                ${item.type === 'Consumable' && !item.stats?.revive ? `<button class="useItemBtn" ${cannotAct ? 'disabled' : ''}>Use</button>` : ''}
-                ${item.type === 'Weapon' && !isEquipped && !gameState.inCombat ? `<button class="equipItemBtn" data-slot="weapon" ${cannotAct ? 'disabled' : ''}>Equip Weapon</button>` : ''}
-                ${item.type === 'Armor' && !isEquipped && !gameState.inCombat ? `<button class="equipItemBtn" data-slot="armor" ${cannotAct ? 'disabled' : ''}>Equip Armor</button>` : ''}
-                ${isEquipped && !gameState.inCombat ? `<button class="unequipItemBtn" ${cannotAct ? 'disabled' : ''}>Unequip</button>` : ''}
-                ${!isEquipped && item.type !== 'Quest' && !gameState.inCombat ? `<button class="sellItemBtn btn-secondary" ${cannotAct ? 'disabled' : ''}>Sell (${sellValue(item)}💰)</button>` : ''}
-                ${gameState.inCombat || item.type === 'Quest' ? '' : `<button class="dropItemBtn" ${cannotAct ? 'disabled' : ''}>Drop</button>`}
-            ` : ''}
-            ${context === 'shop' ? `
-                <button class="buyItemBtn" ${!item.cost || !canAfford || cannotAct ? 'disabled' : ''}>
-                    Buy (${actualPrice !== undefined ? actualPrice : '?'}💰)
-                </button>
-            ` : ''}
-        </div>
-    `;
-    return card;
-}
-
-/** Creates the HTML structure for a special move card. Helper. */
-function createSpecialMoveCard(move) {
-    const card = document.createElement('div');
-    card.className = 'move-card';
-    card.dataset.moveId = move.id;
-    let player; try { player = getCurrentPlayer(); } catch(e) {}
-    const isReady = move.currentCooldown <= 0;
-    const hasEnoughMP = !move.mpCost || (player?.mp >= Progression.abilityMpCost(move));
-    // Wrong place for the move (exploration-only in a fight, or combat-only outside one) too.
-    const wrongPlace = (move.usageContext === 'exploration' && gameState.inCombat) || (move.usageContext === 'combat' && !gameState.inCombat);
-    const isDisabled = player?.isDowned || !isReady || !hasEnoughMP || gameState.isLoading || wrongPlace;
-
-    // Determine context badge
-    const contextBadge = move.usageContext === 'both' ? 'Combat & Exploration' :
-                        move.usageContext === 'combat' ? 'Combat Only' :
-                        'Exploration Only';
-
-    // Build mechanics description
-    let mechanicsDesc = '';
-    if (move.mechanics) {
-        if (move.mechanics.damage) {
-            mechanicsDesc += `Deals ${move.mechanics.damage} damage`;
-        }
-        if (move.mechanics.healing) {
-            mechanicsDesc += mechanicsDesc ? ', ' : '';
-            mechanicsDesc += `Heals ${move.mechanics.healing} HP`;
-        }
-        if (move.mechanics.statusEffects?.length > 0) {
-            mechanicsDesc += mechanicsDesc ? ', ' : '';
-            mechanicsDesc += `Applies: ${move.mechanics.statusEffects.join(', ')}`;
-        }
-        if (move.mechanics.exploration) {
-            if (move.mechanics.exploration.obstacleTypes?.length > 0) {
-                mechanicsDesc += mechanicsDesc ? '\n' : '';
-                mechanicsDesc += `Overcomes: ${move.mechanics.exploration.obstacleTypes.join(', ')}`;
-            }
-            if (move.mechanics.exploration.puzzleBonus) {
-                mechanicsDesc += mechanicsDesc ? '\n' : '';
-                mechanicsDesc += `Puzzle Bonus: +${move.mechanics.exploration.puzzleBonus}`;
-            }
-            if (move.mechanics.exploration.environmentalEffect) {
-                mechanicsDesc += mechanicsDesc ? '\n' : '';
-                mechanicsDesc += `Effect: ${move.mechanics.exploration.environmentalEffect}`;
-            }
-        }
-    }
-
-    card.innerHTML = `
-        <div class="move-header">
-            <h4>${sanitizeText(move.name)}</h4>
-            <span class="context-badge ${move.usageContext}">${contextBadge}</span>
-        </div>
-        <p class="move-effect">${sanitizeText(move.effect)}</p>
-        ${mechanicsDesc ? `<p class="move-mechanics">${sanitizeText(mechanicsDesc)}</p>` : ''}
-        <div class="move-footer">
-            <p class="move-cooldown">Cooldown: ${move.cooldown} turns</p>
-            ${move.mpCost ? `<p class="move-mp-cost">MP Cost: ${Progression.abilityMpCost(move)} 🔮</p>` : ''}
-            <p class="move-cooldown">Rank ${Progression.ROMAN[Progression.abilityRank(move)]}${Progression.abilityRank(move) < 5 ? ` (${move.uses || 0}/${Progression.RANK_USES[Progression.abilityRank(move)]} uses to rank ${Progression.ROMAN[Progression.abilityRank(move) + 1]})` : ' (mastered)'}</p>
-            <p class="move-status ${isReady ? 'ready' : 'on-cooldown'}">
-                ${isReady ? 'Ready!' : `Ready in ${move.currentCooldown} turns`}
-            </p>
-            <div class="button-container">
-                <button class="useMoveBtn" ${isDisabled ? 'disabled' : ''}>Use Move</button>
-            </div>
-        </div>
-    `;
-
-    // Clicks are handled by the delegated .useMoveBtn listener in main.js
-    // (a listener here called an unimported useSpecialMove and threw).
-    return card;
 }
 
 // --- Modal Content Updates ---

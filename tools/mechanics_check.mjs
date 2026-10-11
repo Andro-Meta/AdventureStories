@@ -2558,6 +2558,43 @@ await block(async () => {
   check(Combat.isPartyWiped(), 'without a revive item, a downed solo hero is out');
 });
 
+await block(async () => {
+  // Phone 10-11: the Moves button threw ("Cannot access 'player' before initialization").
+  // Bag, Shop and Moves render rows for everything, without throwing.
+  const { p } = fresh(); p.level = 6; p.mp = p.maxMp = 40; p.coins = 300;
+  p.spellcasting = { knownSpells: [{ id: 's1', name: 'Plasma Lance', mpCost: 6, targeting: 'single', effects: { damage: 22 } }, { id: 's2', name: 'Med Field', mpCost: 9, targeting: 'party', effects: { healing: 24 } }], preparedSpells: [] };
+  p.specialMoves = [{ id: 'm1', name: 'Arc Smash', mpCost: 0, cooldown: 2, mechanics: { directDamage: 20 } }];
+  p.inventory.push({ id: 'pot', name: 'Healing Potion', type: 'Consumable', quantity: 2, stats: { heal: 30 } }, { id: 'sw', name: 'Steel Sword', type: 'Weapon', stats: { atk: 12 } });
+  gameState.shopItems = [{ id: 'sh1', name: 'Iron Mace', type: 'Weapon', tier: 'Medium', cost: 80, stats: { atk: 15 } }, { id: 'sh2', name: 'Focus Tonic', type: 'Consumable', cost: 20, stats: { mp: 18 } }];
+  const grab = (key) => { const got = []; const real = UI.elements[key]; UI.elements[key] = { innerHTML: '', appendChild(c) { got.push(c); }, insertAdjacentHTML() {} }; return { got, done: () => { UI.elements[key] = real; } }; };
+  const run = (fn, key) => { const g = grab(key); let err = null; try { fn(); } catch (e) { err = e.message; } finally { g.done(); } return { rows: g.got.filter(c => /kit-row/.test(c.className || '')), err }; };
+  const moves = run(UI.renderSpecialMoves, 'specialMovesDisplay'), bag = run(UI.renderInventory, 'inventoryDisplay'), shop = run(UI.renderShop, 'shopDisplay');
+  check(!moves.err && moves.rows.length === 3 && !bag.err && bag.rows.length >= 2 && !shop.err && shop.rows.length === 3,
+    `Moves, Bag and Shop render (moves ${moves.rows.length}${moves.err ? ' THREW ' + moves.err : ''}, bag ${bag.rows.length}${bag.err ? ' THREW ' + bag.err : ''}, shop ${shop.rows.length} incl. the inn${shop.err ? ' THREW ' + shop.err : ''})`);
+  check(shop.rows.filter(r => r.dataset?.itemId).map(r => r.dataset.itemId).join(',') === 'sh2,sh1' || shop.rows.filter(r => r.dataset?.itemId).length === 2, 'shop rows carry their item ids (the Buy button finds them)');
+});
+
+await block(async () => {
+  // Phone 10-11: a Divine Will "transported everyone into a new dimension where witches
+  // and magic and ghosts prevail"; the storyteller never sent the world op, the
+  // world stayed the old one and the story drifted back. The game changes it now.
+  const offline = globalThis.fetch;
+  globalThis.fetch = window.fetch = async () => ({ ok: true, status: 200, statusText: '200', headers: { get: () => null }, json: async () => ({ choices: [{ message: { content: JSON.stringify({ narration: 'The air crackles; the server room dissolves into candlelight.', ops: [{ op: 'replace', path: '/currentLocation', value: { name: 'Ethereal Cathedral Square', type: 'plaza', dangerLevel: 0.4, description: 'Ghost lanterns.' } }], choices: ['brave', 'clever', 'sneaky', 'kind', 'luck'].map(stat => ({ stat, safe: `S ${stat}`, bold: `B ${stat}`, reckless: `R ${stat}` })) }) } }] }), text: async () => '' });
+  localStorage.setItem('adv.cloudProvider', 'groq_qwen'); localStorage.setItem('adv.apiKey.api.groq.com', 'test');
+  const realGet = document.getElementById.bind(document);
+  document.getElementById = (id) => id === 'choicesContainer' ? { querySelectorAll: () => [{}], appendChild() {}, innerHTML: '' } : realGet(id);
+  try {
+    fresh(); gameState.adventureTheme = 'custom'; gameState.customThemeDescription = 'A future where oligarchs rule and AI is bricked'; gameState.allowCustomActions = true;
+    const AA = await import('../adaptiveAbilities.js');
+    await window.handleGodModeChoice('Michael threw a wrench at the fuse box and an arc connected with a machine that transported everyone into a new dimension where witches and magic and ghosts prevail.');
+    check(gameState.adventureTheme === 'custom' && /witches and magic and ghosts/.test(gameState.customThemeDescription) && AA.isMagicWorld(),
+      `a described trip to another world changes the world even if the storyteller forgets (now: "${gameState.customThemeDescription}", magic ${AA.isMagicWorld()})`);
+    const before = gameState.customThemeDescription;
+    await window.handleGodModeChoice('I summon a phoenix to fight beside me.');
+    check(gameState.customThemeDescription === before, 'an ordinary wish leaves the world alone');
+  } finally { document.getElementById = realGet; globalThis.fetch = window.fetch = offline; localStorage.removeItem('adv.apiKey.api.groq.com'); localStorage.removeItem('adv.cloudProvider'); }
+});
+
 console.error = realError;
 out(`\nfetch attempts blocked: ${fetchCalls}; elapsed ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 out(failed ? `✗ ${failed} mechanics check(s) failed` : '✓ all mechanics checks passed');
