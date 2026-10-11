@@ -603,23 +603,11 @@ nav#quickActions {
 .item-card:hover, .move-card:hover { transform: translateY(-3px); box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2); border-color: var(--secondary-color); }
 .item-card h4, .move-card h4 { margin-top: 0; margin-bottom: 0.3rem; font-size: 1rem; }
 .item-card p, .move-card p { font-size: 0.85rem; color: var(--text-muted-color); margin-bottom: 0.4rem; flex-grow: 1; word-wrap: break-word; }
-.item-card .item-tier { font-style: italic; }
 .item-stats, .item-cost, .item-effect, .move-cooldown, .move-status { font-weight: 500; margin-top: 0.5rem; font-size: 0.9rem; color: var(--text-color); }
-.item-cost { color: var(--coins-color); font-weight: bold; }
-.move-cooldown { font-size: 0.8rem; color: var(--risky-color); }
-.move-mp-cost { font-size: 0.8rem; color: #4fc3f7; font-weight: bold; margin: 0.2rem 0; }
 .move-status { font-size: 0.8rem; color: var(--good-color); }
-.move-status.on-cooldown { color: var(--risky-color); }
 .item-card button, .move-card button { margin-top: 1rem; width: 100%; margin-left: 0; margin-right: 0; padding: 0.5rem; font-size: 0.9rem; }
 .item-card .dropItemBtn { background: var(--input-bg); border: 1px solid var(--border-color); color: var(--text-muted-color); margin-top: 0.5rem; }
 .item-card .dropItemBtn:hover:not(:disabled) { background: var(--disabled-bg); color: var(--text-color); }
-
-/* Item Tier Styling */
-.item-tier.tier-low { color: var(--tier-low-color); }
-.item-tier.tier-medium { color: var(--tier-medium-color); }
-.item-tier.tier-high { color: var(--tier-high-color); }
-.item-tier.tier-special { color: var(--tier-special-color); font-weight: bold; }
-.item-tier.tier-legendary { color: var(--tier-legendary-color); font-weight: bold; text-shadow: 0 0 5px var(--tier-legendary-color); }
 .item-card.tier-legendary { border-color: var(--tier-legendary-color); box-shadow: 0 0 8px rgba(255, 112, 67, 0.5); }
 .item-card.tier-god { border: 2px solid transparent; border-image: var(--tier-god-border) 1; box-shadow: 0 0 12px rgba(255, 202, 40, 0.6); }
 .item-card.tier-god h4 { background: var(--tier-god-border); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
@@ -1965,10 +1953,6 @@ body { padding-top: calc(env(safe-area-inset-top) + 0.5rem); padding-bottom: cal
 .fx-float-heal { color: #7cf08a; }
 @keyframes fx-float { 0% { opacity: 0; transform: translateY(8px) scale(0.8); } 15% { opacity: 1; transform: translateY(0) scale(1.15); } 100% { opacity: 0; transform: translateY(-34px) scale(1); } }
 @media (prefers-reduced-motion: reduce) { .fx-shake, .fx-shake-heavy, .fx-foe-hit, .fx-foe-crit { animation: none; } }
-
-/* Moves screen: section headers span the whole grid ("Known Spells" sat in a
-   card-sized cell with the first spell beside it). */
-#specialMovesDisplay .spec-section-header { grid-column: 1 / -1; text-align: left; margin: 0.5rem 0 0; }
 .castSpellCardBtn { width: 100%; margin-top: 0.6rem; }
 
 /* Scrolling to a new scene stops below the status bar. */
@@ -2038,8 +2022,6 @@ button.primary { background: var(--accent-color, #6c5ce7); color: #fff; border-c
 .stats-explainer li { margin: 3px 0; }
 .inn-card h4 { margin: 0 0 4px; }
 
-.shop-note { grid-column: 1 / -1; margin: 0 0 6px; color: var(--text-muted-color, #aaa); font-size: 0.9rem; }
-
 /* Android 15+ draws the page edge to edge: scrolled story text ran under the
    clock and the navigation bar (phone 10-08). Solid strips in the page colour
    sit over both bars; modals, the battle picker and popups (z 1002+) stay above. */
@@ -2072,3 +2054,34 @@ body::after { bottom: 0; height: env(safe-area-inset-bottom); }
 
 /* Player Names: pick a saved hero (roster.js) */
 .hero-pick { width: 100%; margin: 0 0 6px; }
+
+/* ---------- Bag, Shop, Moves: one compact row per thing (redesign 10-11) ---------- */
+#inventoryDisplay, #shopDisplay, #specialMovesDisplay { display: block; }
+.kit-header { display: flex; flex-wrap: wrap; gap: 0.35rem 0.9rem; align-items: center; font-size: 0.85rem; color: var(--text-muted-color);
+  background: var(--card-bg-color, #1e1e1e); border: 1px solid var(--border-color); border-radius: 10px; padding: 0.55rem 0.75rem; margin: 0 0 0.6rem; }
+.kit-header span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.kit-note { color: var(--text-muted-color); font-size: 0.8rem; }
+.kit-foot { text-align: center; margin: 0.8rem 0 0.2rem; }
+.kit-chips { display: flex; gap: 0.4rem; flex-wrap: wrap; margin: 0 0 0.4rem; }
+.kit-chip { width: auto; margin: 0; padding: 0.35rem 0.8rem; border-radius: 999px; font-size: 0.85rem; background: transparent; border: 1px solid var(--border-color); color: var(--text-color); box-shadow: none; }
+.kit-chip.on { background: var(--secondary-color); border-color: var(--secondary-color); color: #fff; }
+.kit-section { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted-color); margin: 0.9rem 0 0.35rem; text-align: left; }
+.kit-row { background: var(--card-bg-color, #1e1e1e); border: 1px solid var(--border-color); border-left: 4px solid var(--border-color); border-radius: 10px; margin: 0 0 0.45rem; overflow: hidden; }
+.kit-row.tier-medium { border-left-color: #4caf50; } .kit-row.tier-high { border-left-color: #ab47bc; }
+.kit-row.tier-special { border-left-color: #fdd835; } .kit-row.tier-legendary { border-left-color: #ff7043; }
+.kit-row.equipped { box-shadow: inset 0 0 0 1px var(--good-color); }
+.kit-main { display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0.6rem; min-height: 52px; cursor: pointer; }
+.kit-icon { font-size: 1.35rem; width: 1.8rem; text-align: center; flex: none; }
+.kit-text { flex: 1 1 auto; min-width: 0; }
+.kit-name { font-weight: 700; font-size: 0.98rem; line-height: 1.2; overflow-wrap: anywhere; }
+.kit-qty { color: var(--secondary-color); font-weight: 700; }
+.kit-tier { font-size: 0.68rem; font-weight: 600; color: var(--text-muted-color); text-transform: uppercase; letter-spacing: 0.04em; margin-left: 0.2rem; }
+.kit-line { font-size: 0.82rem; color: var(--text-muted-color); line-height: 1.3; margin-top: 0.1rem; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
+.kit-row.open .kit-line { -webkit-line-clamp: unset; line-clamp: unset; display: block; }
+/* (two classes: beats the old full-width ".item-card button" / ".move-card button" rules) */
+.kit-row .kit-act { flex: none; width: auto; min-width: 72px; min-height: 40px; margin: 0; padding: 0.45rem 0.8rem; font-size: 0.88rem; border-radius: 8px; }
+.kit-more { display: none; padding: 0 0.7rem 0.6rem 3rem; font-size: 0.85rem; color: var(--text-color); }
+.kit-row.open .kit-more { display: block; }
+.kit-more p { margin: 0 0 0.5rem; line-height: 1.4; }
+.kit-more-acts { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.kit-row .kit-act2 { width: auto; margin: 0; padding: 0.4rem 0.8rem; font-size: 0.85rem; background: transparent; border: 1px solid var(--border-color); color: var(--text-color); box-shadow: none; min-height: 38px; }
