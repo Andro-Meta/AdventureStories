@@ -256,7 +256,21 @@ export async function handlePlayerChoice(actionType, choiceText) {
                 const foeHpBefore = (gameState.enemies || []).reduce((s, e) => s + (e?.hp || 0), 0);
                 if (offensive && Combat.confusedRoll(currentPlayer)) actionType = 'Confused';
 
+                // A downed hero can only get back up (a revive item from their own bag).
+                if (currentPlayer.isDowned && actionType !== 'SelfRevive') actionType = 'SelfRevive';
                 switch (actionType) {
+                    case 'SelfRevive': {
+                        const item = Combat.selfReviveItem(currentPlayer);
+                        if (!item) { combatLog = `${currentPlayer.name} can't get back up.`; break; }
+                        const pct = Number(item.stats.healPercent) > 0 ? Number(item.stats.healPercent) : Config.REVIVE_HP_PERCENT_ITEM;
+                        currentPlayer.isDowned = false;
+                        currentPlayer.hp = Math.max(1, Math.round(currentPlayer.maxHp * pct));
+                        if ((item.quantity ?? 1) > 1) item.quantity -= 1;
+                        else currentPlayer.inventory = currentPlayer.inventory.filter(i => i !== item);
+                        combatLog = `${currentPlayer.name} uses ${item.name} and gets back up (${currentPlayer.hp} HP).`;
+                        try { Media.play('heal'); } catch (_) {}
+                        break;
+                    }
                     case 'Sluggish':
                         combatLog = `${currentPlayer.name} is too sluggish to act this turn.`;
                         break;
@@ -423,7 +437,9 @@ export async function handlePlayerChoice(actionType, choiceText) {
                         if (!spell) { combatLog = `${currentPlayer.name} reaches for a spell but the words won't come.`; break; }
                         const SpellCasting = await import('./spellCasting.js');
                         // Healing/self spells land on the caster, not the foe.
-                        const selfCast = spell.targeting === 'self' || (spell.effects?.healing > 0 && !(spell.effects?.damage > 0));
+                        // Heals and pure boosts land on the caster (a boost aimed at the foe buffed it).
+                        const boostOnly = !(spell.effects?.damage > 0) && Object.values(spell.effects?.modifiers || {}).some(v => Number(v) > 0) && !Object.values(spell.effects?.modifiers || {}).some(v => Number(v) < 0);
+                        const selfCast = spell.targeting === 'self' || boostOnly || (spell.effects?.healing > 0 && !(spell.effects?.damage > 0));
                         const hpBefore = new Map((gameState.enemies || []).map(e => [e, e.hp]));
                         const res = await SpellCasting.castSpell(currentPlayer, spell, selfCast ? currentPlayer : target);
                         // Say what it did (it used to be only "casts X!", so the storyteller guessed).
