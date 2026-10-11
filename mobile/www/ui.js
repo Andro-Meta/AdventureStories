@@ -663,7 +663,7 @@ function heroStatsRow(hero) {
     const need = Progression.xpForLevel(hero.level);
     const pct = Math.min(100, Math.round(100 * hero.xp / need));
     const chips = Object.entries(Progression.STATS).map(([k, s]) => `<span class="stat-chip" title="${s.name}: ${s.does}">${s.icon}${hero.stats[k]}</span>`).join('')
-        + (Progression.luckOf(hero) ? `<span class="stat-chip" title="Lucky charm: helps luck rolls; crits from ${20 - Progression.luckOf(hero)}">🍀${Progression.luckOf(hero)}</span>` : '');
+        + (Progression.luckOf(hero) ? `<span class="stat-chip" title="Lucky charm: helps luck rolls; crits from ${Progression.critFromLuck(Progression.luckOf(hero))}">🍀${Progression.luckOf(hero)}</span>` : '');
     return `<div class="hero-stats">${chips}
         <span class="xp-wrap" title="${hero.xp}/${need} XP to level ${hero.level + 1}"><span class="xp-bar"><span style="width:${pct}%"></span></span><small>${hero.xp}/${need} XP</small></span>
         ${Math.min(hero.statPoints || 0, Progression.statRoom(hero)) > 0 ? `<button class="spend-points" data-hero="${sanitizeText(hero.id)}">⭐ +${Math.min(hero.statPoints, Progression.statRoom(hero))} stat</button>` : ''}
