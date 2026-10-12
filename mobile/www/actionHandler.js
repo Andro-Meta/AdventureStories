@@ -8,6 +8,7 @@ import * as UI from './ui.js';
 import * as Combat from './combat.js';
 import * as Items from './items.js';
 import * as Progression from './progression.js';
+import * as Reading from './reading.js';
 import * as Media from './media.js';
 import { levelUp, battleMenu } from './battle.js';
  // May not be needed if all calls go through aiHandler
@@ -163,6 +164,11 @@ export async function handlePlayerChoice(actionType, choiceText) {
         gameState.isLoading = true;
         recapBefore = snapshotParty();
         recapActor = getCurrentPlayer()?.name;
+        // Reading pace: the first story choice stops the scene's clock (fights don't count).
+        if (!gameState.inCombat) {
+            const read = Reading.choicePicked(getCurrentPlayer());
+            if (read) log(`Reading: ${recapActor} ${read.words} words in ${read.sec}s = ${read.wpm} wpm${read.skimmed ? ' (too fast to have read it)' : ''}`);
+        }
 
         // Show loading indicator and disable choices to prevent multiple clicks
         UI.showLoading(true, 'Processing your choice...');
