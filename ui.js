@@ -10,6 +10,7 @@ import * as Spells from './spells.js';
 import * as AdaptiveAbilities from './adaptiveAbilities.js';
 import * as Progression from './progression.js';
 import * as Media from './media.js';
+import * as Reading from './reading.js';
 import * as Roster from './roster.js';
 import * as SpellCasting from './spellCasting.js';
 // Import specific utils needed
@@ -663,11 +664,25 @@ function heroStatsRow(hero) {
     const need = Progression.xpForLevel(hero.level);
     const pct = Math.min(100, Math.round(100 * hero.xp / need));
     const chips = Object.entries(Progression.STATS).map(([k, s]) => `<span class="stat-chip" title="${s.name}: ${s.does}">${s.icon}${hero.stats[k]}</span>`).join('')
-        + (Progression.luckOf(hero) ? `<span class="stat-chip" title="Lucky charm: helps luck rolls; crits from ${Progression.critFromLuck(Progression.luckOf(hero))}">🍀${Progression.luckOf(hero)}</span>` : '');
+        + (Progression.luckOf(hero) ? `<span class="stat-chip" title="Lucky charm: helps luck rolls; crits from ${Progression.critFromLuck(Progression.luckOf(hero))}">🍀${Progression.luckOf(hero)}</span>` : '')
+        + readingChip(hero);
     return `<div class="hero-stats">${chips}
         <span class="xp-wrap" title="${hero.xp}/${need} XP to level ${hero.level + 1}"><span class="xp-bar"><span style="width:${pct}%"></span></span><small>${hero.xp}/${need} XP</small></span>
         ${Math.min(hero.statPoints || 0, Progression.statRoom(hero)) > 0 ? `<button class="spend-points" data-hero="${sanitizeText(hero.id)}">⭐ +${Math.min(hero.statPoints, Progression.statRoom(hero))} stat</button>` : ''}
         ${hero.abilityPicks > 0 ? `<button class="spend-points" data-hero="${sanitizeText(hero.id)}">✨ new special</button>` : ''}</div>`;
+}
+
+/** Reading pace on the hero row: 📖 words a minute; ⚠ when they keep skipping the story. */
+function readingChip(hero) {
+    const r = Reading.readingReport(hero);
+    if (!r) return '';
+    const pace = r.wpm ? `${r.wpm} wpm` : 'skimming';
+    return `<span class="stat-chip${r.flagged ? ' reading-flag' : ''}" title="Reading: ${pace} (typical for the age ~${r.typical}); skipped the story ${r.skims} of ${r.scenes} scenes">📖${r.flagged ? '⚠' : ''}${r.wpm || '?'}</span>`;
+}
+function readingLine(hero) {
+    const r = Reading.readingReport(hero);
+    if (!r) return '';
+    return `<p class="stats-how"><small>📖 <b>Reading:</b> ${r.wpm ? `${r.wpm} words a minute` : 'no scene read at a reading pace yet'} (typical for the age: about ${r.typical}), over ${r.scenes - r.skims} of ${r.scenes} story scenes. ${r.skims ? `Picked a choice too fast to have read the scene ${r.skims} time${r.skims > 1 ? 's' : ''}.` : 'Never skipped the story.'}${r.flagged ? ' <b>⚠ Often choosing without reading.</b>' : ''} Scenes read aloud and fights are not counted.</small></p>`;
 }
 
 /** In the card details: what each stat does, and how close it is to growing. */
@@ -676,7 +691,7 @@ function statsExplainer(hero) {
     const rows = Object.entries(Progression.STATS).map(([k, s]) =>
         `<li>${s.icon} <b>${s.name} ${hero.stats[k]}</b>/${Progression.STAT_MAX}: ${s.does}. In fights: ${s.fight}.${hero.stats[k] < Progression.STAT_MAX ? ` <small>Practice ${hero.sparks[k] || 0}/${Progression.SPARKS_PER_POINT}</small>` : ' <small>Mastered</small>'}</li>`).join('');
     return `<div class="stats-explainer"><p><b>Level ${hero.level}</b> · ${hero.xp}/${Progression.xpForLevel(hero.level)} XP</p>
-        <ul>${rows}</ul>
+        <ul>${rows}</ul>${readingLine(hero)}
         <p class="stats-how"><small>Every choice is a roll: a 20-sided die plus the stat the action uses (the icon on the button), and the % is your chance. Each point in a stat adds +5% to every choice that uses it. The marks show the danger: no mark is safe (a failure just complicates things), ⚠ is bold (a failure can hurt), ⚠⚠ is reckless (a failure will hurt, but it pays the most). 🍀 choices are absurd long shots: harder than the rest, but if one works the payoff is spectacular. A lucky charm in your bag helps those and makes a 19 count as a critical success too.${Progression.luckOf(hero) ? ` You carry luck +${Progression.luckOf(hero)}.` : ''} Every roll gives XP; each level lets you raise a stat; ${Progression.SPARKS_PER_POINT} successes with a stat raise it as well.</small></p></div>`;
 }
 
@@ -789,6 +804,7 @@ export function updateNarrative(text) {
         // looking at the choices or the party card after picking).
         const changed = recordStoryScene(cleanText);
         if (changed && Media.settings.readAloud) Media.speak(cleanText); // read each new scene aloud
+        if (changed) Reading.sceneShown(cleanText, !!Media.settings.readAloud); // reading-pace clock
         if (changed && gameState.currentScreen === 'gameScreen') {
             const card = document.getElementById('storyCard');
             requestAnimationFrame(() => card?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }));

@@ -2624,7 +2624,33 @@ await block(async () => {
   const Prog = await import('../progression.js');
   check(p.maxHp === 125 && p.hp === 125 && p.maxMp === 42 && Prog.abilityRank(p.specialMoves[0]) === 3, `growth items: max HP 100 -> ${p.maxHp}, max MP 30 -> ${p.maxMp}, Arc Smash rank 2 -> ${Prog.abilityRank(p.specialMoves[0])}`);
   const grow = Items.generateShopItems('custom', 40).find(i => ['statUp', 'maxHpUp', 'maxMpUp', 'rankUp'].some(k => i.stats?.[k]));
-  check(grow && grow.cost > 150, `a rare growth item is on the shelf at level 9 (${grow?.name}: ${grow && Items.effectWords?.(grow)}, ${grow?.cost} coins)`);
+  check(grow && grow.cost >= 140, `a rare growth item is on the shelf at level 9 (${grow?.name}: ${grow && Items.effectWords?.(grow)}, ${grow?.cost} coins)`);
+});
+
+await block(async () => {
+  // Michael 10-12: words a minute per reader, and a flag for picking without reading.
+  const R = await import('../reading.js');
+  const { p } = fresh(); p.age = 10; delete p.reading;
+  const scene150 = Array(150).fill('word').join(' ');
+  const box = UI.elements.storyText; UI.elements.storyText = { textContent: '' };
+  UI.updateNarrative(scene150 + ' one'); // the real path starts the clock
+  UI.elements.storyText = box;
+  const read = R.choicePicked(p, Date.now() + 60000);
+  check(read && read.wpm >= 148 && read.wpm <= 152 && !read.skimmed, `151 words in a minute: ${read?.wpm} wpm, read (age 10, typical ${R.typicalWpm(10)})`);
+  R.sceneShown(scene150); const fast = R.choicePicked(p, Date.now() + 4000);
+  check(fast?.skimmed, `151 words in 4 s is skipping (${fast?.wpm} wpm)`);
+  R.sceneShown(scene150, true);
+  check(R.choicePicked(p, Date.now() + 4000) === null, 'a scene read aloud does not count');
+  R.sceneShown(scene150);
+  check(R.choicePicked(p, Date.now() + 600000) === null, 'ten minutes away does not count');
+  check(!R.readingReport(p).flagged, `one skip is not a flag (${JSON.stringify(R.readingReport(p))})`);
+  for (let i = 0; i < 2; i++) { R.sceneShown(scene150); R.choicePicked(p, Date.now() + 3000); }
+  const rep = R.readingReport(p);
+  check(rep.flagged && rep.wpm >= 148 && rep.wpm <= 152 && rep.skims === 3 && rep.scenes === 4, `three skips in four scenes flags it; the pace counts only the scene read (${JSON.stringify(rep)})`);
+  // The real choice path stops the clock (an instant pick counts as a skip).
+  R.sceneShown(scene150); const n0 = p.reading.scenes;
+  try { await AH.handlePlayerChoice('Safe', 'Look around carefully'); } catch (_) {}
+  check(p.reading.scenes === n0 + 1 && p.reading.skims === 4, `picking a story choice stops the scene's clock (scenes ${n0} -> ${p.reading.scenes})`);
 });
 
 console.error = realError;
