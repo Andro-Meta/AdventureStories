@@ -50,7 +50,20 @@ await new Promise(r => setTimeout(r, 1200));
 const browser = args.includes('--keep-profile')
   ? await chromium.launchPersistentContext(`${ROOT}test-results/live_profile`, { headless: !args.includes('--headed'), viewport: { width: 1100, height: 900 } })
   : await chromium.launch({ headless: !args.includes('--headed') });
-const page = await browser.newPage({ viewport: { width: 1100, height: 900 } });
+// --shots DIR: phone-sized store screenshots (360x640 at 3x = 1080x1920) at key moments.
+const SHOTS = args.includes('--shots') ? args[args.indexOf('--shots') + 1] : null;
+const page = await browser.newPage(SHOTS ? { viewport: { width: 360, height: 640 }, deviceScaleFactor: 3 } : { viewport: { width: 1100, height: 900 } });
+let shotN = 0;
+// Toasts hidden; `focus` scrolls a selector into view (the last story lines with the choices under them).
+const shot = async (name, focus = null) => {
+  if (!SHOTS) return;
+  fs.mkdirSync(SHOTS, { recursive: true });
+  await page.addStyleTag({ content: '.popup-message{display:none!important}' }).catch(() => {});
+  if (focus) await page.evaluate((sel) => { const el = document.querySelector(sel); if (el) window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - 230); }, focus);
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: `${SHOTS}/${String(++shotN).padStart(2, '0')}_${name}.png` });
+  console.log(`  shot ${name}`);
+};
 const errors = [];
 page.on('pageerror', e => errors.push(e.message));
 page.on('console', m => { const t = m.text(); if (/ReferenceError|TypeError|is not defined|SyntaxError/.test(t)) errors.push(t.slice(0, 200)); });
@@ -94,6 +107,7 @@ const op = (ops) => page.evaluate(async (ops) => (await import('/engine.js')).ap
 await page.goto(URL_);
 await page.evaluate(() => { for (const k of Object.keys(localStorage)) if (!k.startsWith('adv.apiKey') && k !== 'adv.usedNames') localStorage.removeItem(k); });
 await page.goto(URL_);
+await page.waitForTimeout(1200); await shot('menu');
 await page.click('#newGameBtn');
 await page.click(`.playerCountBtn[data-count="${PLAYERS}"]`);
 const THEME = args.includes('--theme') ? args[args.indexOf('--theme') + 1] : 'pirate';
@@ -101,7 +115,7 @@ await page.selectOption('#adventureTypeSelect', THEME);
 if (THEME === 'custom') await page.fill('#customThemeInput', args.includes('--custom') ? args[args.indexOf('--custom') + 1] : 'Ancient Egypt with talking cats');
 await page.click('#adventureTypeNextBtn');
 // --ages 7,40: the readers' ages (reading-level runs); default a family of three.
-const AGES = args.includes('--ages') ? args[args.indexOf('--ages') + 1].split(',').map(Number) : [10, 12, 35], NAMES = ['Katie', 'Toby', 'Dad'];
+const AGES = args.includes('--ages') ? args[args.indexOf('--ages') + 1].split(',').map(Number) : [10, 12, 35], NAMES = args.includes('--names') ? args[args.indexOf('--names') + 1].split(',') : ['Katie', 'Toby', 'Dad'];
 const ageInputs = await page.$$('#ageInputsContainer input');
 for (let i = 0; i < ageInputs.length; i++) await ageInputs[i].fill(String(AGES[i]));
 await page.click('#ageInputNextBtn');
@@ -128,8 +142,20 @@ async function playTurn(i) {
 // tools/story_judge.mjs, stop (story-quality measurement, not a pass/fail run).
 const TURNS = Number(args[args.indexOf('--turns') + 1]) || 0;
 if (TURNS) {
+  await shot('opening'); await shot('choices', '#choicesContainer');
+  let foughtShot = false;
   for (let t = 0; t < TURNS; t++) {
+    if (SHOTS && !foughtShot && await gs(g => g.inCombat)) { foughtShot = true; await shot('fight', '#choicesContainer'); }
+    if (SHOTS && t === 3) await shot('story', '#choicesContainer');
     if (await gs(g => g.inCombat)) { await clickType('Attack'); await settle(); } else await playTurn(t);
+  }
+  if (SHOTS) {
+    await page.evaluate(() => document.getElementById('inventoryBtn')?.click()); await shot('bag');
+    await page.evaluate(() => document.querySelector('#inventoryScreen .backBtn, #inventoryScreen [data-target="gameScreen"]')?.click());
+    await page.evaluate(() => document.getElementById('menuBtn')?.click()); await page.waitForTimeout(300);
+    // The reading report with realistic example numbers (the bot picks instantly, so its own log is all skips).
+    await page.evaluate(() => localStorage.setItem('adv.readingLog', JSON.stringify({ Wren: { scenes: 14, skims: 1, words: 1530, sec: 712, recent: [{ wpm: 129, skimmed: false }], age: 10, last: new Date().toISOString().slice(0, 10) }, Rowan: { scenes: 13, skims: 0, words: 1490, sec: 371, recent: [{ wpm: 241, skimmed: false }], age: 38, last: new Date().toISOString().slice(0, 10) } })));
+    await page.evaluate(() => document.getElementById('menuSoundSettingsBtn')?.click()); await shot('reading_report');
   }
   const tag = args.includes('--tag') ? args[args.indexOf('--tag') + 1] : 'run';
   const story = await gs(g => ({ theme: g.adventureTheme, custom: g.customThemeDescription, location: g.currentLocation?.name, goal: g.adventureGoal, villain: g.questProgress?.villain, threads: g.storyThreads || [], names: Object.keys(g.entityMemory?.npcs || {}).concat(Object.keys(g.entityMemory?.locations || {})), usedBefore: JSON.parse(localStorage.getItem('adv.usedNames') || '[]'), log: g.storyLog }));

@@ -47,6 +47,14 @@ for (const dir of readdirSync(RES).filter(d => d.startsWith('drawable'))) {
   jobs.push({ out: f, w, h, html });
 }
 
+// Google Play feature graphic (1024x500): the sky, the art, the name and a cozy line.
+jobs.push({ out: here('feature-graphic.png'), w: 1024, h: 500, html: `<div style="width:1024px;height:500px;display:flex;align-items:center;gap:8px;padding:0 56px 0 24px;box-sizing:border-box;background:linear-gradient(160deg,#ffcf8a,#ff9a76 45%,#c8668f 80%,#7a4a9e);font-family:'Trebuchet MS',system-ui,sans-serif">
+  <div style="width:460px;height:460px;flex:none">${svg(FOREGROUND)}</div>
+  <div style="color:#fffaf0;text-shadow:0 3px 12px rgba(90,40,90,.45)">
+    <div style="font-weight:800;font-size:66px;line-height:1.02">Talewright<br>Adventures</div>
+    <div style="font-size:30px;margin-top:18px;opacity:.95">Every choice writes the tale.</div>
+  </div></div>` });
+
 const browser = await chromium.launch();
 const page = await browser.newPage();
 for (const j of jobs) {

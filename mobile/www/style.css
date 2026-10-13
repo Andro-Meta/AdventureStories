@@ -2036,18 +2036,6 @@ body::after { bottom: 0; height: env(safe-area-inset-bottom); }
 .god-mode-choice-input.compact textarea { min-height: 0; font-size: 0.95rem; padding: 0.5rem; }
 .god-mode-choice-input.compact .god-mode-submit { padding: 0.5rem 0.8rem; font-size: 0.95rem; }
 
-/* Update banner (updates.js) */
-.update-banner { border: 1px solid var(--primary-color, #6c5ce7); text-align: center; }
-.update-banner .update-title { font-weight: 700; margin: 0 0 6px; }
-.update-banner .update-notes { white-space: pre-line; text-align: left; font-size: 0.9rem; opacity: 0.85; margin: 0 0 10px; }
-/* Buttons side by side, centred (the lone button sat off-centre: the global button margin). */
-.update-banner .update-actions { display: flex; gap: 10px; justify-content: center; }
-.update-banner .update-actions button { margin: 0; }
-.update-banner .update-btn { flex: 2 1 0; }
-.update-banner .update-later { flex: 1 1 0; }
-.update-banner .update-help { margin: 8px 0 0; opacity: 0.75; font-size: 0.85rem; }
-.link-btn { background: none; border: 0; padding: 0; color: inherit; text-decoration: underline; font: inherit; cursor: pointer; box-shadow: none; width: auto; }
-
 /* Sound & Voice: voice picker and speed */
 .voice-row { display: flex; align-items: center; gap: 10px; margin: 10px 0; flex-wrap: wrap; }
 .voice-row select { flex: 1 1 180px; min-width: 0; }
@@ -2091,3 +2079,7 @@ body::after { bottom: 0; height: env(safe-area-inset-bottom); }
 .reading-row { margin: 6px 0; line-height: 1.4; }
 .reading-row.flagged { color: #ffcc66; }
 .menu-logo { display: block; margin: 8px auto -6px; border-radius: 22px; box-shadow: 0 6px 18px rgba(255, 154, 118, 0.25); }
+.report-reasons { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+.report-reason[aria-checked="true"] { outline: 2px solid var(--primary-text); background: rgba(183, 148, 246, 0.18); }
+.report-note { width: 100%; min-height: 64px; box-sizing: border-box; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--border-color); border-radius: var(--border-radius); padding: 8px; }
+.report-email { display: inline-block; text-decoration: none; }

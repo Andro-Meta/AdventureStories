@@ -27,15 +27,6 @@
         <div id="mainMenuScreen" class="screen active">
             <img src="icon-192.png" alt="" class="menu-logo" width="96" height="96">
             <h1>Talewright Adventures</h1>
-            <div id="updateBanner" class="card update-banner hidden">
-                <p class="update-title"></p>
-                <p class="update-notes"></p>
-                <div class="update-actions">
-                    <button class="update-btn primary"></button>
-                    <button class="update-later btn-secondary">Later</button>
-                </div>
-                <p class="update-help"></p>
-            </div>
             <div class="card">
                 <div class="button-container vertical">
                     <button id="newGameBtn">New Adventure</button>
@@ -48,7 +39,7 @@
                 </div>
             </div>
             <footer>
-                <p class="version-info"><span id="versionInfo">v1.2.2</span> · <button id="checkUpdatesBtn" class="link-btn">Check for updates</button></p>
+                <p class="version-info"><span id="versionInfo">v1.2.2</span></p>
             </footer>
         </div>
 
@@ -249,7 +240,7 @@
 
             <!-- Story Card -->
             <section id="storyCard" class="card">
-                <h3 class="story-head">Story <button id="readAloudBtn" class="read-aloud-btn" aria-label="Read the story aloud" title="Read aloud">🔊</button></h3>
+                <h3 class="story-head">Story <button id="readAloudBtn" class="read-aloud-btn" aria-label="Read the story aloud" title="Read aloud">🔊</button><button id="reportSceneBtn" class="read-aloud-btn" aria-label="Report this scene" title="Report this scene">⚑</button></h3>
                 <div id="storyText">
                     The adventure begins...
                 </div>
@@ -516,6 +507,7 @@
                  <p><em>Made with ❤️ for Brookston, Vincent, Toby, and Katie by their Dad.</em></p>
                  <hr>
                  <p><em>Concept & Development: AI & Dad Collaboration</em></p>
+                 <p><a href="https://andro-meta.github.io/AdventureStories/privacy.html" target="_blank" rel="noopener noreferrer">Privacy policy</a> · <a href="mailto:Andro.Meta.Official@gmail.com">Contact us</a></p>
                 <nav class="button-container">
                     <button class="backBtn" data-target="mainMenuScreen">Back</button>
                 </nav>

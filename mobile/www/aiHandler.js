@@ -15,6 +15,7 @@ import { applyDiff, describeAllowedPaths } from './engine.js';
 import { renderMemoryBlock, mergePerson } from './memoryRetriever.js';
 import * as Reflection from './reflection.js';
 import * as Reading from './reading.js';
+import { reportsPromptLine } from './report.js';
 import { buildQuestStageHint, nextBeat, determineCurrentAct } from './questDefinitions.js';
 import { generateNarrativeGuidelines, getReadingSpecification, readerAge, textLevel } from './ageAppropriateReading.js';
 import * as Combat from './combat.js';
@@ -762,7 +763,9 @@ function contentPolicy(playerAge) {
 export function audienceLine() {
     const age = readerAge(gameState.players, 25);
     const { tier, policy, injuryLine } = contentPolicy(age);
-    return `Youngest reader: ${age}. CONTENT POLICY (${tier}): ${policy}${injuryLine}`;
+    const reported = reportsPromptLine();
+    return `Youngest reader: ${age}. CONTENT POLICY (${tier}): ${policy}${injuryLine}${reported ? `
+${reported}` : ''}`;
 }
 
 export function generateSystemPrompt() {
@@ -791,6 +794,7 @@ export function generateSystemPrompt() {
 ${reading}
 
 CONTENT POLICY (${tier}): ${policy}${injuryLine} If players ask for something off-policy, the world declines in-character.`);
+    { const reported = reportsPromptLine(); if (reported) parts.push(reported); } // scenes the players reported (report.js)
 
     // (The old QUEST PACE line read questProgressManager.currentPhase, which
     // never left "beginning"; the MAIN QUEST STAGE block carries the real act.)
