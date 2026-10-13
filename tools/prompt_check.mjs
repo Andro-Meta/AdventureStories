@@ -197,7 +197,9 @@ Engine.applyDiff([{ op: 'add', path: '/players/0/inventory/-', value: { name: 'P
   const h = gameState.players[0]; h.hp = 40; h.maxHp = 100; h.level = 1; gameState.currentPlayerIndex = 0;
   const ops = AH.extractGodModeDiffOps('full health, level up');
   check(ops.some(o => o.path === '/players/0/hp' && o.value === 100) && ops.some(o => o.path === '/players/0/level' && o.value === 2), `"full health, level up" -> ${ops.map(o => o.path + '=' + o.value).join(', ')}`);
+  gameState.divineTurn = true; // these are Divine Will's ops (the game sets this flag for the turn)
   Engine.applyDiff(ops, { strict: false });
+  gameState.divineTurn = false;
   check(h.level === 2 && h.maxHp === 112 && h.hp >= 100, `level op brings level-up gains (level ${h.level}, max HP ${h.maxHp}, HP ${h.hp})`);
   const ops2 = AH.extractGodModeDiffOps('level 10');
   check(ops2.some(o => o.path === '/players/0/level' && o.value === 10), '"level 10" parsed');

@@ -76,7 +76,9 @@ const cases = [
 
 for (const c of cases) {
   resetGS();  // engine.applyDiff is two-phase; reset between cases
+  gameState.divineTurn = c.name.trim() === 'level'; // levels are god mode's (ordinary turns: XP only, review 10-13)
   const applied = Engine.applyDiff(c.ops);
+  gameState.divineTurn = false;
   if (applied.length === c.ops.length) {
     ok(`${c.name.padEnd(11)} – ${c.ops.length} op(s) applied: ${applied.join(' | ')}`);
   } else {

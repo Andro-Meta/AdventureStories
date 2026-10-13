@@ -96,7 +96,11 @@ const PATHS = [
                 else if (player.isDowned) { player.isDowned = false; player.downedTurns = 0; }
             }
             else if (field === 'mp') player.mp = Math.min(player.maxMp, value);
-            else if (field === 'coins') player.coins = Math.max(0, value);
+            else if (field === 'coins') {
+                // Outside Divine Will a find is bounded by level (review 10-13: coins 99999 in one op).
+                const before = player.coins || 0;
+                player.coins = Math.max(0, divine(gs) ? value : Math.min(value, before + Math.max(50, 25 * (player.level || 1))));
+            }
             return `${player.name}.${field} = ${player[field]}`;
         }
     },
@@ -137,6 +141,12 @@ const PATHS = [
             // Luck is earned from the game's own charms; a storyteller charm is at most a
             // reckless find (phone 10-11: it added a "luck 6" charm with no roll).
             if (Number(item.stats.luck) > 3) item.stats.luck = 3;
+            // Outside Divine Will, gear is at most Legendary loot strength (review 10-13: a "God" item with atk 5000).
+            if (!divine(gs)) {
+                if (item.tier === 'God') item.tier = 'Legendary';
+                if (Number(item.stats.atk) > 50) item.stats.atk = 50;
+                if (Number(item.stats.def) > 45) item.stats.def = 45;
+            }
             // Consumables stack by name instead of filling the pack with copies.
             const stack = item.type === 'Consumable'
                 && player.inventory.find(i => i?.type === 'Consumable' && String(i.name).trim().toLowerCase() === item.name.trim().toLowerCase());
@@ -266,12 +276,19 @@ const PATHS = [
             // Cap absurd values to keep narrative grounded; god mode can hit 9999
             // but not a billion (which breaks UI / save serialization).
             if (value > 99999) return `${m[2]} cannot exceed 99999 (god-mode reasonable cap)`;
+            if (m[2] === 'level' && !divine(gs)) return 'levels come from XP (Divine Will only)';
             return null;
         },
         apply: (m, value, gs) => {
             const idx = Number(m[1]);
             const field = m[2];
             const player = gs.players[idx];
+            // Outside Divine Will the story may nudge, not rewrite (review 10-13: atk 99999,
+            // maxHp 105987 in ordinary play): max HP/MP within +10% (+5), ATK/DEF within 5.
+            if (!divine(gs)) {
+                const old = Number(player[field]) || 0;
+                value = /^max/.test(field) ? Math.max(Math.round(old * 0.5), Math.min(value, Math.round(old * 1.1) + 5)) : Math.max(0, Math.min(value, old + 5), old - 5);
+            }
             // atk/def are recomputed from baseAtk/baseDef + gear + effects on
             // every equip or status change; move the base by the same amount
             // so a god-mode ATK 50 doesn't fall back to 15.
@@ -322,11 +339,11 @@ const PATHS = [
                 id: value.id || `move_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
                 name: value.name,
                 description: value.description || '',
-                cooldown: typeof value.cooldown === 'number' ? value.cooldown : 2,
+                cooldown: typeof value.cooldown === 'number' ? (divine(gs) ? value.cooldown : Math.max(1, value.cooldown)) : 2,
                 currentCooldown: 0,
                 mpCost: typeof value.mpCost === 'number' ? value.mpCost : 0,
                 usageContext: value.usageContext || 'both', // 'combat' | 'exploration' | 'both'
-                mechanics: value.mechanics || {},
+                mechanics: divine(gs) ? (value.mechanics || {}) : capMechanics(value.mechanics),
                 source: value.source || 'narration'
             });
             return `${player.name} learned skill "${value.name}"`;
@@ -507,7 +524,7 @@ const PATHS = [
                 id: value.id || `enemy_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
                 name: value.name,
                 hp: value.hp,
-                maxHp: value.maxHp || value.hp,
+                maxHp: Number(value.maxHp) > 0 ? Math.round(Number(value.maxHp)) : value.hp,
                 atk: Math.max(1, Math.round(Number(value.atk)) || 5),
                 def: Math.max(0, Math.round(Number(value.def)) || 2),
                 abilities: Array.isArray(value.abilities) ? value.abilities : ['Basic Attack'],
@@ -1030,6 +1047,12 @@ const isVillain = (gs, name) => {
 };
 // God-mode powers: after the main quest is won, or during a Divine Will turn.
 const divine = (gs) => !!(gs?.isGoalComplete || gs?.divineTurn);
+// A special taught in an ordinary turn hits like the game's own (directDamage 30 at most).
+function capMechanics(mech) {
+    const m = mech && typeof mech === 'object' ? { ...mech } : {};
+    for (const k of ['directDamage', 'damage']) if (Number(m[k]) > 30) m[k] = 30;
+    return m;
+}
 const THEMES = ['fantasy', 'space', 'pirate', 'underwater', 'jungle', 'future_utopia', 'dinosaur', 'arctic', 'steampunk', 'haunted', 'cyberpunk', 'wild_west', 'post_apoc', 'custom'];
 
 export function questPercent(gs) {
@@ -1149,12 +1172,9 @@ export function describeAllowedPaths() {
     return [
         '/players/0/hp        (replace, number)',
         '/players/0/mp        (replace, number)',
-        '/players/0/coins     (replace, number)',
-        '/players/0/maxHp     (replace, number, ≤99999)',
-        '/players/0/maxMp     (replace, number, ≤99999)',
-        '/players/0/atk       (replace, number) - attack stat',
-        '/players/0/def       (replace, number) - defense stat',
-        '/players/0/level     (replace, number)',
+        '/players/0/coins     (replace, number; a find is small outside god mode)',
+        '/players/0/maxHp|maxMp|atk|def (replace, number; small nudges outside god mode)',
+        '/players/0/level     (replace, number; god mode only)',
         `/players/0/stats/brave|clever|sneaky|kind (replace, 0-${STAT_MAX}; god mode only)`,
         '/questProgress/newQuest (replace, {goal, villain?}; god mode only) - a fresh 3-act main quest',
         '/adventureTheme     (replace, theme key, or {theme:"custom", description}; god mode only) - travel to another world',
