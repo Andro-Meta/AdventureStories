@@ -9,6 +9,7 @@ import * as Combat from './combat.js';
 import * as Items from './items.js';
 import * as Progression from './progression.js';
 import * as Reading from './reading.js';
+import { readerAge } from './ageAppropriateReading.js';
 import * as Media from './media.js';
 import { levelUp, battleMenu } from './battle.js';
  // May not be needed if all calls go through aiHandler
@@ -2286,11 +2287,8 @@ export function calculateItemPrice(itemData) {
 }
 
 
-// Average age of the party, for the kid-safe fight reminder.
-function averagePartyAge() {
-    const ages = (gameState.players || []).map(p => p?.age).filter(a => typeof a === 'number' && a > 0);
-    return ages.length ? ages.reduce((a, b) => a + b, 0) / ages.length : 99;
-}
+// The youngest reader's age, for the kid-safe fight reminder.
+const averagePartyAge = () => readerAge(gameState.players, 99);
 
 /** Sell one of an item to the shop for half its price (not equipped gear, quest items or mid-fight). */
 export function sellInventoryItem(itemId) {

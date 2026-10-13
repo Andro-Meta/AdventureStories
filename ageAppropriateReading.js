@@ -139,6 +139,16 @@ const READING_SPECIFICATIONS = {
  * @param {number} age - The player's age
  * @returns {object} The reading specification object
  */
+/**
+ * The age the story is written for: the youngest reader (Michael 10-13). The
+ * average put a 7-year-old with a 40-year-old at 24: adult prose and the
+ * adult content policy. Grown-ups can read a child's story; not the reverse.
+ */
+export function readerAge(players, fallback = 25) {
+    const ages = (players || []).map(p => p?.age).filter(a => typeof a === 'number' && a > 0);
+    return ages.length ? Math.min(...ages) : fallback;
+}
+
 export function getReadingSpecification(age) {
     if (age < READING_SPECIFICATIONS.early_elementary.ageRange[0]) {
         return { level: 'early_elementary', ...READING_SPECIFICATIONS.early_elementary }; // under-6s got the adult tier

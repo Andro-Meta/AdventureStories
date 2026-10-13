@@ -2661,6 +2661,18 @@ await block(async () => {
   R.clearReadingLog(); check(!R.readingLog().length, 'a parent can clear the history');
 });
 
+await block(async () => {
+  // Michael 10-13: a 7-year-old with a 40-year-old averaged to 24 (live: 187-word,
+  // grade-11 scenes and the adult content policy). Written for the youngest now,
+  // with the sentence length for that age.
+  const AIm = await import('../aiHandler.js');
+  fresh(); gameState.players[0].age = 40; gameState.players.push({ ...gameState.players[0], id: 'p2', name: 'Kid', age: 7 });
+  const sys = AIm.generateSystemPrompt();
+  check(/youngest reader 7/.test(sys) && /No blood/.test(sys) && /Sentences: 8-15 words/.test(sys) && /7-year-old can read alone/.test(sys),
+    `a 7 + 40 party is written for the 7-year-old (${(sys.match(/READING LEVEL[^\n]*/) || [''])[0].slice(0, 60)}; ${/No blood/.test(sys) ? 'child' : 'adult'} content policy)`);
+  gameState.players.pop();
+});
+
 console.error = realError;
 out(`\nfetch attempts blocked: ${fetchCalls}; elapsed ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 out(failed ? `✗ ${failed} mechanics check(s) failed` : '✓ all mechanics checks passed');

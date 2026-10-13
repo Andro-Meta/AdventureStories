@@ -100,7 +100,8 @@ const THEME = args.includes('--theme') ? args[args.indexOf('--theme') + 1] : 'pi
 await page.selectOption('#adventureTypeSelect', THEME);
 if (THEME === 'custom') await page.fill('#customThemeInput', args.includes('--custom') ? args[args.indexOf('--custom') + 1] : 'Ancient Egypt with talking cats');
 await page.click('#adventureTypeNextBtn');
-const AGES = [10, 12, 35], NAMES = ['Katie', 'Toby', 'Dad'];
+// --ages 7,40: the readers' ages (reading-level runs); default a family of three.
+const AGES = args.includes('--ages') ? args[args.indexOf('--ages') + 1].split(',').map(Number) : [10, 12, 35], NAMES = ['Katie', 'Toby', 'Dad'];
 const ageInputs = await page.$$('#ageInputsContainer input');
 for (let i = 0; i < ageInputs.length; i++) await ageInputs[i].fill(String(AGES[i]));
 await page.click('#ageInputNextBtn');
