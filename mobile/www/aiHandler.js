@@ -14,8 +14,9 @@ import { getChoiceSchema, validateChoicesPayload, arcMemorySchema, validateArcMe
 import { applyDiff, describeAllowedPaths } from './engine.js';
 import { renderMemoryBlock, mergePerson } from './memoryRetriever.js';
 import * as Reflection from './reflection.js';
+import * as Reading from './reading.js';
 import { buildQuestStageHint, nextBeat, determineCurrentAct } from './questDefinitions.js';
-import { generateNarrativeGuidelines, getReadingSpecification } from './ageAppropriateReading.js';
+import { generateNarrativeGuidelines, getReadingSpecification, readerAge } from './ageAppropriateReading.js';
 import * as Combat from './combat.js';
 // Import turn manager functions statically
 import { advanceTurn } from './turnManager.js';
@@ -177,8 +178,7 @@ export async function processAIResponse(prompt) {
     const pIdx = gameState.currentPlayerIndex || 0;
     const actor = gameState.players?.[pIdx]?.name || 'the hero';
     const nextActor = gameState.players?.[gameState.nextActorIndex ?? pIdx];
-    const ages = (gameState.players || []).map(p => p.age).filter(a => typeof a === 'number' && a > 0);
-    const wc = getReadingSpecification(ages.length ? Math.round(ages.reduce((a, b) => a + b, 0) / ages.length) : 25).targetWordCount;
+    const wc = getReadingSpecification(readerAge(gameState.players)).targetWordCount;
     const words = isInitialSetup ? `${wc.min}-${Math.round(wc.max * 1.5)}` : `${wc.min}-${wc.max}`;
 
     planChoiceDangers(); // used if this turn ends with exploration choices
@@ -531,6 +531,9 @@ export function composeEnding(payload, { reads = [], open = [], villain, lair, p
         const cleaned = reads.map(r => Reflection.cleanReflection(words.find(w => str(w?.hero).toLowerCase() === r.hero.toLowerCase()), r));
         parts.push('— The story noticed —', cleaned.map(c => `${c.title}: ${c.hero}${c.speaker ? ` (as ${c.speaker} saw it)` : ''}\n${c.lines.map(l => `“${l}”`).join('\n')}${c.closing ? `\n${c.closing}` : ''}`).join('\n\n'));
     }
+    // Reading pace for the grown-ups (code only, never the storyteller's words).
+    const reading = (gameState.players || []).map(p => Reading.reportText(p.name, Reading.readingReport(p))).filter(Boolean);
+    if (reading.length) parts.push('— Reading —', reading.join('\n'));
     let chapters = (Array.isArray(payload?.chapters) ? payload.chapters : []).filter(c => c?.title && c?.goal).slice(0, 3)
         .map(c => ({ title: str(c.title).slice(0, 60), goal: str(c.goal).slice(0, 160), villain: str(c.villain).slice(0, 60) }));
     // Never end without a way forward: grow chapters from loose threads.
@@ -696,11 +699,8 @@ Recent Milestones: ${recentMilestones}
 export function generateSystemPrompt() {
     const log = window.displayVisualError || console.log;
     const currentPlayer = getCurrentPlayer();
-    // Average all players' ages so the reading level suits the whole party.
-    const allAges = (gameState.players || []).map(p => p.age).filter(a => typeof a === 'number' && a > 0);
-    const playerAge = allAges.length > 0
-        ? Math.round(allAges.reduce((sum, a) => sum + a, 0) / allAges.length)
-        : (currentPlayer?.age || 25);
+    // Written for the youngest reader: reading level and content policy both.
+    const playerAge = readerAge(gameState.players, currentPlayer?.age || 25);
 
     let g = null;
     try { g = generateNarrativeGuidelines(playerAge); }
@@ -721,10 +721,11 @@ export function generateSystemPrompt() {
 
     // Pacing: every field here comes from one place (ageAppropriateReading.js)
     // so the length the narrator is asked for is the same everywhere.
-    const reading = g ? `READING LEVEL (average party age ${playerAge}): ${g.bookComparison}.
+    const reading = g ? `READING LEVEL (youngest reader ${playerAge}): ${g.bookComparison}.
 - Narration: ${g.wordCount.min}-${g.wordCount.max} words in ${g.paragraphCount.min}-${g.paragraphCount.max} short paragraphs. Keep the pace brisk; this is a game turn, not a chapter.
 - Style: ${g.characteristics.slice(0, 3).join('; ')}.
-- Vocabulary: ${g.contentGuidelines.vocabulary.description}.` : `READING LEVEL (average party age ${playerAge}): clear, vivid prose, 120-200 words.`;
+- Sentences: ${g.sentenceLength.min}-${g.sentenceLength.max} words on average${playerAge <= 12 ? `; keep every sentence under ${g.sentenceLength.max + 1} words` : ''}.
+- Vocabulary: ${g.contentGuidelines.vocabulary.description}.${playerAge <= 12 ? ` Every word should be one a ${playerAge}-year-old can read alone: plain, everyday words, no fancy description words.${playerAge <= 8 ? ' Sound like this: "The boat rocked. Mia held on tight. Then she saw it: a door in the sand!"' : ' Sound like this: "The ship creaked as Mia climbed the rope. Up top, the wind tugged at her hat. Far away, a strange green light blinked on the island."'}` : ''}` : `READING LEVEL (youngest reader ${playerAge}): clear, vivid prose, 120-200 words.`;
 
     const parts = [buildCanonicalStateBlock()];
     parts.push(`You are the storyteller of a turn-based text adventure for ${heroCountLine()} Each turn, continue the story from the chosen action and set up the next decision. The chosen action resolves this turn (it works or it fails, and the scene changes because of it): never hand the same object or obstacle back for the same move again. Make it fun: surprises, humor, vivid details, NPCs with personality, and consequences that clearly follow from what the players chose. Stay in the story; never mention being an AI.
@@ -964,7 +965,7 @@ Part 1: vivid scene-setting paragraph establishing the world, mood, and immediat
 Part 2: introduce the player character(s) — their situation right now and what makes this moment a turning point. Anchor names and props to the theme.
 Part 3: the inciting incident follows the hook's archetype and twist below, told with your own invented details (its example is for flavor only; do not copy it).${hookBlock}
 
-This opening may run up to half again the READING LEVEL length. Third person, like every turn. Avoid the over-used names listed under THEME. In "ops", replace /currentLocation with the named place where the story opens and add it under /entityMemory/locations.`;
+This opening may run up to half again the READING LEVEL length, but its sentences and words follow the READING LEVEL exactly (short and plain for young readers). Third person, like every turn. Avoid the over-used names listed under THEME. In "ops", replace /currentLocation with the named place where the story opens and add it under /entityMemory/locations.`;
     }
 
     // Who picks from the choices this call produces: the same hero when the
