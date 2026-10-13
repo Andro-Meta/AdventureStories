@@ -12,22 +12,9 @@ const WWW  = resolve(__dirname, 'www');
 
 // Every root .js except tooling, so new modules ship and deleted ones don't.
 const GAME_JS = (await readdir(ROOT)).filter(f => f.endsWith('.js') && f !== 'playwright.config.js');
-const INCLUDE_FILES = [...GAME_JS,
-  'index.html', 'style.css', 'manifest.json', 'sw.js', 'mobile-bootstrap.js', 'icon-192.png', 'icon-512.png',
-  'main.js', 'setup.js', 'state.js', 'engine.js', 'config.js', 'ui.js', 'fx.js', 'battle.js',
-  'aiHandler.js', 'actionHandler.js', 'turnManager.js',
-  'combat.js', 'resolution.js', 'questProgress.js', 'questDefinitions.js',
-  'storyHooks.js',
-  'godMode.js', 'memoryRetriever.js', 'schemas.js', 'localAI.js',
-  'saveLoad.js', 'utils.js',
-  'initializationManager.js', 'spells.js',
-  'spellCasting.js', 'jailSystem.js', 'items.js',
-  'adaptiveAbilities.js', 'ageAppropriateReading.js', 'api_new.js',
-  'dynamicItems.js',
-  'dynamicSpells.js', 'inputCache.js', 'loadingManager.js',
-  'loadingTips.js', 'locations.js',
-  'themeIntelligence.js'
-];
+// Game modules come from GAME_JS (a hand list here kept deleted modules alive:
+// dynamicItems.js shipped in 1.4.9 after its removal); only assets are named.
+const INCLUDE_FILES = [...GAME_JS, 'index.html', 'style.css', 'manifest.json', 'icon-192.png', 'icon-512.png'];
 
 await mkdir(WWW, { recursive: true });
 
