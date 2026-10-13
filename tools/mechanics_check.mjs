@@ -169,7 +169,9 @@ await block(async () => {
   check(p.equipment.weapon === 'item_n2', `inventory Equip accepts narrator item typed "weapon" (lower-case) [equipped=${p.equipment.weapon}, ATK ${atk0}->${p.atk}]`);
   // god-mode ATK boost survives an equip
   const { p: q } = fresh();
+  gameState.divineTurn = true; // a big ATK change is god mode's (ordinary turns only nudge, review 10-13)
   Engine.applyDiff([{ op: 'replace', path: '/players/0/atk', value: 50 }], { strict: false });
+  gameState.divineTurn = false;
   q.inventory.push(weapon(10));
   AH.equipInventoryItem('item_sword', 'weapon');
   check(q.atk >= 60, `narrator/god-mode ATK 50 survives equipping a +10 sword (ATK now ${q.atk})`);
@@ -2699,6 +2701,82 @@ await block(async () => {
   check(s?.(prose) === prose, 'story prose about coins is left exactly as written');
   fresh();
   check(!/\w, HP \d/.test(AIm.generateSystemPrompt()), 'the state block no longer reads like a sentence ("Katie, HP ...")');
+});
+
+await block(async () => {
+  // Review 10-13 (high): the storyteller could set coins 99999, atk 99999, level 500, a
+  // 5000-ATK "God" item or a one-hit special in an ordinary turn. Divine Will keeps its powers.
+  const { applyDiff } = await import('../engine.js');
+  const { p } = fresh(); p.level = 5; p.coins = 100; p.maxHp = 100; p.hp = 100; const atk0 = p.atk;
+  gameState.isGoalComplete = false; gameState.divineTurn = false;
+  applyDiff([{ op: 'replace', path: '/players/0/coins', value: 99999 }, { op: 'replace', path: '/players/0/atk', value: 99999 }, { op: 'replace', path: '/players/0/maxHp', value: 99999 }, { op: 'replace', path: '/players/0/level', value: 500 },
+    { op: 'add', path: '/players/0/inventory/-', value: { name: 'Godblade', type: 'Weapon', tier: 'God', stats: { atk: 5000 } } },
+    { op: 'add', path: '/players/0/specialMoves/-', value: { name: 'Erase', mpCost: 0, cooldown: 0, mechanics: { directDamage: 99999 } } }], { strict: false });
+  const blade = p.inventory.find(i => i.name === 'Godblade'), erase = (p.specialMoves || []).find(m => m.name === 'Erase');
+  check(p.coins <= 100 + 125 && p.atk <= atk0 + 5 && p.maxHp <= 115 && p.level === 5 && blade?.stats.atk === 50 && blade.tier === 'Legendary' && erase?.mechanics.directDamage === 30 && erase.cooldown >= 1,
+    `an ordinary turn can only nudge: coins ${p.coins}, atk ${atk0} -> ${p.atk}, maxHp ${p.maxHp}, level ${p.level}, item atk ${blade?.stats.atk} (${blade?.tier}), special ${erase?.mechanics.directDamage}`);
+  gameState.divineTurn = true;
+  applyDiff([{ op: 'replace', path: '/players/0/coins', value: 99999 }, { op: 'replace', path: '/players/0/level', value: 8 }], { strict: false });
+  check(p.coins === 99999 && p.level === 8, `Divine Will keeps its powers (coins ${p.coins}, level ${p.level})`);
+  gameState.divineTurn = false;
+  applyDiff([{ op: 'add', path: '/enemies/-', value: { name: 'Mimic', hp: 30, maxHp: '<img src=x onerror=1>' } }], { strict: false });
+  const mimic = (gameState.enemies || []).find(e => e.name === 'Mimic');
+  check(mimic && typeof mimic.maxHp === 'number' && Number.isFinite(mimic.maxHp), `an enemy max HP that is not a number becomes a number (${mimic?.maxHp})`);
+});
+
+await block(async () => {
+  // Review 10-13 (high): numbers went into the page raw, so hp:'<img onerror=...>' (storyteller
+  // or an imported save) ran as script. Every number shown is a real number now.
+  const P = '<img src=x onerror="window.__pwn=1">';
+  const { p } = fresh(); p.hp = P; p.coins = P; p.xp = P;
+  gameState.enemies = [{ id: 'enemy_x', name: 'E', hp: P, maxHp: 10, abilities: [], statusEffects: [] }];
+  const html = [];
+  const grab = (key) => { const real = UI.elements[key]; UI.elements[key] = { innerHTML: '', appendChild(c) { html.push(c.innerHTML || ''); }, querySelectorAll: () => [] }; return () => { UI.elements[key] = real; }; };
+  const undo = [grab('playersDisplay'), grab('enemiesDisplay')];
+  const ind = UI.elements.currentPlayerIndicator, box = UI.elements.enemyContainer;
+  UI.elements.currentPlayerIndicator = UI.elements.currentPlayerIndicator || { textContent: '' }; UI.elements.enemyContainer = UI.elements.enemyContainer || { classList: { add() {}, remove() {}, toggle() {} }, style: {} };
+  undo.push(() => { UI.elements.currentPlayerIndicator = ind; UI.elements.enemyContainer = box; });
+  try { UI.renderPlayerCards(); UI.renderEnemyCards(); } catch (_) {} finally { undo.forEach(f => f()); }
+  check(html.length > 0 && !html.some(h => h.includes('<img')), `markup in a number field is never written into the page (${html.length} cards checked)`);
+  p.hp = 10; p.coins = 0; p.xp = 0; gameState.enemies = [];
+});
+
+await block(async () => {
+  // Review 10-13 (high): every hero down, one holding a revive item: the enemy turn chain
+  // stopped and the game froze on "Cannot act now". And Help Ally mid-fight never handled a wipe.
+  const S = await import('../state.js');
+  const mkFoe = (id) => ({ id, name: id, hp: 500, maxHp: 500, atk: 500, def: 0, abilities: ['Basic Attack'], statusEffects: [], lootChance: 0, speed: id === 'enemy_1' ? 50 : 40 });
+  pinRandom(0.5);
+  S.resetGameState();
+  const A = S.createNewPlayer('Ava', 10), B = S.createNewPlayer('Ben', 10);
+  A.id = 'player_a'; B.id = 'player_b'; A.speed = 100; B.speed = 1; A.hp = 5;
+  B.isDowned = true; B.hp = 0; B.inventory = [{ id: 'it1', name: 'Phoenix', type: 'Consumable', stats: { revive: true }, quantity: 1 }];
+  gameState.players = [A, B]; gameState.currentPlayerIndex = 0; gameState.enemies = [mkFoe('enemy_1'), mkFoe('enemy_2')];
+  Combat.initializeCombat(gameState.enemies);
+  await AH.handlePlayerChoice('Defend', 'Defend');
+  check(A.isDowned && gameState.players[gameState.currentPlayerIndex] === B && S.canCurrentPlayerAct(), `all down but one with a revive item: the turn reaches ${gameState.players[gameState.currentPlayerIndex]?.name} (can act: ${S.canCurrentPlayerAct()})`);
+  S.resetGameState();
+  const C = S.createNewPlayer('Cal', 10), D = S.createNewPlayer('Dee', 10);
+  C.id = 'player_c'; D.id = 'player_d'; C.speed = 100; D.speed = 1; D.isDowned = true; D.hp = 0;
+  C.inventory = [{ id: 'it2', name: 'Phoenix', type: 'Consumable', stats: { revive: true }, quantity: 1 }];
+  gameState.players = [C, D]; gameState.currentPlayerIndex = 0; gameState.enemies = [mkFoe('enemy_1'), mkFoe('enemy_2')];
+  Combat.initializeCombat(gameState.enemies);
+  await AH.helpAlly('player_d');
+  check(!gameState.isLoading && (S.canCurrentPlayerAct() || gameState.imprisoned), `Help Ally then a wipe goes on to the wipe flow (jailed ${!!gameState.imprisoned}, can act ${S.canCurrentPlayerAct()})`);
+  unpinRandom();
+});
+
+await block(async () => {
+  // Review 10-13 (high): drops came from a second generator (Low weapons 10-45 ATK vs 3-6 in
+  // the shop, Legendary up to 797 vs 35-50; consumables always plain heals).
+  const { p } = fresh(); p.level = 1; p.inventory = []; gameState.adventureTheme = 'pirate';
+  const atks = [];
+  for (let i = 0; i < 20; i++) {
+    gameState.enemies = [{ id: 'enemy_l' + i, name: 'Thug' + i, hp: 0, maxHp: 10, isDefeated: false, lootChance: 1, lootTier: 'Low', statusEffects: [] }];
+    pinRandom(0.1); try { await Combat.handleEnemyDefeat('enemy_l' + i); } finally { unpinRandom(); }
+  }
+  for (const it of p.inventory) if (it.type === 'Weapon') atks.push(it.stats?.atk || 0);
+  check(atks.length > 0 && Math.max(...atks) <= 6, `a Low loot weapon is shop strength (ATK ${atks.length ? Math.min(...atks) + '-' + Math.max(...atks) : 'none dropped'}, shop 3-6)`);
 });
 
 console.error = realError;

@@ -1074,38 +1074,6 @@ export function generateStartingItems(theme) {
     return items.filter(item => item !== null);
 }
 
-/**
- * Generates potential item loot drops based on theme, enemy tier, and chance.
- * @param {string} theme - Adventure theme.
- * @param {number} chance - Base chance (0-1) to get any loot from this source.
- * @param {keyof Config.Tiers} maxTier - The maximum tier of loot possible from this source (e.g., enemy's lootTier).
- * @returns {Item | null} A generated loot item or null.
- */
-export function generateLootDrop(theme, chance, maxTier) {
-    // (Unchanged)
-    if (Math.random() > chance) return null;
-    if (window.displayVisualError) displayVisualError(`Loot Drop Check: Passed chance roll (${chance}). Max Tier: ${maxTier}.`);
-    const tierProb = calculateTierProbability(gameState.turn);
-    const possibleTiers = Object.values(Config.Tiers);
-    let maxTierIndex = possibleTiers.indexOf(maxTier);
-    if (maxTierIndex === -1) {
-         if (window.displayVisualError) displayVisualError(`Warning: Invalid maxTier '${maxTier}' for loot drop. Defaulting Low.`);
-         maxTier = Config.Tiers.LOW; maxTierIndex = possibleTiers.indexOf(maxTier);
-    }
-    let filteredProbs = {}; let validProbSum = 0;
-    for (let i = 0; i <= maxTierIndex; i++) {
-        const currentTier = possibleTiers[i]; const prob = tierProb[currentTier] || 0;
-        if (prob > 0) { filteredProbs[currentTier] = prob; validProbSum += prob; }
-    }
-     if (validProbSum > 0) { for (const tier in filteredProbs) { filteredProbs[tier] /= validProbSum; } }
-     else { if (window.displayVisualError) displayVisualError(`Warning: No valid loot tiers found up to ${maxTier}. Defaulting to ${maxTier}.`); filteredProbs[maxTier] = 1.0; }
-    if (window.displayVisualError) displayVisualError(`Loot Filtered Tier Prob: ${JSON.stringify(filteredProbs, null, 1)}`);
-    const droppedTier = getRandomTierBasedOnProbability(filteredProbs);
-    const typeRoll = Math.random(); let droppedType;
-     if (typeRoll < 0.25) droppedType = 'Weapon'; else if (typeRoll < 0.50) droppedType = 'Armor'; else if (typeRoll < 0.85) droppedType = 'Consumable'; else droppedType = 'Misc';
-    if (window.displayVisualError) displayVisualError(`Generating loot drop: Tier ${droppedTier}, Type ${droppedType}`);
-    return generateThemedItem(theme, droppedTier, droppedType);
-}
 
 /** Element a weapon's name implies, or null. */
 function elementFromName(name) {

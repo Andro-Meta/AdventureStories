@@ -8,7 +8,7 @@ import * as Progression from './progression.js';
 // Import specific functions from utils needed here
 import { getRandomInt, getRandomElement, clamp, generateId } from './utils.js';
 // Import item functions needed for enemy loot generation
-import { generateLootDrop, lootTierFor, betterTier, partyLevel } from './items.js';
+import { generateThemedItem, lootTierFor, betterTier, partyLevel } from './items.js';
 import * as AdaptiveAbilities from './adaptiveAbilities.js';
 // Import UI function for popups and potentially updating UI after combat actions
 import { showPopup, renderPlayerCards, renderEnemyCards, updateContextHeaders, renderInventory } from './ui.js'; // Added renderInventory
@@ -969,22 +969,13 @@ async function rollLootItem(enemy) {
     // Loot keeps pace with the party: never below the tier for its level.
     const lvl = partyLevel();
     enemy.lootTier = betterTier(enemy.lootTier || 'Low', lootTierFor(lvl, enemy.isBoss ? 1 : 0));
-    try {
-        const dynamicItems = await import('./dynamicItems.js');
-        if (enemy.isBoss) return await dynamicItems.generateBossRewardItem(gameState.adventureTheme, enemy.lootTier, { name: enemy.name, bossType: enemy.bossType || 'boss', phase: enemy.currentPhase || 0 });
-        if (enemy.isElite) return await dynamicItems.generateEliteRewardItem(gameState.adventureTheme, enemy.lootTier, { name: enemy.name, eliteType: enemy.eliteType || 'elite' });
-        const roll = Math.random();
-        const itemType = roll < 0.25 ? 'Weapon' : roll < 0.5 ? 'Armor' : 'Consumable';
-        return await dynamicItems.generateDynamicItem(gameState.adventureTheme, enemy.lootTier, itemType, {
-            storyContext: `defeated_${enemy.name.toLowerCase().replace(/\s+/g, '_')}`,
-            playerNeeds: ['equipment_upgrade', 'consumables'],
-            recentEvents: ['defeated_regular_enemy'],
-            isLootDrop: true, luckUpChance: 0.12, luckDownChance: 0.03
-        });
-    } catch (e) {
-        log('Combat ERROR generating dynamic loot drop:', e);
-        try { return generateLootDrop(gameState.adventureTheme, 1, enemy.lootTier); } catch (_) { return null; }
-    }
+    // The same item maker as the shop and rewards (review 10-13: drops came from
+    // dynamicItems' fallback, Low weapons 10-45 ATK vs 3-6 in the shop and
+    // Legendary up to 797 vs 35-50, every consumable a plain heal).
+    const roll = Math.random();
+    const itemType = enemy.isBoss ? (roll < 0.5 ? 'Weapon' : 'Armor') : roll < 0.25 ? 'Weapon' : roll < 0.5 ? 'Armor' : 'Consumable';
+    try { return generateThemedItem(gameState.adventureTheme, enemy.lootTier, itemType); }
+    catch (e) { log('Combat ERROR generating loot drop:', e); return null; }
 }
 
 export async function handleEnemyDefeat(enemyId) {
@@ -1149,7 +1140,11 @@ export async function handleEnemyTurn(enemyId) {
     // Get all valid targets (non-downed players)
     const validTargets = gameState.players.filter(p => !p.isDowned);
     if (validTargets.length === 0) {
+        // Everyone is down, but a hero still holds a revive item (else the party
+        // would be wiped): pass the turn on so they get it (review 10-13: the turn
+        // chain stopped here and the game froze on "Cannot act now").
         log(`No valid targets for ${enemy.name}`);
+        await advanceCombatTurn();
         return;
     }
 

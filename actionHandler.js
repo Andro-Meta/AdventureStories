@@ -2270,7 +2270,23 @@ export async function helpAlly(targetPlayerId) {
       // Turn advancement happens AFTER showing popups etc.
       log("Help Ally action complete. Advancing turn.");
       // In a fight the turn passes through the combat order, so the foes answer.
-      if (gameState.inCombat && gameState.combat?.isActive) await Combat.advanceCombatTurn();
+      if (gameState.inCombat && gameState.combat?.isActive) {
+          // The foes answer; locked meanwhile so no extra action slips in, and a
+          // wipe during their turns goes to the wipe flow (review 10-13: it froze).
+          gameState.isLoading = true;
+          try { await Combat.advanceCombatTurn(); } finally { gameState.isLoading = false; }
+          if (Combat.isPartyWiped()) {
+              gameState.inCombat = false;
+              if (gameState.combat) gameState.combat.isActive = false;
+              const { handlePartyWipe } = await import('./resolution.js');
+              await handlePartyWipe();
+              return;
+          }
+          if (gameState.inCombat) {
+              UI.renderChoices(battleMenu(getCurrentPlayer()));
+              document.querySelectorAll('#choicesContainer .choice-btn').forEach(b => { b.disabled = false; });
+          }
+      }
       else await advanceTurn(); // Uses a turn
       log("helpAlly finished.");
  }
