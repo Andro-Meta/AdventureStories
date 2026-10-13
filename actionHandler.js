@@ -339,7 +339,7 @@ export async function handlePlayerChoice(actionType, choiceText) {
                         const lowerChoice = String(choiceText || '').toLowerCase();
                         // "Power Strike" picked from the battle menu, or no learned move ready.
                         const move = lowerChoice.startsWith('power strike') ? null
-                            : (ready.find(m => m.name && lowerChoice.includes(m.name.toLowerCase())) || ready[0]);
+                            : (longestNamed(ready, lowerChoice) || ready[0]);
                         if (!move) {
                             // No learned move (most heroes early on): a Power Strike,
                             // a heavy hit usable every other round. Before, Special
@@ -360,11 +360,22 @@ export async function handlePlayerChoice(actionType, choiceText) {
                                 : `${currentPlayer.name} is still winded from the last power strike and hits ${target.name} for ${total}.`;
                         } else if (Progression.abilityMpCost(move) > (currentPlayer.mp || 0)) {
                             combatLog = `${currentPlayer.name} reaches for ${move.name} but doesn't have enough MP.`;
+                        } else if (healOf(move) && !(Number(move.mechanics?.directDamage ?? move.mechanics?.damage) > 0)) {
+                            // A healing special heals its user (review 10-13: it swung at the foe instead).
+                            const healed = healWith(currentPlayer, move);
+                            move.currentCooldown = move.cooldown || 2;
+                            const ranked = Progression.useAbility(move);
+                            if (ranked) UI.showPopup(`✨ ${currentPlayer.name}'s ${move.name} reached rank ${Progression.ROMAN[ranked]}!`, 'legendary', 3500);
+                            const mpCost = Progression.abilityMpCost(move);
+                            if (mpCost) currentPlayer.mp = Math.max(0, (currentPlayer.mp || 0) - mpCost);
+                            moveWas = `the special move "${move.name}", which heals`;
+                            combatLog = `${currentPlayer.name} uses ${move.name} and recovers ${healed} HP.`;
                         } else {
                             // Special: 1.5x a weapon hit, plus the move's own damage
                             // (narrator/god-mode moves carry mechanics.directDamage),
                             // plus its status effects. Before, it was a plain attack.
                             const r = Combat.executeWeaponAttack(currentPlayer, target, {});
+                            if (healOf(move)) healWith(currentPlayer, move); // a drain: hits and heals
                             if (!r.missed && !r.blocked) {
                                 const bonus = Math.round((r.actualDamage || 0) * 0.5)
                                     + Math.round((Number(move.mechanics?.directDamage ?? move.mechanics?.damage) || 0) * Progression.abilityPower(currentPlayer, move));
@@ -456,7 +467,7 @@ export async function handlePlayerChoice(actionType, choiceText) {
                         // Cast button / spellbook in a fight (see spellUI.js).
                         const spells = currentPlayer.spellcasting?.knownSpells || [];
                         const said = String(choiceText || '').toLowerCase();
-                        const spell = spells.find(sp => sp?.name && said.includes(sp.name.toLowerCase()));
+                        const spell = longestNamed(spells, said); // "Fire Storm" before "Fire" (review 10-13)
                         if (!spell) { combatLog = `${currentPlayer.name} reaches for a spell but the words won't come.`; break; }
                         const SpellCasting = await import('./spellCasting.js');
                         // Healing/self spells land on the caster, not the foe.
@@ -599,8 +610,11 @@ In 2 short paragraphs, show how the fight ends (one vivid moment, not a blow-by-
                 UI.showLoading(true, 'Combat unfolding...');
                 let renderedChoices = false;
                 try {
-                    // Advance the turn only when this round ended the fight.
-                    const inCombatBeforeCall = gameState.inCombat;
+                    // The fight is always over here. If this hero's turn already ticked in
+                    // the fight (it ended in the enemies' phase), the turn is handed over
+                    // below without a second tick; else the call advances it as usual
+                    // (review 10-13: inCombat was always false here, so effects ticked twice).
+                    const inCombatBeforeCall = gameState.inCombat || !!gameState.combat?.heroTicked;
                     const aiResponse = await makeAICallForSystemAction(combatActionLog, inCombatBeforeCall);
                     // The narrator's diff can also finish enemies off (or end the
                     // fight). Pay out their loot too, and advance the turn the
@@ -750,6 +764,7 @@ In 2 short paragraphs, show how the fight ends (one vivid moment, not a blow-by-
             const levelsUp = Progression.gainXp(currentPlayer, result.xp, levelUp);
             UI.showPopup(`+${result.xp} XP`, 'skill', 1800);
             if (levelsUp) {
+                try { Combat.recalculateCharacterStats(currentPlayer); } catch (_) {} // the level's ATK/DEF now, not at the next kill (review 10-13)
                 UI.showPopup(`⭐ ${currentPlayer.name} reached level ${currentPlayer.level}! Choose a stat to raise.`, 'legendary', 4000);
                 outcomeNotes.push(`${currentPlayer.name} reached level ${currentPlayer.level}`);
             }
@@ -915,6 +930,17 @@ Result: ${(lastRoll && !lastRoll.stat
     }
 }
 
+
+/** The ability whose name appears in the text, longest name first ("Fire Storm" over "Fire"). */
+const longestNamed = (list, text) => [...(list || [])].filter(a => a?.name).sort((a, b) => b.name.length - a.name.length).find(a => text.includes(a.name.toLowerCase()));
+/** A special's healing amount (mechanics.healing), 0 when it doesn't heal. */
+const healOf = (move) => Math.max(0, Number(move?.mechanics?.healing) || 0);
+/** Heal a hero with a special: its healing x its power (level, rank) x Kind. Returns HP restored. */
+function healWith(hero, move, power = Progression.abilityPower(hero, move)) {
+    const before = hero.hp || 0;
+    hero.hp = Math.min(hero.maxHp || before, before + Math.round(healOf(move) * power * Progression.kindHealing(hero)));
+    return hero.hp - before;
+}
 
 /** An item's MP and permanent-stat effects (inventory and battle use). Returns what happened, for the story. */
 function applyItemExtras(hero, item) {
@@ -1625,7 +1651,8 @@ export async function useInventoryItem(itemId) {
              let curedEffects = [];
              if (player.statusEffects) {
                  player.statusEffects = player.statusEffects.filter(effect => {
-                     if (effect && (cureType === 'All' || effect.name === cureType)) {
+                     // Ailments only: buffs (Haste, Shield...) stay, as in fights (review 10-13).
+                     if (effect && Combat.lookupStatusEffect(effect.name)?.type !== 'buff' && (cureType === 'All' || effect.name === cureType)) {
                          curedEffects.push(effect.name);
                          return false;
                      }
@@ -2067,6 +2094,12 @@ export async function useSpecialMove(moveId) {
         return;
     }
 
+    // A healing special at full HP would spend MP for nothing: keep it.
+    if (!gameState.inCombat && healOf(move) && (player.hp || 0) >= (player.maxHp || 0)) {
+        UI.showPopup(`${player.name} is already at full HP.`, 'info', 2500);
+        return;
+    }
+
     // Apply cooldown and consume MP.
     // BUG-17 fix: god-mode-emitted moves can have cooldown undefined; previous
     // code set currentCooldown = undefined and `> 0` evaluates false, letting
@@ -2083,43 +2116,13 @@ export async function useSpecialMove(moveId) {
     }
     log(`Set cooldown for ${move.name} to ${move.currentCooldown}`);
 
-    // Apply mechanical effects based on context
+    // Apply mechanical effects (fights go through handlePlayerChoice above).
     let enemyDefeated = false;
-    if (gameState.inCombat && move.mechanics) {
-        // Combat effects
-        if (move.mechanics.damage) {
-            const targetEnemy = gameState.enemies.find(e => !e.isDefeated);
-            if (targetEnemy) {
-                const damage = Math.round(move.mechanics.damage * power * (1 + (player.atk / 100)));
-                targetEnemy.hp = Math.max(0, targetEnemy.hp - damage);
-                UI.showPopup(`${move.name} deals ${damage} damage to ${targetEnemy.name}!`, 'damage');
-                
-                if (targetEnemy.hp <= 0 && !targetEnemy.isDefeated) {
-                    enemyDefeated = true;
-                    await Combat.handleEnemyDefeat(targetEnemy.id);
-                }
-            }
-        }
-
-        if (move.mechanics.healing) {
-            let healing = Math.round(move.mechanics.healing * power * (1 + (player.def / 100)));
-            
-            player.hp = Math.min(player.maxHp, player.hp + healing);
-            UI.showPopup(`${move.name} restores ${healing} HP!`, 'healing');
-        }
-
-        if (move.mechanics.statusEffects) {
-            move.mechanics.statusEffects.forEach(effect => {
-                const target = gameState.inCombat ? 
-                    gameState.enemies.find(e => !e.isDefeated) : 
-                    player;
-                if (target) {
-                    Combat.applyStatusEffect(target, effect, 3, {}, move.name);
-                    UI.showPopup(`${target.name} is affected by ${effect}!`, 'status');
-                }
-            });
-        }
-    } else if (!gameState.inCombat && move.mechanics?.exploration) {
+    if (healOf(move)) {
+        const healed = healWith(player, move, power);
+        UI.showPopup(`${move.name} restores ${healed} HP!`, 'healing');
+    }
+    if (move.mechanics?.exploration) {
         // Exploration effects
         if (move.mechanics.exploration.obstacleTypes) {
             // Let AI handle obstacle interaction

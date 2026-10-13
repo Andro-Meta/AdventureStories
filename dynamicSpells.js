@@ -804,40 +804,6 @@ export function learnFromSpellCasting(player, spell, wasSuccessful, wasRelevant)
     }
 }
 
-/**
- * Generate spell rewards for defeating enemies
- * @param {string} enemyType - Type of enemy defeated
- * @param {Player} player - The player to reward
- * @returns {Promise<Spell|null>} Reward spell
- */
-export async function generateSpellReward(enemyType, player) {
-    const context = {
-        situation: 'combat_victory',
-        storyContext: `defeated_${enemyType}`,
-        playerId: player.id,
-        playerNeeds: ['combat_improvement'],
-        isReward: true
-    };
-    
-    // Determine appropriate spell based on enemy type
-    let school, type, level;
-    
-    if (enemyType.includes('boss')) {
-        level = Math.min(player.spellcasting?.maxSpellLevel + 1 || 2, 7);
-        school = 'ELEMENTAL';
-        type = 'OFFENSIVE';
-    } else if (enemyType.includes('elite')) {
-        level = Math.min(player.spellcasting?.maxSpellLevel || 1, 5);
-        school = Math.random() < 0.5 ? 'ELEMENTAL' : 'ARCANE';
-        type = Math.random() < 0.7 ? 'OFFENSIVE' : 'UTILITY';
-    } else {
-        level = Math.max(1, player.spellcasting?.maxSpellLevel || 1);
-        school = Object.keys(Spells.MAGIC_SCHOOLS)[Math.floor(Math.random() * 6)];
-        type = ['OFFENSIVE', 'DEFENSIVE', 'UTILITY'][Math.floor(Math.random() * 3)];
-    }
-    
-    return await generateDynamicSpell(school, type, level, context);
-}
 
 // Helper functions
 function analyzePlayerNeeds(player, situation) {

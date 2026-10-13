@@ -9,7 +9,6 @@ import * as Progression from './progression.js';
 import { getRandomInt, getRandomElement, clamp, generateId } from './utils.js';
 // Import item functions needed for enemy loot generation
 import { generateThemedItem, lootTierFor, betterTier, partyLevel } from './items.js';
-import * as AdaptiveAbilities from './adaptiveAbilities.js';
 // Import UI function for popups and potentially updating UI after combat actions
 import { showPopup, renderPlayerCards, renderEnemyCards, updateContextHeaders, renderInventory } from './ui.js'; // Added renderInventory
 
@@ -20,6 +19,9 @@ import { showPopup, renderPlayerCards, renderEnemyCards, updateContextHeaders, r
  * @param {string} id - The ID to search for
  * @returns {Character|null} The found character or null
  */
+// Crit and combo rules. They lived in gameState.combatStats, which every new
+// game and load replaced with damage counters, so nobody ever crit (review 10-13).
+const CRIT = { criticalHitChance: 0.1, criticalHitMultiplier: 1.5, comboMultiplier: 0.2, maxCombo: 3 };
 export function findCharacterById(id) {
     if (!id) return null;
     
@@ -70,18 +72,6 @@ export function initializeCombat(enemies) {
         }
     };
 
-    // Initialize combat stats if not present in gameState
-    if (!gameState.combatStats) {
-        gameState.combatStats = {
-            criticalHitChance: 0.1,
-            criticalHitMultiplier: 1.5,
-            comboMultiplier: 0.2,
-            maxCombo: 3,
-            statusResistances: {},
-            immunities: []
-        };
-    }
-
     // Set up enemy formations
     const totalEnemies = enemies.length;
     enemies.forEach((enemy, index) => {
@@ -99,8 +89,8 @@ export function initializeCombat(enemies) {
         
         // Initialize enemy combat stats
         enemy.speed = enemy.speed || Math.floor((enemy.atk + enemy.def) / 2);
-        enemy.criticalHitChance = enemy.criticalHitChance || gameState.combatStats.criticalHitChance;
-        enemy.criticalHitMultiplier = enemy.criticalHitMultiplier || gameState.combatStats.criticalHitMultiplier;
+        enemy.criticalHitChance = enemy.criticalHitChance || CRIT.criticalHitChance;
+        enemy.criticalHitMultiplier = enemy.criticalHitMultiplier || CRIT.criticalHitMultiplier;
         enemy.statusEffects = enemy.statusEffects || [];
     });
 
@@ -119,8 +109,8 @@ export function initializeCombat(enemies) {
     allCombatants.forEach(char => {
         if (char.id.startsWith('player')) {
             char.speed = char.speed || Math.floor((char.atk + char.def) / 2);
-            char.criticalHitChance = char.criticalHitChance || gameState.combatStats.criticalHitChance;
-            char.criticalHitMultiplier = char.criticalHitMultiplier || gameState.combatStats.criticalHitMultiplier;
+            char.criticalHitChance = char.criticalHitChance || CRIT.criticalHitChance;
+            char.criticalHitMultiplier = char.criticalHitMultiplier || CRIT.criticalHitMultiplier;
             char.statusEffects = char.statusEffects || [];
         }
     });
@@ -444,18 +434,18 @@ export function calculateDamage(attacker, defender, options = {}) {
 
     // Critical hit check (criticals bypass some DEF)
     const criticalHitRoll = Math.random();
-    const isCritical = criticalHitRoll < (attacker.criticalHitChance || gameState.combatStats.criticalHitChance);
+    const isCritical = criticalHitRoll < (attacker.criticalHitChance || CRIT.criticalHitChance);
     
     if (isCritical) {
-        damage *= (attacker.criticalHitMultiplier || gameState.combatStats.criticalHitMultiplier);
+        damage *= (attacker.criticalHitMultiplier || CRIT.criticalHitMultiplier);
         // Criticals bypass 25% of defense
         damage += (defender.def * 0.25);
         log(`Critical hit! Damage multiplied and defense bypassed`);
     }
 
     // Combo system
-    if (options.isCombo && gameState.combat.comboCount < gameState.combatStats.maxCombo) {
-        const comboMultiplier = 1 + (gameState.combat.comboCount * gameState.combatStats.comboMultiplier);
+    if (options.isCombo && gameState.combat.comboCount < CRIT.maxCombo) {
+        const comboMultiplier = 1 + (gameState.combat.comboCount * CRIT.comboMultiplier);
         damage *= comboMultiplier;
         gameState.combat.comboCount++;
         log(`Combo x${gameState.combat.comboCount}! Damage increased`);
@@ -1029,30 +1019,9 @@ export async function handleEnemyDefeat(enemyId) {
      }
      if (gameState.currentScreen === 'inventoryScreen') renderInventory();
 
-     // --- Generate Spell Rewards for Spellcasters ---
-     try {
-         const player = gameState.players.find(p => p && !p.isDowned && p.spellcasting);
-         if (player && (enemy.isBoss || enemy.isElite || Math.random() < 0.15)) {
-             const DynamicSpells = await import('./dynamicSpells.js');
-             const rewardSpell = await DynamicSpells.generateSpellReward(enemy.type || 'regular', player);
-             
-             if (rewardSpell && !player.spellcasting.knownSpells.some(x => String(x?.name).toLowerCase() === String(rewardSpell.name).toLowerCase())) { // never the same spell twice
-                 // Add to player's known spells
-                 player.spellcasting.knownSpells.push(rewardSpell);
-                 
-                 // Add to prepared if there's room
-                 if (player.spellcasting.preparedSpells.length < 10) {
-                     player.spellcasting.preparedSpells.push(rewardSpell);
-                 }
-                 
-                 const adaptation = AdaptiveAbilities.getCurrentThemeAdaptation();
-                 showPopup(`${player.name} learned new ${adaptation.abilityName.toLowerCase()}: ${rewardSpell.name}!`, 'success', 5000);
-                 log(`${player.name} learned spell reward: ${rewardSpell.name}`);
-             }
-         }
-     } catch (error) {
-         log(`Spell reward generation failed: ${error.message}`);
-     }
+     // (A kill used to roll an AI-made spell reward: a blocking extra call that skipped
+     // the level gates and always went to the first hero. Specials and spells come from
+     // level-up picks and teaching scrolls; removed in review 10-13.)
 
      // --- Generate Coins ---
      // The pot grows with the foe (foe HP scales with party size) and is
@@ -1152,7 +1121,7 @@ export async function handleEnemyTurn(enemyId) {
     if (confusedRoll(enemy)) {
         const foes = (gameState.enemies || []).filter(e => e && !e.isDefeated && e.hp > 0);
         const victim = foes[Math.floor(Math.random() * foes.length)] || enemy;
-        const dmg = Math.max(1, Math.round((enemy.atk || 5) * 0.6 - (victim.def || 0) * 0.3));
+        const dmg = Math.max(1, Math.round(foeAtk(enemy) * 0.6 - (victim.def || 0) * 0.3));
         victim.hp = Math.max(0, victim.hp - dmg);
         const line = victim === enemy ? `${enemy.name} is confused and hurts itself (−${dmg})!` : `${enemy.name} is confused and strikes ${victim.name} (−${dmg})!`;
         showPopup(line, 'info', 2500);
@@ -1169,7 +1138,7 @@ export async function handleEnemyTurn(enemyId) {
         const move = enemy.abilities?.[0] || 'Crushing Blow';
         const hits = [];
         for (const hero of validTargets) {
-            const dmg = Math.max(1, Math.round(Math.max(3, enemy.atk * 1.2 - (hero.def || 0) * 0.5) * incomingDamageMultiplier(hero)));
+            const dmg = Math.max(1, Math.round(Math.max(3, foeAtk(enemy) * 1.2 - (hero.def || 0) * 0.5) * incomingDamageMultiplier(hero)));
             hero.hp = Math.max(0, hero.hp - dmg);
             hits.push(`${hero.name} -${dmg}`);
             if (hero.hp <= 0) { hero.isDowned = true; showPopup(`${hero.name} has been defeated!`, 'error'); }
@@ -1481,7 +1450,7 @@ async function executeEnemySpecialAbility(enemy, target, action, context) {
             // Storyteller-named moves ("Crushing Blow"): a heavy hit, 1.3x attack.
             const hero = Array.isArray(target) ? target[0] : target;
             if (!hero) { showPopup(abilityDescription, 'special'); break; }
-            const dealt = hitHero(hero, Math.max(3, Math.round((enemy.atk || 5) * 1.3 - (hero.def || 0) * 0.5)));
+            const dealt = hitHero(hero, Math.max(3, Math.round(foeAtk(enemy) * 1.3 - (hero.def || 0) * 0.5)));
             showPopup(`${abilityDescription}! ${hero.name} takes ${dealt} damage!`, 'damage');
             renderPlayerCards();
         }
@@ -1535,6 +1504,10 @@ function getContextualAbilityDescription(enemy, ability, context) {
 
 // Specific ability execution functions
 // --- Speed and mind effects (Haste, Slow/Frost, Confusion) and Guard ---
+/** An enemy's attack with its own Weakness/Berserk (atkMultiplier) applied, as a plain hit has (review 10-13: specials ignored it). */
+function foeAtk(e) {
+    return (e?.atk || 5) * (e?.statusEffects || []).reduce((m, fx) => m * (fx?.duration > 0 && Number(fx.effectTickData?.atkMultiplier) > 0 ? Number(fx.effectTickData.atkMultiplier) : 1), 1);
+}
 /** Sum of active speedMod (Haste +0.5, Slow/Frost -0.5). */
 export function speedModOf(c) {
     return (c?.statusEffects || []).reduce((s, fx) => s + (fx?.duration > 0 ? Number(fx.effectTickData?.speedMod) || 0 : 0), 0);
@@ -1558,7 +1531,7 @@ async function hasteFollowUp(enemy) {
     const heroes = gameState.players.filter(p => p && !p.isDowned);
     const hero = heroes[Math.floor(Math.random() * heroes.length)];
     if (!hero) return;
-    const dealt = hitHero(hero, Math.max(1, Math.round((enemy.atk || 5) * 0.5 - (hero.def || 0) * 0.25)));
+    const dealt = hitHero(hero, Math.max(1, Math.round(foeAtk(enemy) * 0.5 - (hero.def || 0) * 0.25)));
     const line = `${enemy.name} is hasted and strikes again: ${hero.name} −${dealt}`;
     showPopup(line, 'damage', 2500);
     try { (await import('./ui.js')).appendCombatLog?.(line, 'attack'); } catch (_) {}
@@ -1576,7 +1549,7 @@ function hitHero(target, damage) {
 }
 
 async function executeAbilityShadowBolt(enemy, target, context, description) {
-    const damage = hitHero(target, Math.round(enemy.atk * 1.5));
+    const damage = hitHero(target, Math.round(foeAtk(enemy) * 1.5));
     
     if (context.combatState.tacticalAdvantage === 'advantage') {
         // Apply additional effect when advantaged

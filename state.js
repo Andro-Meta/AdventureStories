@@ -148,16 +148,6 @@ export const gameState = {
         NORMAL: 'normal',
         ELITE: 'elite',
         BOSS: 'boss'
-    },
-
-    // Combat Stats Extension
-    combatStats: {
-        criticalHitChance: 0.1,
-        criticalHitMultiplier: 1.5,
-        comboMultiplier: 0.2, // 20% damage increase per combo
-        maxCombo: 3,
-        statusResistances: {}, // Mapped by status effect type
-        immunities: [] // List of status effects character is immune to
     }
 };
 
@@ -614,7 +604,6 @@ export function resetGameState() {
         // Combat — synchTurnStates reads gameState.combat.isActive every turn.
         combat: { isActive: false, round: 1, initiative: [], currentTurnIndex: 0,
                   activeEffects: [], formation: { frontLine: [], backLine: [] } },
-        combatStats: { totalDamageDealt: 0, totalDamageTaken: 0, criticalHits: 0 },
         // Story-graph compression caches (intelligent compression module).
         choicePatterns: new Map(),
         storyBeats: [],
