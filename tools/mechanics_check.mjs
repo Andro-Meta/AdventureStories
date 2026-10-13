@@ -2131,21 +2131,6 @@ await block(async () => {
   } finally { document.getElementById = realGet; globalThis.fetch = window.fetch = offline; localStorage.removeItem('adv.apiKey.api.groq.com'); localStorage.removeItem('adv.cloudProvider'); }
 });
 
-await block(async () => {
-  // Update banner (updates.js): a newer GitHub release shows, the same or older never does.
-  const U = await import('../updates.js');
-  const Config = await import('../config.js');
-  const cmp = [U.compareVersions('1.2.10', '1.2.9'), U.compareVersions('v1.3.0', '1.2.99'), U.compareVersions('1.2.5', 'v1.2.5'), U.compareVersions('1.2.4', '1.2.5')];
-  const offline = globalThis.fetch;
-  const release = (tag) => { localStorage.removeItem('adv.update'); globalThis.fetch = window.fetch = async () => ({ ok: true, json: async () => ({ tag_name: tag, body: '- notes', html_url: 'https://github.com/x', assets: [{ name: 'AdventureStories-' + tag + '.apk', browser_download_url: 'https://github.com/x.apk' }] }) }); };
-  let newer, same;
-  try {
-    release('v99.0.0'); newer = await U.checkForUpdate(true);
-    release('v' + Config.APP_VERSION); same = await U.checkForUpdate(true);
-  } finally { globalThis.fetch = window.fetch = offline; localStorage.removeItem('adv.update'); }
-  check(cmp.join(',') === '1,1,0,-1' && newer?.version === '99.0.0' && /\.apk$/.test(newer.apk) && same === null,
-    `updates: version order ${cmp.join(',')}; a newer release offers its APK (${newer?.version}); this version itself is not offered (${same})`);
-});
 
 await block(async () => {
   // Recap (phone 10-09): a setback cost 17 HP and a level-up healed 27; it said "+10 HP".
@@ -2915,13 +2900,18 @@ await block(async () => {
   delete gameState.questProgressManager;
 });
 
+
 await block(async () => {
-  // Review 10-13 (low): offline, "Check for updates" said "Up to date".
-  const U = await import('../updates.js');
-  const offline = globalThis.fetch;
-  globalThis.fetch = window.fetch = async () => { throw new Error('offline'); };
-  try { await U.checkForUpdate(true); } finally { globalThis.fetch = window.fetch = offline; }
-  check(U.lastCheckFailed?.() === true, 'an update check that could not reach GitHub says so');
+  // Play AI-content policy (10-13): a reported scene is kept and the storyteller is told to avoid it.
+  const R = await import('../report.js'); const AIm = await import('../aiHandler.js');
+  fresh(); gameState.contentReports = []; gameState.currentNarrative = 'The goblin said something cruel about the hero.';
+  const r = R.recordReport('Hurtful or hateful', 'mean words');
+  const sys = AIm.generateSystemPrompt(), aud = AIm.audienceLine();
+  let saved = []; try { saved = JSON.parse(localStorage.getItem('adv.reports') || '[]'); } catch (_) {}
+  check(r.reason === 'Hurtful or hateful' && /REPORTED/.test(sys) && /something cruel/.test(sys) && /REPORTED/.test(aud) && saved.some(x => x.note === 'mean words'),
+    'a reported scene is kept on the device and every later prompt tells the storyteller to avoid it');
+  check(/^mailto:Andro\.Meta\.Official@gmail\.com\?subject=/.test(R.emailLink(r)), 'the optional email goes to the developer address');
+  gameState.contentReports = []; localStorage.removeItem('adv.reports');
 });
 
 console.error = realError;

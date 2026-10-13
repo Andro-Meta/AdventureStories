@@ -356,6 +356,8 @@ function setupEventListeners(UI, setup, actionHandler, saveLoad) { // Added acti
     document.getElementById('optVoice')?.addEventListener('change', (e) => { Media.setVoice(e.target.value, null); sample(); });
     document.getElementById('optVoiceRate')?.addEventListener('change', (e) => { Media.setVoice(null, e.target.value); sample(); });
     let reading = false;
+    // Report the scene (Play's AI content policy: in-app reporting).
+    safeAddListener('reportSceneBtn', 'click', () => import('./report.js').then(R => R.openReport()).catch(e => displayVisualError(`Report failed: ${e.message}`)), 'reportSceneBtn');
     safeAddListener('readAloudBtn', 'click', () => {
         if (reading) { Media.stopSpeaking(); reading = false; return; }
         reading = true; Media.speak(gameState.currentNarrative || document.getElementById('storyText')?.textContent || '');
@@ -363,15 +365,7 @@ function setupEventListeners(UI, setup, actionHandler, saveLoad) { // Added acti
     }, 'readAloudBtn');
     }).catch(e => displayVisualError(`Sound & Voice setup failed: ${e.message}`));
     { const v = document.getElementById('versionInfo'); if (v) v.textContent = `v${Config.APP_VERSION}`; }
-    // New version on GitHub? A banner on the main menu (checked at start, at most every 6 hours).
-    import('./updates.js').then(U => {
-        U.showUpdateBanner().catch(() => {});
-        safeAddListener('checkUpdatesBtn', 'click', async () => {
-            const b = document.getElementById('checkUpdatesBtn'); b.textContent = 'Checking…';
-            const rel = await U.showUpdateBanner(true).catch(() => null);
-            b.textContent = rel ? `Version ${rel.version} is out ↑` : U.lastCheckFailed() ? "Couldn't check (offline?) ↻" : 'Up to date ✓';
-        }, 'checkUpdatesBtn');
-    }).catch(e => displayVisualError(`Update check setup failed: ${e.message}`));
+    // (No in-app updater: Google Play updates the game, Michael 10-13.)
     // Save backup: export every save to a file, import them again.
     safeAddListener('exportSavesBtn', 'click', () => saveLoad.exportSaves(), 'exportSavesBtn');
     safeAddListener('importSavesBtn', 'click', () => document.getElementById('importSavesInput')?.click(), 'importSavesBtn');

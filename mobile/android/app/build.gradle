@@ -19,6 +19,11 @@ android {
     // Sign debug builds with a key kept in the project (copy of this PC's
     // ~/.android/debug.keystore), so updates always install over the old app
     // and keep its data (saved games, API keys) even from another machine.
+    // Google Play: the upload key (keys/upload.properties + keys/upload.keystore,
+    // git-ignored, backed up outside the project). Play App Signing re-signs for users.
+    def uploadProps = new Properties()
+    def uploadFile = file('keys/upload.properties')
+    if (uploadFile.exists()) uploadFile.withInputStream { uploadProps.load(it) }
     signingConfigs {
         debug {
             storeFile file('keys/debug.keystore')
@@ -26,12 +31,21 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        if (uploadFile.exists()) {
+            release {
+                storeFile file(uploadProps['storeFile'])
+                storePassword uploadProps['storePassword']
+                keyAlias uploadProps['keyAlias']
+                keyPassword uploadProps['keyPassword']
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
+            if (uploadFile.exists()) signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
