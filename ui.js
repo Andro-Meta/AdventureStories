@@ -373,6 +373,7 @@ export function showGameOverScreen(info = {}) {
         <p><strong>Items carried (${items.length}):</strong> ${items.length ? esc(items.slice(0, 12).join(', ')) + (items.length > 12 ? `, …and ${items.length - 12} more` : '') : '— none —'}</p>
         <p><strong>Allies remembered:</strong> ${npcs.length ? esc(npcs.slice(0, 8).join(', ')) : '— none —'}</p>
         <p><strong>Places known:</strong> ${locs.length ? esc(locs.slice(0, 8).join(', ')) : '— none —'}</p>
+        ${readingSummary()}
     `;
     showScreen('gameOverScreen');
     log(`GameOver screen shown — reason=${info.reason}, wipes=${info.consecutiveWipes}`);
@@ -670,6 +671,12 @@ function heroStatsRow(hero) {
         <span class="xp-wrap" title="${hero.xp}/${need} XP to level ${hero.level + 1}"><span class="xp-bar"><span style="width:${pct}%"></span></span><small>${hero.xp}/${need} XP</small></span>
         ${Math.min(hero.statPoints || 0, Progression.statRoom(hero)) > 0 ? `<button class="spend-points" data-hero="${sanitizeText(hero.id)}">⭐ +${Math.min(hero.statPoints, Progression.statRoom(hero))} stat</button>` : ''}
         ${hero.abilityPicks > 0 ? `<button class="spend-points" data-hero="${sanitizeText(hero.id)}">✨ new special</button>` : ''}</div>`;
+}
+
+/** The party's reading pace, for the end-of-game screens. */
+export function readingSummary() {
+    const lines = (gameState.players || []).map(p => Reading.reportText(p.name, Reading.readingReport(p))).filter(Boolean);
+    return lines.length ? `<h3>📖 Reading</h3>${lines.map(l => `<p>${sanitizeText(l)}</p>`).join('')}` : '';
 }
 
 /** Reading pace on the hero row: 📖 words a minute; ⚠ when they keep skipping the story. */

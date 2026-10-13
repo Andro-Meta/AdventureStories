@@ -42,7 +42,7 @@
                     <button id="loadGameBtn">Load Game</button>
                     <button id="localAIBtn">⚙️ AI Settings</button>
                     <button id="howToPlayBtn">📘 How to Play</button>
-                    <button id="soundSettingsBtn">🔊 Sound &amp; Voice</button>
+                    <button id="soundSettingsBtn">🎛️ Settings &amp; Reading Report</button>
                     <button id="aboutBtn">About</button>
                 </div>
             </div>
@@ -330,7 +330,7 @@
                     <button id="readStoryBtn" class="btn-secondary">📖 Read the Story So Far</button>
                     <button id="saveGameBtn" class="btn-secondary">💾 Save Game</button>
                     <button id="menuHowToPlayBtn" class="btn-secondary">📘 How to Play</button>
-                    <button id="menuSoundSettingsBtn" class="btn-secondary">🔊 Sound &amp; Voice</button>
+                    <button id="menuSoundSettingsBtn" class="btn-secondary">🎛️ Settings &amp; Reading Report</button>
                     <button id="menuAISettingsBtn" class="btn-secondary">⚙️ AI Settings</button>
                     <button id="exitToMainMenuBtn" class="btn-secondary">Save and Exit to Main Menu</button>
                     <button id="exitWithoutSavingBtn">Exit Without Saving</button>
@@ -480,7 +480,13 @@
 
         <!-- Sound & Voice -->
         <div id="soundSettingsScreen" class="screen hidden">
-            <h1>Sound &amp; Voice</h1>
+            <h1>Settings</h1>
+            <div class="card reading-report-card">
+                <h3>📖 Reading report (for parents)</h3>
+                <div id="readingReport" class="reading-report"></div>
+                <p class="api-key-hint">Words a minute while reading the story, per reader, across every game on this device. "Chose without reading" means a choice came faster than anyone could read the scene. Fights and scenes read aloud are not counted.</p>
+                <button id="clearReadingBtn" class="btn-secondary">Clear reading history</button>
+            </div>
             <div class="card sound-settings">
                 <label class="toggle-row"><input type="checkbox" id="optReadAloud"> <span>📖 Read each new scene aloud</span></label>
                 <label class="toggle-row"><input type="checkbox" id="optSfx"> <span>🔔 Sound effects</span></label>

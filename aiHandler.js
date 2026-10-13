@@ -14,6 +14,7 @@ import { getChoiceSchema, validateChoicesPayload, arcMemorySchema, validateArcMe
 import { applyDiff, describeAllowedPaths } from './engine.js';
 import { renderMemoryBlock, mergePerson } from './memoryRetriever.js';
 import * as Reflection from './reflection.js';
+import * as Reading from './reading.js';
 import { buildQuestStageHint, nextBeat, determineCurrentAct } from './questDefinitions.js';
 import { generateNarrativeGuidelines, getReadingSpecification } from './ageAppropriateReading.js';
 import * as Combat from './combat.js';
@@ -531,6 +532,9 @@ export function composeEnding(payload, { reads = [], open = [], villain, lair, p
         const cleaned = reads.map(r => Reflection.cleanReflection(words.find(w => str(w?.hero).toLowerCase() === r.hero.toLowerCase()), r));
         parts.push('— The story noticed —', cleaned.map(c => `${c.title}: ${c.hero}${c.speaker ? ` (as ${c.speaker} saw it)` : ''}\n${c.lines.map(l => `“${l}”`).join('\n')}${c.closing ? `\n${c.closing}` : ''}`).join('\n\n'));
     }
+    // Reading pace for the grown-ups (code only, never the storyteller's words).
+    const reading = (gameState.players || []).map(p => Reading.reportText(p.name, Reading.readingReport(p))).filter(Boolean);
+    if (reading.length) parts.push('— Reading —', reading.join('\n'));
     let chapters = (Array.isArray(payload?.chapters) ? payload.chapters : []).filter(c => c?.title && c?.goal).slice(0, 3)
         .map(c => ({ title: str(c.title).slice(0, 60), goal: str(c.goal).slice(0, 160), villain: str(c.villain).slice(0, 60) }));
     // Never end without a way forward: grow chapters from loose threads.

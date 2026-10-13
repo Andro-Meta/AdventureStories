@@ -2651,6 +2651,14 @@ await block(async () => {
   R.sceneShown(scene150); const n0 = p.reading.scenes;
   try { await AH.handlePlayerChoice('Safe', 'Look around carefully'); } catch (_) {}
   check(p.reading.scenes === n0 + 1 && p.reading.skims === 4, `picking a story choice stops the scene's clock (scenes ${n0} -> ${p.reading.scenes})`);
+  // Parents see it: the device history by name, the end of the quest and the game-over screen (Michael 10-13).
+  const logged = R.readingLog().find(e => e.name === p.name);
+  check(logged && logged.scenes >= 5 && logged.wpm >= 148 && logged.wpm <= 152, `the parents' history has ${p.name}: ${logged && R.reportText(logged.name, logged)}`);
+  const AIm = await import('../aiHandler.js');
+  const end = AIm.composeEnding({}, { villain: 'X' }).text;
+  check(/— Reading —[\s\S]*151 words a minute/.test(end), 'the end of the quest shows each reader pace');
+  check(/Reading[\s\S]*151 words a minute/.test(UI.readingSummary()), 'the game-over screen shows it too');
+  R.clearReadingLog(); check(!R.readingLog().length, 'a parent can clear the history');
 });
 
 console.error = realError;

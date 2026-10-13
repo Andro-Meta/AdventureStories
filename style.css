@@ -2087,3 +2087,5 @@ body::after { bottom: 0; height: env(safe-area-inset-bottom); }
 .kit-row .kit-act2 { width: auto; margin: 0; padding: 0.4rem 0.8rem; font-size: 0.85rem; background: transparent; border: 1px solid var(--border-color); color: var(--text-color); box-shadow: none; min-height: 38px; }
 
 .stat-chip.reading-flag { background: rgba(255, 170, 0, 0.25); box-shadow: inset 0 0 0 1px #ffaa00; }
+.reading-row { margin: 6px 0; line-height: 1.4; }
+.reading-row.flagged { color: #ffcc66; }

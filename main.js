@@ -313,8 +313,26 @@ function setupEventListeners(UI, setup, actionHandler, saveLoad) { // Added acti
             for (const v of vs) { const o = document.createElement('option'); o.value = v.id; o.textContent = v.label; sel.appendChild(o); }
             sel.value = vs.some(v => v.id === saved) ? saved : '';
         }).catch(() => {});
+        renderReadingReport();
         UI.showScreen('soundSettingsScreen');
     };
+    // Parents' reading report: every reader on this device (reading.js).
+    const renderReadingReport = () => import('./reading.js').then((R) => {
+        const box = document.getElementById('readingReport'); if (!box) return;
+        const rows = R.readingLog();
+        box.innerHTML = '';
+        if (!rows.length) { box.textContent = 'No reading recorded yet. It fills in as the story is played.'; return; }
+        for (const r of rows) {
+            const p = document.createElement('p');
+            p.className = r.flagged ? 'reading-row flagged' : 'reading-row';
+            p.textContent = `${R.reportText(r.name, r)}${r.last ? ` Last played ${r.last}.` : ''}`;
+            box.appendChild(p);
+        }
+    }).catch(() => {});
+    safeAddListener('clearReadingBtn', 'click', () => {
+        if (!confirm('Clear the reading history for every reader on this device?')) return;
+        import('./reading.js').then((R) => { R.clearReadingLog(); renderReadingReport(); }).catch(() => {});
+    }, 'clearReadingBtn');
     safeAddListener('soundSettingsBtn', 'click', () => openSound('mainMenuScreen'), 'soundSettingsBtn');
     safeAddListener('menuSoundSettingsBtn', 'click', () => openSound('menuScreen'), 'menuSoundSettingsBtn');
     safeAddListener('soundSettingsBackBtn', 'click', () => UI.showScreen(soundReturn), 'soundSettingsBackBtn');
