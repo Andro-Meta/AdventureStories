@@ -1,5 +1,5 @@
 // config.js
-// Constants for Adventure Stories.
+// Constants for Talewright Adventures.
 //
 // The storyteller is a free online model (OpenRouter or Google AI Studio),
 // called from the browser with the player's own key, saved in AI Settings.
@@ -16,7 +16,7 @@ export const AI_REQUEST_CONFIG = {
 };
 
 // Shown in the log header of every game (keep in step with package.json / build.gradle).
-export const APP_VERSION = '1.5.1';
+export const APP_VERSION = '1.5.2';
 
 export const AI_DEFAULT_PARAMS = { max_tokens: 2048, temperature: 0.7, top_p: 0.95 };
 

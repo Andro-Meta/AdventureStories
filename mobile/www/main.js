@@ -1,5 +1,5 @@
 // main.js (with visual error handling)
-// Entry point for the Adventure Stories application
+// Entry point for the Talewright Adventures application
 
 // --- Game log ---
 // One capped log (window.__advLog, newest 1500 lines), also saved on the
@@ -134,7 +134,7 @@ const handleDOMContentLoaded = async () => {
         } else {
             throw new Error("setup module or setup.initializeGame function not available.");
         }
-        displayVisualError("main.js: Adventure Stories Ready! (End of DOMContentLoaded handler)");
+        displayVisualError("main.js: Talewright Adventures Ready! (End of DOMContentLoaded handler)");
     } catch (domReadyError) {
          displayVisualError("main.js: CRITICAL ERROR during DOMContentLoaded handler.", domReadyError);
          // Try to show a popup if UI is partially available

@@ -244,7 +244,7 @@ export class LocalAIClient {
             const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` };
             if (provider.baseUrl.includes('openrouter')) {
                 headers['HTTP-Referer'] = (typeof window !== 'undefined' && window.location) ? window.location.origin : 'https://adventure-stories.local';
-                headers['X-Title'] = 'Adventure Stories';
+                headers['X-Title'] = 'Talewright Adventures';
             }
             const response = await fetch(`${provider.baseUrl.replace(/\/$/, '')}/chat/completions`, {
                 method: 'POST', headers, body: JSON.stringify(requestData), signal: controller.signal

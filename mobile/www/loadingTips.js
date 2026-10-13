@@ -123,7 +123,7 @@ export class LoadingTipsManager {
             tipsSection.innerHTML = `
                 <div class="loading-tip-container">
                     <div class="loading-tip-icon">💡</div>
-                    <div class="loading-tip-text" id="loadingTipText">Welcome to Adventure Stories!</div>
+                    <div class="loading-tip-text" id="loadingTipText">Welcome to Talewright Adventures!</div>
                 </div>
             `;
             loadingContainer.appendChild(tipsSection);

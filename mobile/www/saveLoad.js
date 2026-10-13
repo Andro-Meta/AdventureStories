@@ -186,7 +186,7 @@ export async function exportSaves() {
     try {
         if (cap?.isNativePlatform?.() && cap.Plugins?.Filesystem && cap.Plugins?.Share) {
             const { uri } = await cap.Plugins.Filesystem.writeFile({ path: name, data: json, directory: 'CACHE', encoding: 'utf8' });
-            await cap.Plugins.Share.share({ title: 'Adventure Stories saves', files: [uri] });
+            await cap.Plugins.Share.share({ title: 'Talewright Adventures saves', files: [uri] });
         } else {
             const a = document.createElement('a');
             a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
@@ -203,9 +203,9 @@ export async function exportSaves() {
 /** Saves from an exported file; a save with the same name is replaced. Returns how many were imported. */
 export async function importSaves(text) {
     let data;
-    try { data = JSON.parse(text); } catch (_) { UI.showPopup('That file is not an Adventure Stories save file.', 'error'); return 0; }
+    try { data = JSON.parse(text); } catch (_) { UI.showPopup('That file is not an Talewright Adventures save file.', 'error'); return 0; }
     const saves = data?.saves && typeof data.saves === 'object' ? data.saves : null;
-    if (data?.app !== 'adventure-stories' || !saves) { UI.showPopup('That file is not an Adventure Stories save file.', 'error'); return 0; }
+    if (data?.app !== 'adventure-stories' || !saves) { UI.showPopup('That file is not an Talewright Adventures save file.', 'error'); return 0; }
     let n = 0;
     for (const [k, v] of Object.entries(saves)) {
         if (!k.startsWith(Config.SAVE_GAME_PREFIX) || typeof v !== 'string') continue;

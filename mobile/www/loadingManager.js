@@ -1,6 +1,6 @@
 
 /**
- * Loading Manager for Adventure Stories
+ * Loading Manager for Talewright Adventures
  * Manages loading states, dependencies, and visual indicators
  */
 export class LoadingManager {
@@ -27,7 +27,7 @@ export class LoadingManager {
             overlay.className = 'loading-overlay hidden';
             overlay.innerHTML = `
                 <div class="loading-container">
-                    <div class="loading-title">Adventure Stories</div>
+                    <div class="loading-title">Talewright Adventures</div>
                     <div class="loading-status" id="loadingStatus">Initializing...</div>
                     <div class="loading-progress">
                         <div class="loading-progress-bar" id="loadingProgressBar"></div>
