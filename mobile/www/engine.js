@@ -815,14 +815,16 @@ const PATHS = [
                 try { done.apply('/isGoalComplete'.match(done.regex), true, gs); }
                 catch (e) { (window.displayVisualError || console.log)(`final_blow completion failed: ${e.message}`); }
             }
-            // Main-quest beats reward the party (not jail beats, not god mode).
-            if (!/^jail[ _]/i.test(canonicalName) && !gs.isGoalComplete) {
+            // Main-quest beats reward the party (not side milestones the storyteller
+            // invents, review 10-13: "talked_to_cat" paid 50 XP each; not god mode).
+            if (isMainBeat(canonicalName) && !gs.isGoalComplete) {
                 const heroes = (gs.players || []).filter(p => p && !p.isDowned);
                 const coins = 15 + Math.floor(Math.random() * 11); // 15-25 each
                 const lines = [];
                 for (const p of heroes) {
                     p.coins = (p.coins || 0) + coins;
                     const ups = gainXp(p, 50, levelUp);
+                    if (ups) { try { Combat.recalculateCharacterStats(p); } catch (_) {} } // ATK/DEF now (review 10-13)
                     if (ups) lines.push(`⭐ ${p.name} reached level ${p.level}! Choose a stat to raise.`);
                 }
                 if (heroes.length) import('./ui.js').then(UI => {

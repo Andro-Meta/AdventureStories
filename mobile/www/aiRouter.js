@@ -130,7 +130,7 @@ export function rank(ids, now = Date.now()) {
 export function hedgeDelay(id) {
     load();
     const e = h(id).ewma;
-    return Math.max(3500, Math.min(8000, e == null ? 6000 : Math.round(e * 2)));
+    return Math.max(3500, Math.min(20000, e == null ? 6000 : Math.round(e * 2)));
 }
 
 export function noteHedgeWin(id) { load(); h(id).hedgeWins++; save(); }

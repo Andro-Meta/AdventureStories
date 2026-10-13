@@ -163,7 +163,7 @@ export class LocalAIClient {
                 }, i === 0 && order.race ? 0 : Router.hedgeDelay(id));
                 let req;
                 try { req = this.buildRequest(p, messages, options); } catch (e) { req = Promise.reject(e); }
-                Promise.resolve(req).then(r => this.executeRequest(r, p, key, 0, hasNext, cancel.signal)).then(out => {
+                Promise.resolve(req).then(r => this.executeRequest(r, p, key, 0, hasNext, cancel.signal)).then(out => usableReply(out, options)).then(out => {
                     clearTimeout(hedge); running--; attempt.live = false;
                     if (done) return;
                     const ms = Date.now() - t0;
@@ -179,7 +179,8 @@ export class LocalAIClient {
                     const now = Date.now();
                     // Every documented HTTP failure means another provider may work;
                     // a dropped or timed-out connection too.
-                    const f = error.failure || (error.network || error.exhausted ? { kind: 'timeout', why: 'no answer (network or timeout)', until: now + 60e3 } : null);
+                    const f = error.failure || (error.network || error.exhausted ? { kind: 'timeout', why: 'no answer (network or timeout)', until: now + 60e3 }
+                        : /No response generated|max_tokens reached|unusable reply/.test(error.message) ? { kind: 'bad_reply', why: 'unusable reply', until: now + 60e3 } : null);
                     const movable = !!f;
                     Router.record(id, { ok: false, ms: now - t0, now, benchUntil: f?.until || 0, why: f?.why });
                     if (movable && !successorUp && next < order.length) {
@@ -332,6 +333,19 @@ function foldSystemIntoUser(msgs) {
     const i = rest.findIndex(m => m.role === 'user');
     if (i === -1) return [{ role: 'user', content: sys }, ...rest];
     return rest.map((m, j) => j === i ? { ...m, content: `${sys}\n\n${m.content}` } : m);
+}
+
+/**
+ * A reply only counts once it is usable (review 10-13: any HTTP 200 was a win, so a
+ * provider sending empty or broken JSON stayed first in line and its fast junk even
+ * made it look fastest). Unusable replies throw, so the router benches that provider
+ * and the same request moves on.
+ */
+function usableReply(out, options) {
+    let bad = !String(out ?? '').trim() ? 'empty' : null;
+    if (!bad && options?.jsonSchema) { try { parseJSONFromModelOutput(out); } catch (e) { bad = e.message; } }
+    if (bad) throw new Error(`unusable reply (${String(bad).slice(0, 80)})`);
+    return out;
 }
 
 function formatMessages(messages) {

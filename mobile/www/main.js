@@ -43,6 +43,10 @@ window.__advBack = () => {
     if (gameState?.isLoading || gameState?.combatRoundInProgress) return true;
     const active = document.querySelector('.screen.active')?.id || 'mainMenuScreen';
     if (active === 'mainMenuScreen') return false;
+    // Screens opened from either menu: their own Back button knows the way (review 10-13:
+    // hardware Back from the in-game Settings / How to Play dropped players on the main menu).
+    const own = { howToPlayScreen: 'howToPlayBackBtn', soundSettingsScreen: 'soundSettingsBackBtn' }[active];
+    if (own && document.getElementById(own)) { document.getElementById(own).click(); return true; }
     const prev = {
         gameScreen: 'menuScreen', menuScreen: 'gameScreen', storyBookScreen: 'menuScreen',
         inventoryScreen: 'gameScreen', shopScreen: 'gameScreen', specialMovesScreen: 'gameScreen',
