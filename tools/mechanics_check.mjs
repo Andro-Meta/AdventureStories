@@ -2673,6 +2673,22 @@ await block(async () => {
   gameState.players.pop();
 });
 
+await block(async () => {
+  // Michael 10-13: long sentences are split for young readers, in code (no extra call).
+  const AIm = await import('../aiHandler.js');
+  const { textLevel } = await import('../ageAppropriateReading.js');
+  const hard = 'The bustling market stalls are just waking, vendors unfurling awnings and calling out their wares—today feels like any other, and the old seer at the edge of the pier shuffles forward with a knowing smile.';
+  fresh(); gameState.players[0].age = 6;
+  const got = AIm.simplifyForYoungReader(hard);
+  check(textLevel(got).wps < textLevel(hard).wps / 2 && /wares\. Today feels/.test(got) && /\. And the old seer/.test(got), `a long sentence is split for a 6-year-old: "${got}"`);
+  check(textLevel(got).words === textLevel(hard).words, 'no words are lost');
+  gameState.players[0].age = 30;
+  check(AIm.simplifyForYoungReader(hard) === hard, 'an adult reader gets the text as written');
+  gameState.players[0].age = 6;
+  const ok = 'Katie runs to the boat. The wind is cold.';
+  check(AIm.simplifyForYoungReader(ok) === ok, 'short sentences are left alone');
+});
+
 console.error = realError;
 out(`\nfetch attempts blocked: ${fetchCalls}; elapsed ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 out(failed ? `✗ ${failed} mechanics check(s) failed` : '✓ all mechanics checks passed');

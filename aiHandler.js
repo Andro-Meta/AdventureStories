@@ -16,7 +16,7 @@ import { renderMemoryBlock, mergePerson } from './memoryRetriever.js';
 import * as Reflection from './reflection.js';
 import * as Reading from './reading.js';
 import { buildQuestStageHint, nextBeat, determineCurrentAct } from './questDefinitions.js';
-import { generateNarrativeGuidelines, getReadingSpecification, readerAge } from './ageAppropriateReading.js';
+import { generateNarrativeGuidelines, getReadingSpecification, readerAge, textLevel } from './ageAppropriateReading.js';
 import * as Combat from './combat.js';
 // Import turn manager functions statically
 import { advanceTurn } from './turnManager.js';
@@ -170,6 +170,22 @@ function combatKitLine() {
  * single JSON object. A second, small choices-only call is made only when the
  * choices in that reply are unusable.
  */
+/**
+ * Readers 12 and under (Michael 10-13): a sentence longer than the age's
+ * length is split at its safe joins (", and", ", but", ", so", ", then", ";",
+ * a dash). Code only: no extra call, no wait. (A rewrite call was tried: the
+ * model handed the scene back unchanged 3 times out of 3.) Measured on saved
+ * live stories: a 7+40 party 26.6 -> 16.3 words a sentence, grade 11.1 -> 7.1.
+ */
+export function simplifyForYoungReader(text) {
+    const age = readerAge(gameState.players, 25);
+    if (age > 12 || !text) return text;
+    const max = getReadingSpecification(age).sentenceLength.max;
+    return String(text).split(/(?<=[.!?]["”’']?) +/).map(s => textLevel(s).words <= max ? s
+        : s.replace(/(?:,\s+(and|but|so|then)\s+|;\s+|\s*[—–]\s*)(?=[a-z])/g, (m, w) => `. ${w ? w[0].toUpperCase() + w.slice(1) + ' ' : ''}`)
+            .replace(/\. ([a-z])/g, (m, c) => `. ${c.toUpperCase()}`)).join(' ');
+}
+
 export async function processAIResponse(prompt) {
     const log = window.displayVisualError || console.log;
     const isInitialSetup = prompt.includes("Please provide a rich, detailed story introduction in three parts");
@@ -272,7 +288,7 @@ ${buildDiffInstructions(pIdx)}`;
             if (first?.name) gameState.currentLocation = { ...gameState.currentLocation, name: first.name, description: first.description || '', isFallback: false };
         }
 
-        gameState.currentNarrative = cleanNarrative;
+        gameState.currentNarrative = simplifyForYoungReader(cleanNarrative);
         try {
             if (gameState.imprisoned && typeof window !== 'undefined' && window.__jailSystem?.tryAutoCompleteEscape) {
                 window.__jailSystem.tryAutoCompleteEscape();

@@ -149,6 +149,17 @@ export function readerAge(players, fallback = 25) {
     return ages.length ? Math.min(...ages) : fallback;
 }
 
+/** How hard a text reads: words, words per sentence, Flesch-Kincaid grade, share of 3+ syllable words. */
+export function textLevel(text) {
+    const syl = (w) => { w = w.toLowerCase().replace(/[^a-z]/g, ''); if (w.length <= 3) return 1; const m = w.replace(/(?:[^laeiouy]es|ed|[^laeiouy]e)$/, '').replace(/^y/, '').match(/[aeiouy]{1,2}/g); return Math.max(1, m ? m.length : 1); };
+    const t = String(text || '');
+    const sentences = t.split(/[.!?]+["”’)']?\s+|[.!?]+$/).filter(s => /[a-z]/i.test(s));
+    const words = t.match(/[A-Za-z’']+/g) || [];
+    const sy = words.reduce((n, w) => n + syl(w), 0);
+    const wps = words.length / Math.max(1, sentences.length), spw = sy / Math.max(1, words.length);
+    return { words: words.length, wps, grade: 0.39 * wps + 11.8 * spw - 15.59, long: words.filter(w => syl(w) >= 3).length / Math.max(1, words.length) };
+}
+
 export function getReadingSpecification(age) {
     if (age < READING_SPECIFICATIONS.early_elementary.ageRange[0]) {
         return { level: 'early_elementary', ...READING_SPECIFICATIONS.early_elementary }; // under-6s got the adult tier
