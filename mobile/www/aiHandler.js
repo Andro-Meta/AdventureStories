@@ -171,6 +171,20 @@ function combatKitLine() {
  * choices in that reply are unusable.
  */
 /**
+ * Game numbers copied into the story (live 10-13: "Katie, HP 100/100, Coins 50,
+ * felt the sea breeze"). Runs of "HP 40/100", "MP 5/20", "Coins 50", "ATK 12",
+ * "DEF 8" set off by commas, bars or brackets are cut. Prose like "fifty coins"
+ * or "she has 50 coins" is left alone.
+ */
+const STAT = String.raw`(?:(?:HP|MP)\s*:?\s*\d+\s*\/\s*\d+|Coins?\s*:?\s*\d+|ATK\s*:?\s*\d+|DEF\s*:?\s*\d+)`;
+const STAT_RUN = new RegExp(String.raw`\s*(?:,|\||\()\s*${STAT}(?:\s*(?:,|\|)\s*${STAT})*\s*(?:\)|,|\|)?`, 'g');
+export function scrubStats(text) {
+    const t = String(text || '');
+    const out = t.replace(STAT_RUN, ' ');
+    return out === t ? t : out.replace(/ {2,}/g, ' ').replace(/ ([,.!?])/g, '$1'); // tidy only what was cut
+}
+
+/**
  * Readers 12 and under (Michael 10-13): a sentence longer than the age's
  * length is split at its safe joins (", and", ", but", ", so", ", then", ";",
  * a dash). Code only: no extra call, no wait. (A rewrite call was tried: the
@@ -266,10 +280,10 @@ ${buildDiffInstructions(pIdx)}`;
             payload = await API.getAIResponseJSON(messages, storyTurnSchema, { jsonSchemaName: 'story_turn', max_tokens: 2000, temperature: 0.6 });
         }
         const validated = validateNarrativeTurnPayload(payload);
-        const cleanNarrative = validated.narration
+        const cleanNarrative = scrubStats(validated.narration
             .replace(/<think>[\s\S]*?<\/think>/gi, '')
             .replace(/```(?:\w+)?\n?([\s\S]*?)```/g, '$1')
-            .trim();
+            .trim());
         // Coins/HP the game already applied this turn ("Already applied by the
         // game") were re-added by the narrator in 4 of 8 live turns (+43 coins
         // drift). Outside god mode, its coin/HP ops on such turns are dropped.
@@ -651,7 +665,7 @@ function buildCanonicalStateBlock() {
     const theme = gameState.adventureTheme || 'unknown';
     const imprisonedTag = gameState.imprisoned ? ' | IMPRISONED' : (gameState.isGoalComplete ? ' | GOD MODE' : '');
 
-    const playerLine = `${p.name}, HP ${p.hp}/${p.maxHp}, Coins ${p.coins ?? 0}`;
+    const playerLine = `${p.name} | HP ${p.hp}/${p.maxHp} | Coins ${p.coins ?? 0}`;
     const partyLine = (gameState.players || [])
         .filter(pl => pl && pl !== p)
         .slice(0, 3)
@@ -699,7 +713,7 @@ function buildCanonicalStateBlock() {
 
     const location = gameState.currentLocation?.name || 'unknown';
 
-    return `=== GAME STATE — Turn ${turn} | ${theme}${imprisonedTag} ===
+    return `=== GAME STATE (for you only: never write these numbers into the story) — Turn ${turn} | ${theme}${imprisonedTag} ===
 Location: ${location}
 Player: ${playerLine}
 Equipped: ${equipLine}${partyLine ? `

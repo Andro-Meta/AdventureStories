@@ -62,7 +62,7 @@ export function awardXp(enemy) {
     const ups = [];
     for (const p of standing) {
         const n = gainXp(p, xp, levelUp); // also gives a stat point per level
-        for (let i = n - 1; i >= 0; i--) ups.push(`${p.name} reached level ${p.level - i}! Choose a stat to raise.`);
+        for (let i = n - 1; i >= 0; i--) ups.push(`${p.name} reached level ${num(p.level) - i}! Choose a stat to raise.`);
     }
     return { xp, ups };
 }
@@ -92,7 +92,7 @@ export function battleOptions(type, hero) {
     const foes = (gameState.enemies || []).filter(e => e && !e.isDefeated && e.hp > 0);
     if (type === 'Attack') {
         if (foes.length < 2) return null;
-        return foes.map(e => ({ label: e.name, detail: `${e.hp}/${e.maxHp} HP${e.isBoss ? ' · boss' : ''}`, type: 'Attack', text: `Attack ${e.name}`, targetId: e.id }));
+        return foes.map(e => ({ label: e.name, detail: `${num(e.hp)}/${num(e.maxHp)} HP${e.isBoss ? ' · boss' : ''}`, type: 'Attack', text: `Attack ${e.name}`, targetId: e.id }));
     }
     if (type === 'Item') {
         const items = (hero.inventory || []).filter(battleUsable);
@@ -130,6 +130,9 @@ export function battleOptions(type, hero) {
 }
 
 /** What this world calls an ability, for menu labels: spell / ritual / tech / skill. */
+// Numbers shown in HTML are always real numbers (review 10-13: a storyteller or imported-save
+// value like hp:'<img onerror=...>' ran as script).
+const num = (v, d = 0) => (Number.isFinite(Number(v)) && v !== '' && v !== null ? Math.round(Number(v)) : d);
 function abilityKind() {
     const n = getCurrentThemeAdaptation().abilityName || '';
     return /ritual/i.test(n) ? 'ritual' : /tech|cyber/i.test(n) ? 'tech' : /skill/i.test(n) ? 'skill' : 'spell';
