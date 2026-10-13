@@ -411,7 +411,7 @@ export async function ensureChoiceMix(choices, narrative, avoid = []) {
     try {
         const others = out.filter((c, i) => !plan.some(p => p.index === i)).map(c => `- ${c.text}`).join('\n');
         const payload = await API.getAIResponseJSON([
-            { role: 'system', content: `You write player choices for a ${getThemeName()} text adventure. Reply with one JSON object only.` },
+            { role: 'system', content: `You write player choices for a ${getThemeName()} text adventure. ${audienceLine()} Reply with one JSON object only.` },
             { role: 'user', content: `SCENE:\n${narrative}\n\nThese choices stay:\n${others}\n\nWrite ${plan.length} new choice${plan.length > 1 ? 's' : ''}, one sentence each, that fit this scene and differ from the ones above:\n${plan.map((p, k) => `${k + 1}. a ${RISK[p.danger]}, ${WHAT[p.stat]} action`).join('\n')}\n\nReply exactly as {"choices":[${plan.map(() => '{"text":"..."}').join(',')}]}` }
         ], null, { max_tokens: 250, temperature: 0.7, jsonObject: true });
         const got = Array.isArray(payload?.choices) ? payload.choices : [];
@@ -472,7 +472,7 @@ export async function wishToOps(wish, alreadyApplied = []) {
     if (!p) return [];
     const hero = `${p.name}: level ${p.level || 1}, HP ${p.hp}/${p.maxHp}, MP ${p.mp}/${p.maxMp}, ATK ${p.atk}, DEF ${p.def}, coins ${p.coins}; items: ${(p.inventory || []).map(i => i.name).join(', ') || 'none'}; moves: ${(p.specialMoves || []).map(m => m.name).join(', ') || 'none'}`;
     const payload = await API.getAIResponseJSON([
-        { role: 'system', content: 'You turn a game wish into JSON-patch ops for the game engine. The player has won and may do anything, even game-breaking. Reply with JSON only.' },
+        { role: 'system', content: `You turn a game wish into JSON-patch ops for the game engine. The player has won and may do anything, even game-breaking, within the content policy. ${audienceLine()} Reply with JSON only.` },
         { role: 'user', content: `HERO: ${hero}
 WISH: "${wish}"${alreadyApplied.length ? `
 ALREADY DONE (do not repeat): ${alreadyApplied.join('; ')}` : ''}
@@ -523,7 +523,7 @@ export async function writeEnding() {
     const reads = Reflection.reflectionOn() ? Reflection.readHeroes(gameState) : [];
     const open = (gameState.storyThreads || []).filter(t => t && !t.resolved).map(t => t.text);
     const payload = await API.getAIResponseJSON([
-        { role: 'system', content: `You write the ending of a ${getThemeName()} text adventure: warm, specific, never generic. Reply with one JSON object only.` },
+        { role: 'system', content: `You write the ending of a ${getThemeName()} text adventure: warm, specific, never generic. ${audienceLine()} Reply with one JSON object only.` },
         { role: 'user', content: `QUEST WON: ${gameState.adventureGoal || 'the main quest'}${villain ? `\nVILLAIN DEFEATED: ${villain}${lair ? ` at ${lair}` : ''}${qp.finalBlow ? `; the final blow: ${qp.finalBlow}` : ''}` : ''}
 HEROES: ${(gameState.players || []).map(p => p.name).join(', ')}
 WORLD CHANGES (true now; show them): ${changes.join('; ') || 'the danger has passed'}
@@ -538,6 +538,7 @@ Reply exactly as {"aftermath":"2 short paragraphs: the moment after victory and 
     { jsonSchemaName: 'ending', max_tokens: 1800, temperature: 0.8 }).catch(e => { (window.displayVisualError || console.log)(`Ending call failed (${e.message}); using the game's own ending.`); return {}; });
 
     const ending = composeEnding(payload, { reads, open, villain, lair, peopleFacts: people });
+    ending.text = simplifyForYoungReader(scrubStats(ending.text)); // the longest prose: same clean-up as every scene
     gameState.ending = ending;
     gameState.epilogue = ending.text; // the Story Book's closing chapter
     gameState.nextChapters = ending.chapters;
@@ -580,7 +581,7 @@ export async function requestChoicesOnly(narrative, inCombat, forHero = null, av
     if (!inCombat) planChoiceDangers();
     const enemies = inCombat ? `\nEnemies: ${(gameState.enemies || []).filter(e => !e.isDefeated).map(e => e.name).join(', ')}` : '';
     const payload = await API.getAIResponseJSON([
-        { role: 'system', content: `You write the player choices for a ${getThemeName()} text adventure. Reply with one JSON object only.` },
+        { role: 'system', content: `You write the player choices for a ${getThemeName()} text adventure. ${audienceLine()} Reply with one JSON object only.` },
         { role: 'user', content: `SCENE:\n${narrative}${enemies}\n\n${forHero ? `Write the choices for ${forHero}, who acts next.\n` : ''}${buildChoiceInstructions(types, inCombat, avoid)}\n\nReply exactly as {"choices":[${choiceFormat(inCombat)}]}` }
     ], getChoiceSchema(inCombat), { jsonSchemaName: inCombat ? 'combat_choices' : 'exploration_choices', max_tokens: 1000, temperature: 0.7 });
     const choices = validateChoicesPayload(payload, inCombat);
@@ -726,16 +727,8 @@ Recent Milestones: ${recentMilestones}
 `;
 }
 
-export function generateSystemPrompt() {
-    const log = window.displayVisualError || console.log;
-    const currentPlayer = getCurrentPlayer();
-    // Written for the youngest reader: reading level and content policy both.
-    const playerAge = readerAge(gameState.players, currentPlayer?.age || 25);
-
-    let g = null;
-    try { g = generateNarrativeGuidelines(playerAge); }
-    catch (error) { log(`Failed to compute age-appropriate guidelines: ${error.message}`); }
-
+/** The content policy for a reader's age (one place: the turn prompt and every other call). */
+function contentPolicy(playerAge) {
     const tier = playerAge < 10 ? 'L1 child' : playerAge < 15 ? 'L2 tween' : 'L3 teen/adult';
     // Settings toggle (default off): blood/cuts/wounds may be shown, never gore.
     const injuryLine = Config.injuryDetailOn()
@@ -748,6 +741,27 @@ export function generateSystemPrompt() {
         : playerAge < 15
             ? 'Exciting fantasy action, but no blood, gore or injury detail: show hits by their effect (knocked back, stumbling, a cracked shield), a scrape or bruise at most. Defeated foes are knocked out, captured or flee; any death happens off-screen and tastefully; romance no further than blushing; no slurs.'
             : 'Mature themes allowed in service of the story (loss, moral ambiguity, fantasy violence); no explicit sexual content or gratuitous gore.');
+    return { tier, policy, injuryLine };
+}
+
+/** One line for secondary calls (ending, choices, wishes): who reads it and what is allowed (review 10-13: they had neither). */
+export function audienceLine() {
+    const age = readerAge(gameState.players, 25);
+    const { tier, policy, injuryLine } = contentPolicy(age);
+    return `Youngest reader: ${age}. CONTENT POLICY (${tier}): ${policy}${injuryLine}`;
+}
+
+export function generateSystemPrompt() {
+    const log = window.displayVisualError || console.log;
+    const currentPlayer = getCurrentPlayer();
+    // Written for the youngest reader: reading level and content policy both.
+    const playerAge = readerAge(gameState.players, currentPlayer?.age || 25);
+
+    let g = null;
+    try { g = generateNarrativeGuidelines(playerAge); }
+    catch (error) { log(`Failed to compute age-appropriate guidelines: ${error.message}`); }
+
+    const { tier, policy, injuryLine } = contentPolicy(playerAge);
 
     // Pacing: every field here comes from one place (ageAppropriateReading.js)
     // so the length the narrator is asked for is the same everywhere.
@@ -780,7 +794,7 @@ Use names, people, places and props native to this theme (no village elders in c
     }
     if (gameState.adventureGoal) parts.push(`CURRENT GOAL: ${gameState.adventureGoal}`);
     if ((gameState.playerCanon || []).length) {
-        parts.push(`THE PLAYERS' STORY DIRECTION (set with Divine Will; it is canon and outranks the theme, goal, threads, villain and anything earlier in the story; build every scene on it and never drift back to what it replaced; later lines win over earlier ones):\n${gameState.playerCanon.map((c, i) => `${i + 1}. ${c}`).join('\n')}`);
+        parts.push(`THE PLAYERS' STORY DIRECTION (set with Divine Will; within the CONTENT POLICY it is canon and outranks the theme, threads and anything earlier in the story; build every scene on it and never drift back to what it replaced; later lines win over earlier ones. The current GOAL and VILLAIN come from the latest quest: these lines shape the world and how the story is told, not which quest it is):\n${gameState.playerCanon.map((c, i) => `${i + 1}. ${c}`).join('\n')}`);
     }
 
     const context = determineContext(currentPlayer);

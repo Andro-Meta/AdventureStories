@@ -112,7 +112,7 @@ export function proceedToAgeInput() {
     gameState.adventureTheme = UI.elements.adventureTypeSelect.value;
     gameState.customThemeDescription = '';
     if (gameState.adventureTheme === 'custom') {
-        gameState.customThemeDescription = UI.elements.customThemeInput.value.trim();
+        gameState.customThemeDescription = UI.elements.customThemeInput.value.trim().slice(0, 300); // it reaches every prompt (review 10-13)
         if (!gameState.customThemeDescription) {
             log("Setup Validation Failed: Custom theme selected but description is empty.");
             UI.showPopup('Please enter a description for your custom theme.', 'error');
@@ -242,7 +242,7 @@ export async function completeSetupAndStartGameIntelligent() {
             log("Setup: Partial results:", result.results);
             
             loadingManager.hideLoading();
-            UI.showPopup(`The storyteller didn't answer in time. Pick an action to begin.`, 'warning');
+            UI.showPopup(`The storyteller couldn't start the story. Tap "Try the opening again".`, 'warning');
             
             // Try to show game screen anyway if players were created.
             // Wrap in its own try/catch: if renderPlayerCards throws for any
@@ -252,16 +252,16 @@ export async function completeSetupAndStartGameIntelligent() {
             if (result.results?.completed?.includes('createPlayers')) {
                 log("Setup: Players were created, attempting to continue...");
                 try { UI.renderPlayerCards(); } catch (e) { log(`Setup: renderPlayerCards failed in recovery: ${e.message}`); }
-                // No opening story: still give the player something to press
-                // (before, an empty screen with no choices).
-                if (!gameState.currentChoices?.length) {
-                    gameState.currentChoices = [
-                        { type: 'Explore', text: 'Look around and get your bearings' },
-                        { type: 'Social', text: 'Find someone nearby to talk to' },
-                        { type: 'Explore', text: 'Set off toward the nearest sign of trouble' }
-                    ];
-                }
-                try { UI.renderChoices(gameState.currentChoices); } catch (_) {}
+                // No opening story: a retry, not a story-less game with stock choices (review 10-13).
+                const retry = async () => {
+                    UI.showLoading(true, 'Writing the opening...');
+                    try {
+                        const { makeAICallForSystemAction } = await import('./aiHandler.js');
+                        const r = await makeAICallForSystemAction('start_adventure', true);
+                        if (r?.failed) UI.renderChoices([{ text: 'Try the opening again' }], retry);
+                    } finally { UI.showLoading(false); }
+                };
+                try { UI.renderChoices([{ text: 'Try the opening again' }], retry); } catch (_) {}
                 UI.showScreen('gameScreen');
             } else {
                 UI.showScreen('mainMenuScreen');

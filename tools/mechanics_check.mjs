@@ -2779,6 +2779,89 @@ await block(async () => {
   check(atks.length > 0 && Math.max(...atks) <= 6, `a Low loot weapon is shop strength (ATK ${atks.length ? Math.min(...atks) + '-' + Math.max(...atks) : 'none dropped'}, shop 3-6)`);
 });
 
+await block(async () => {
+  // Review 10-13 (medium): crits never happened (their settings were wiped on every new game/load).
+  const S = await import('../state.js'); S.resetGameState();
+  const a = S.createNewPlayer('Ava', 10), foe = { id: 'enemy_c', name: 'Crab', hp: 100, maxHp: 100, atk: 5, def: 0, statusEffects: [] };
+  pinRandom(0.01); let r; try { r = Combat.calculateDamage(a, foe, {}); } finally { unpinRandom(); }
+  check(r?.isCritical === true, `a low roll is a critical hit again (isCritical ${r?.isCritical})`);
+});
+
+await block(async () => {
+  // Review 10-13 (medium): healing specials hit the foe in fights and healed 0 exploring.
+  const S = await import('../state.js');
+  const mend = () => ({ id: 'm1', name: 'Mend', cooldown: 2, currentCooldown: 0, mpCost: 0, usageContext: 'both', mechanics: { healing: 40 } });
+  S.resetGameState();
+  const h = S.createNewPlayer('Hal', 10); h.id = 'player_h'; h.hp = 30; h.mp = 50; h.specialMoves = [mend()];
+  gameState.players = [h]; gameState.currentPlayerIndex = 0;
+  const f = { id: 'enemy_f', name: 'Golem', hp: 300, maxHp: 300, atk: 0, def: 0, abilities: ['Basic Attack'], statusEffects: [], lootChance: 0 };
+  gameState.enemies = [f]; Combat.initializeCombat(gameState.enemies);
+  pinRandom(0.5); try { await AH.handlePlayerChoice('Special', 'Use Mend'); } finally { unpinRandom(); }
+  check(h.hp > 30 && f.hp === 300, `a healing special heals in a fight (hero 30 -> ${h.hp}, foe untouched ${f.hp})`);
+  S.resetGameState(); gameState.players = [h]; gameState.inCombat = false; h.hp = 30; h.specialMoves = [mend()];
+  await AH.useSpecialMove('m1');
+  check(h.hp > 30, `and while exploring (30 -> ${h.hp})`);
+  h.hp = h.maxHp; const cd = h.specialMoves[0].currentCooldown = 0;
+  await AH.useSpecialMove('m1');
+  check(h.specialMoves[0].currentCooldown === cd, 'at full HP the healing special is kept (no cooldown, no MP spent)');
+});
+
+await block(async () => {
+  // Review 10-13 (medium): "Fire" and "Fire Storm" known: "Use Fire Storm" used Fire.
+  const S = await import('../state.js'); S.resetGameState();
+  const h = S.createNewPlayer('Hal', 10); h.id = 'player_h'; h.mp = 50;
+  h.specialMoves = [{ id: 'f1', name: 'Fire', cooldown: 2, currentCooldown: 0, mpCost: 0, mechanics: { directDamage: 5 } }, { id: 'f2', name: 'Fire Storm', cooldown: 3, currentCooldown: 0, mpCost: 0, mechanics: { directDamage: 9 } }];
+  gameState.players = [h]; gameState.currentPlayerIndex = 0;
+  gameState.enemies = [{ id: 'enemy_g', name: 'Golem', hp: 300, maxHp: 300, atk: 0, def: 0, abilities: ['Basic Attack'], statusEffects: [], lootChance: 0 }];
+  Combat.initializeCombat(gameState.enemies);
+  pinRandom(0.5); try { await AH.handlePlayerChoice('Special', 'Use Fire Storm'); } finally { unpinRandom(); }
+  check(h.specialMoves[1].currentCooldown > 0 && !(h.specialMoves[0].currentCooldown > 0), `"Use Fire Storm" uses Fire Storm, not Fire (cooldowns ${h.specialMoves.map(m => m.currentCooldown || 0).join('/')})`);
+});
+
+await block(async () => {
+  // Review 10-13 (medium): a cure item used while exploring stripped buffs (Haste) too.
+  const { p } = fresh(); gameState.inCombat = false;
+  p.statusEffects = [];
+  Combat.applyStatusEffect(p, 'Haste', 3, {}, 'test'); Combat.applyStatusEffect(p, 'Poison', 3, {}, 'test');
+  p.inventory.push({ id: 'cure1', name: 'Antidote', type: 'Consumable', stats: { cure: 'All' }, quantity: 1 });
+  await AH.useInventoryItem('cure1');
+  const names = (p.statusEffects || []).map(e => e.name);
+  check(names.includes('Haste') && !names.includes('Poison'), `a cure keeps buffs (${names.join(',') || 'none'})`);
+});
+
+await block(async () => {
+  // Review 10-13 (medium): any milestone the storyteller invents paid every hero 50 XP and coins.
+  const { applyDiff } = await import('../engine.js');
+  const { p } = fresh(); const xp0 = p.xp || 0, c0 = p.coins || 0;
+  applyDiff([{ op: 'add', path: '/questProgress/milestones/-', value: { name: 'talked_to_cat' } }], { strict: false });
+  check((p.xp || 0) === xp0 && (p.coins || 0) === c0, `a side milestone pays nothing (XP ${xp0} -> ${p.xp || 0}, coins ${c0} -> ${p.coins || 0})`);
+});
+
+await block(async () => {
+  // Review 10-13 (medium): secondary calls carried no reader age or content policy.
+  const AIm = await import('../aiHandler.js');
+  fresh(); gameState.players[0].age = 40; gameState.players.push({ ...gameState.players[0], id: 'p2', name: 'Kid', age: 7 });
+  const line = AIm.audienceLine?.() || '';
+  check(/Youngest reader: 7/.test(line) && /No blood/.test(line), `secondary calls get the reader and policy ("${line.slice(0, 60)}...")`);
+  gameState.players.pop();
+});
+
+await block(async () => {
+  // Review 10-13 (medium): an HTTP 200 with junk counted as a success, so a broken provider
+  // stayed first; and a provider averaging >4 s had every call sent twice (backup at 8 s max).
+  const Router = await import('../aiRouter.js');
+  for (let i = 0; i < 6; i++) Router.record('slowpoke', { ok: true, ms: 10000 });
+  check(Router.hedgeDelay('slowpoke') >= 15000, `a 10 s provider gets its backup after ${Router.hedgeDelay('slowpoke')} ms, not 8 s`);
+  const L = await import('../localAI.js');
+  const offline = globalThis.fetch; const hosts = [];
+  globalThis.fetch = window.fetch = async (url) => { const u = String(url); hosts.push(new URL(u).hostname); const good = u.includes('groq'); return { ok: true, status: 200, statusText: '200', headers: { get: () => null }, json: async () => ({ choices: [{ message: { content: good ? '{"ok":1}' : '' }, finish_reason: 'stop' }] }), text: async () => '' }; };
+  localStorage.setItem('adv.cloudProvider', 'auto'); localStorage.setItem('adv.apiKey.generativelanguage.googleapis.com', 'test'); localStorage.setItem('adv.apiKey.api.groq.com', 'test');
+  let got = null, err = null;
+  try { got = await L.getLocalAIJSONResponse([{ role: 'user', content: 'hi' }], { type: 'object' }); } catch (e) { err = e.message; }
+  finally { globalThis.fetch = window.fetch = offline; ['adv.cloudProvider', 'adv.apiKey.generativelanguage.googleapis.com', 'adv.apiKey.api.groq.com'].forEach(k => localStorage.removeItem(k)); }
+  check(got?.ok === 1, `an empty 200 moves the request to the next provider (${hosts.join(' -> ')}${err ? `; error ${err}` : ''})`);
+});
+
 console.error = realError;
 out(`\nfetch attempts blocked: ${fetchCalls}; elapsed ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 out(failed ? `✗ ${failed} mechanics check(s) failed` : '✓ all mechanics checks passed');

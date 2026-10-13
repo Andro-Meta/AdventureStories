@@ -296,7 +296,7 @@ export class InitializationManager {
             phase: this.phases.STORY,
             dependencies: ['gameState', 'createPlayers', 'localAI'],
             priority: 60,
-            timeout: 120000,
+            timeout: 240000, // two tries, each may wait on a provider's retries
             critical: true,
             action: async () => {
                 const { makeAICallForSystemAction } = await import('./aiHandler.js');
@@ -304,7 +304,12 @@ export class InitializationManager {
                 const { APP_VERSION } = await import('./config.js');
                 gs.gameId = gs.gameId || Date.now().toString(36);
                 (window.displayVisualError || console.log)(`=== NEW GAME ${gs.gameId} | ${gs.adventureTheme}${gs.customThemeDescription ? ` (${gs.customThemeDescription.slice(0, 60)})` : ''} | ${(gs.players || []).map(p => `${p.name} age ${p.age}`).join(', ')} | app ${APP_VERSION} ===`);
-                await makeAICallForSystemAction('start_adventure', true); // the opening must not use up player 1's turn
+                // The opening must not use up player 1's turn. A failed call returned quietly and the
+                // game opened with no story (review 10-13): try once more (the switcher has moved on
+                // to another provider), then report the failure so setup offers a retry.
+                let r = await makeAICallForSystemAction('start_adventure', true);
+                if (r?.failed) r = await makeAICallForSystemAction('start_adventure', true);
+                if (r?.failed) throw new Error('the storyteller could not write the opening');
                 return { storyGenerated: true };
             },
             description: 'Generate initial story'

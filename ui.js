@@ -458,7 +458,7 @@ export function updateGameHeader() {
         if (gameState.adventureTheme === 'custom') {
              themeName = gameState.customThemeDescription || 'Custom Adventure';
         } else if (elements.adventureTypeSelect) {
-             const option = elements.adventureTypeSelect.querySelector(`option[value="${gameState.adventureTheme}"]`);
+             const option = [...(elements.adventureTypeSelect.options || [])].find(o => o.value === gameState.adventureTheme);
              themeName = option ? option.textContent : (gameState.adventureTheme || 'Adventure');
         } else { themeName = gameState.adventureTheme || 'Adventure'; }
     } catch (e) { log("Failed to get theme name for header", e); }
@@ -988,6 +988,7 @@ export function renderChoices(choices, handler = null) {
         button.dataset.choiceIndex = index;
 
         if (handler) {
+            button.classList.add('recovery-choice-btn'); // its own handler only: the story-choice listener skips it
             button.onclick = () => handler(choice);
         }
 
@@ -1430,7 +1431,7 @@ export function renderSavedGamesList(saves) {
         let theme = 'Unknown';
          if (savedState) {
              if (savedState.adventureTheme === 'custom') { theme = (savedState.customThemeDescription?.substring(0, 20) || 'Custom') + (savedState.customThemeDescription?.length > 20 ? '...' : ''); }
-             else { const selectOption = elements.adventureTypeSelect?.querySelector(`option[value="${savedState.adventureTheme}"]`); theme = selectOption?.textContent || savedState.adventureTheme || 'Unknown Theme'; }
+             else { const selectOption = [...(elements.adventureTypeSelect?.options || [])].find(o => o.value === savedState.adventureTheme) /* no selector: a quote in an imported theme threw and broke the list (review 10-13) */; theme = selectOption?.textContent || savedState.adventureTheme || 'Unknown Theme'; }
          }
         // Which game is which: round, quest progress and goal at a glance.
         const pct = savedState?.questProgress?.completionPercentage ?? 0;
