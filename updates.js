@@ -21,19 +21,22 @@ export function compareVersions(a, b) {
 const isNative = () => !!window.Capacitor?.isNativePlatform?.();
 
 /** The latest release if it is newer than this build, else null. `force` skips the 6-hour wait. */
+let checkFailed = false; // the last check could not reach GitHub (offline, rate-limited)
+export const lastCheckFailed = () => checkFailed;
 export async function checkForUpdate(force = false) {
+    checkFailed = false;
     let cached = null;
     try { cached = JSON.parse(localStorage.getItem('adv.update') || 'null'); } catch (_) {}
     if (!force && cached && Date.now() - cached.at < EVERY_MS) return newer(cached.release);
     try {
         const r = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers: { Accept: 'application/vnd.github+json' } });
-        if (!r.ok) return newer(cached?.release);
+        if (!r.ok) { checkFailed = true; return newer(cached?.release); }
         const j = await r.json();
         const apk = (j.assets || []).find(a => /\.apk$/i.test(a.name));
         const release = { version: String(j.tag_name || '').replace(/^v/i, ''), notes: String(j.body || '').slice(0, 600), page: j.html_url, apk: apk?.browser_download_url || null, size: apk?.size || 0 };
         try { localStorage.setItem('adv.update', JSON.stringify({ at: Date.now(), release })); } catch (_) {}
         return newer(release);
-    } catch (_) { return newer(cached?.release); } // offline: say nothing new
+    } catch (_) { checkFailed = true; return newer(cached?.release); } // offline: nothing new, and say we couldn't check
 }
 const newer = (rel) => (rel?.version && compareVersions(rel.version, Config.APP_VERSION) > 0 ? rel : null);
 
@@ -78,9 +81,13 @@ export async function showUpdateBanner(force = false) {
     if (st.ready) { ready(); return rel; }
     btn.disabled = true; btn.textContent = '⬇️ Downloading…'; help.textContent = 'Downloading the update in the background. You can keep playing.';
     if (!downloading) {
-        const listener = await U.addListener('progress', ({ pct }) => { if (pct >= 0) btn.textContent = `⬇️ Downloading… ${pct}%`; });
-        downloading = U.download({ url: rel.apk, version: rel.version, size: rel.size || 0 })
-            .finally(() => { listener?.remove?.(); downloading = null; });
+        // Claimed before any await (review 10-13: the startup check and a tap could both start a
+        // download, writing the same file; the corrupted APK then failed to install).
+        downloading = (async () => {
+            const listener = await U.addListener('progress', ({ pct }) => { if (pct >= 0) btn.textContent = `⬇️ Downloading… ${pct}%`; });
+            try { return await U.download({ url: rel.apk, version: rel.version, size: rel.size || 0 }); }
+            finally { listener?.remove?.(); }
+        })().finally(() => { downloading = null; });
     }
     downloading.then(ready).catch(e => {
         btn.disabled = false; btn.textContent = '⬇️ Try the download again';

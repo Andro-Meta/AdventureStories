@@ -369,7 +369,7 @@ function setupEventListeners(UI, setup, actionHandler, saveLoad) { // Added acti
         safeAddListener('checkUpdatesBtn', 'click', async () => {
             const b = document.getElementById('checkUpdatesBtn'); b.textContent = 'Checking…';
             const rel = await U.showUpdateBanner(true).catch(() => null);
-            b.textContent = rel ? `Version ${rel.version} is out ↑` : 'Up to date ✓';
+            b.textContent = rel ? `Version ${rel.version} is out ↑` : U.lastCheckFailed() ? "Couldn't check (offline?) ↻" : 'Up to date ✓';
         }, 'checkUpdatesBtn');
     }).catch(e => displayVisualError(`Update check setup failed: ${e.message}`));
     // Save backup: export every save to a file, import them again.
