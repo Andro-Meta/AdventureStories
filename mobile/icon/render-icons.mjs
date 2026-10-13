@@ -29,14 +29,31 @@ for (const [d, k] of Object.entries(densities)) {
 }
 jobs.push({ out: `${WEB}icon-512.png`, px: 512, html: svg(`<g clip-path="url(#m)">${full}</g>`, CROP, rounded), transparent: true });
 jobs.push({ out: `${WEB}icon-192.png`, px: 192, html: svg(`<g clip-path="url(#m)">${full}</g>`, CROP, rounded), transparent: true });
+// Google Play store icon: a full-bleed 512 square (Play rounds the corners itself).
+jobs.push({ out: here('play-icon-512.png'), px: 512, html: svg(full, CROP) });
 jobs.push({ out: here('preview.png'), px: 600, html: svg(`<g clip-path="url(#m)">${full}</g>`, CROP, rounded) });
+
+// Splash screens (were Capacitor's default blue X): sunset sky, the art, the name.
+// Each existing splash.png is re-rendered at its own size.
+import { readdirSync, readFileSync, existsSync } from 'node:fs';
+for (const dir of readdirSync(RES).filter(d => d.startsWith('drawable'))) {
+  const f = `${RES}${dir}/splash.png`;
+  if (!existsSync(f)) continue;
+  const b = readFileSync(f), w = b.readUInt32BE(16), h = b.readUInt32BE(20); // PNG IHDR size
+  const art = Math.round(Math.min(w, h) * 0.62), font = Math.round(Math.min(w, h) * 0.075);
+  const html = `<div style="width:${w}px;height:${h}px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:${Math.round(font * 0.4)}px;background:linear-gradient(#ffcf8a,#ff9a76 45%,#c8668f 80%,#7a4a9e)">
+    <div style="width:${art}px;height:${art}px">${svg(FOREGROUND)}</div>
+    <div style="margin-top:-${Math.round(art * 0.14)}px;font:800 ${font}px 'Trebuchet MS',system-ui,sans-serif;color:#fffaf0;text-shadow:0 ${Math.round(font / 12)}px ${Math.round(font / 4)}px rgba(90,40,90,.45);letter-spacing:.5px">Talewright Adventures</div></div>`;
+  jobs.push({ out: f, w, h, html });
+}
 
 const browser = await chromium.launch();
 const page = await browser.newPage();
 for (const j of jobs) {
-  await page.setViewportSize({ width: Math.round(j.px), height: Math.round(j.px) });
+  const W = Math.round(j.w || j.px), H = Math.round(j.h || j.px);
+  await page.setViewportSize({ width: W, height: H });
   await page.setContent(`<html><body style="margin:0;background:transparent">${j.html}</body></html>`);
-  await page.screenshot({ path: j.out, omitBackground: !!j.transparent, clip: { x: 0, y: 0, width: Math.round(j.px), height: Math.round(j.px) } });
+  await page.screenshot({ path: j.out, omitBackground: !!j.transparent, clip: { x: 0, y: 0, width: W, height: H } });
 }
 await browser.close();
 console.log(`rendered ${jobs.length} icons`);

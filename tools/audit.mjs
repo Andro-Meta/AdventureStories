@@ -1,4 +1,4 @@
-// Static validator for Adventure Stories. Runs in plain Node (no browser).
+// Static validator for Talewright Adventures. Runs in plain Node (no browser).
 // Catches: missing hooks, malformed quest definitions, schema rot,
 // engine-path drift from aiHandler/God-mode write paths.
 //

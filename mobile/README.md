@@ -1,4 +1,4 @@
-# Adventure Stories — Android (Capacitor)
+# Talewright Adventures — Android (Capacitor)
 
 The Android app is the same web game wrapped in Capacitor 8. The storyteller is
 the same free online AI as on desktop (OpenRouter or Google AI Studio); each

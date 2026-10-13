@@ -2,9 +2,9 @@
   "name": "adventure-stories-mobile",
   "version": "1.5.1",
   "private": true,
-  "description": "Capacitor wrapper for the Adventure Stories Android APK / AAB.",
+  "description": "Capacitor wrapper for the Talewright Adventures Android APK / AAB.",
   "scripts": {
-    "init": "npx cap init 'Adventure Stories' com.androsmeta.adventurestories --web-dir=..",
+    "init": "npx cap init 'Talewright Adventures' com.androsmeta.adventurestories --web-dir=..",
     "add:android": "npx cap add android",
     "sync": "npx cap sync android",
     "open:android": "npx cap open android",

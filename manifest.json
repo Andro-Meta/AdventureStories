@@ -1,6 +1,6 @@
 {
-  "name": "Adventure Stories",
-  "short_name": "Adventure",
+  "name": "Talewright Adventures",
+  "short_name": "Talewright",
   "description": "AI-powered text adventure with persistent world memory and god-mode endgame.",
   "start_url": "/index.html",
   "scope": "/",

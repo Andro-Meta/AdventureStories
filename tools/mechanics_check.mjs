@@ -1858,7 +1858,7 @@ await block(async () => {
   const n = await SL.importSaves(file);
   check(n === 1 && JSON.parse(localStorage.getItem(key)).gameState.turn === 7 && localStorage.getItem('adv.apiKey.x') === null, `an exported file imports its save (${n}) and nothing else (no keys)`);
   const bad = await SL.importSaves('{"hello":1}');
-  check(bad === 0, 'a file that is not an Adventure Stories save file is refused');
+  check(bad === 0, 'a file that is not an Talewright Adventures save file is refused');
   localStorage.removeItem(key);
 });
 

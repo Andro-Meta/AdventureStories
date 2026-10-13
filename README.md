@@ -1,4 +1,4 @@
-# Adventure Stories
+# Talewright Adventures
 
 **A choose-your-own-adventure game where a free AI is the storyteller.** Pick a world, name your heroes, and play through a story that is written live around every choice you make. It has dice rolls, fights, loot, a shop, levelling up and a real ending. Play solo or pass the phone around with up to five friends or family members.
 
@@ -10,7 +10,7 @@ It runs on Android (install the APK from [Releases](https://github.com/Andro-Met
 
 ## What it's for
 
-Adventure Stories started as a dad's bedtime-story machine and grew into a full game. It is meant for:
+Talewright Adventures started as a dad's bedtime-story machine and grew into a full game. It is meant for:
 
 - **Families and kids.** The story adapts to the youngest and oldest players at the table (reading levels for ages 6–9, 10–14 and 15+). A 7-year-old and a 35-year-old get a story both can follow. For younger players, fights show the effect of a hit without blood or wounds.
 - **Reading practice that doesn't feel like homework.** Every turn is a short scene to read, or to hear: the 🔊 button reads it aloud.

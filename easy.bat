@@ -1,6 +1,6 @@
 @echo off
 REM ============================================================
-REM   Adventure Stories - one-click launcher (Windows)
+REM   Talewright Adventures - one-click launcher (Windows)
 REM ============================================================
 REM   Double-click this file to start the game.
 REM   - Starts the web server (port 8321+). The AI runs online (free
@@ -13,9 +13,9 @@ REM Always run from the script's own folder, even if you double-clicked
 REM from a shortcut elsewhere.
 cd /d "%~dp0"
 
-title Adventure Stories Launcher
+title Talewright Adventures Launcher
 echo.
-echo  Adventure Stories - launching...
+echo  Talewright Adventures - launching...
 echo  Project folder: %CD%
 echo.
 

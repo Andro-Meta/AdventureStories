@@ -73,7 +73,7 @@ export async function showUpdateBanner(force = false) {
         help.textContent = `Version ${rel.version} is downloaded. Install when you like: your saves and keys stay.`;
         btn.onclick = async () => {
             const r = await U.install({ version: rel.version }).catch(e => ({ error: e?.message }));
-            if (r?.needsPermission) help.textContent = 'Allow "Install unknown apps" for Adventure Stories (the switch Android just opened), come back, and tap Install now again.';
+            if (r?.needsPermission) help.textContent = 'Allow "Install unknown apps" for Talewright Adventures (the switch Android just opened), come back, and tap Install now again.';
             else if (r?.error) help.textContent = `Could not start the installer: ${r.error}`;
         };
     };

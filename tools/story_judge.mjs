@@ -26,7 +26,7 @@ ${scenes}
 Reply with JSON only: {"links":[{"from":1,"to":2,"label":"therefore|but|and_then"}],"setups":[{"scene":1,"setup":"...","payoff":3}]}`;
   const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${KEY}`, 'X-Title': 'Adventure Stories judge' },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${KEY}`, 'X-Title': 'Talewright Adventures judge' },
     body: JSON.stringify({ model: 'nvidia/nemotron-3-super-120b-a12b:free', models: ['nvidia/nemotron-3-ultra-550b-a55b:free'], temperature: 0,
       reasoning: { enabled: false }, response_format: { type: 'json_object' }, max_tokens: 3000, messages: [{ role: 'user', content: prompt }] }),
   });

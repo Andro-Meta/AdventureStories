@@ -11,7 +11,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Adventure">
     <meta name="mobile-web-app-capable" content="yes">
-    <title>Adventure Stories</title>
+    <title>Talewright Adventures</title>
     <link rel="stylesheet" href="style.css">
     <!-- Phase 4.0: PWA manifest enables "Add to Home Screen" / installable behavior on mobile -->
     <link rel="manifest" href="manifest.json">
@@ -25,7 +25,8 @@
 
         <!-- Main Menu Screen -->
         <div id="mainMenuScreen" class="screen active">
-            <h1>Adventure Stories</h1>
+            <img src="icon-192.png" alt="" class="menu-logo" width="96" height="96">
+            <h1>Talewright Adventures</h1>
             <div id="updateBanner" class="card update-banner hidden">
                 <p class="update-title"></p>
                 <p class="update-notes"></p>
@@ -53,7 +54,7 @@
 
         <!-- AI Backend Settings Screen (Phase 0) -->
         <div id="localAIScreen" class="screen hidden">
-            <h1>Adventure Stories</h1>
+            <h1>Talewright Adventures</h1>
             <div class="card">
                 <h2>AI Settings</h2>
                 <p id="localAIBanner">The storyteller is a free online AI. Pick a provider and paste your free key once; it stays on this device.</p>
@@ -137,7 +138,7 @@
 
         <!-- Player Count Selection Screen -->
         <div id="playerCountScreen" class="screen hidden">
-            <h1>Adventure Stories</h1>
+            <h1>Talewright Adventures</h1>
             <div class="card">
                 <h2>How many players?</h2>
                 <div class="button-container vertical">
@@ -160,7 +161,7 @@
 
         <!-- Adventure Type Selection Screen -->
         <div id="adventureTypeScreen" class="screen hidden">
-            <h1>Adventure Stories</h1>
+            <h1>Talewright Adventures</h1>
             <div class="card">
                 <h2>Choose Your Adventure Theme</h2>
                 <select id="adventureTypeSelect">
@@ -192,7 +193,7 @@
 
         <!-- Age Input Screen -->
         <div id="ageInputScreen" class="screen hidden">
-            <h1>Adventure Stories</h1>
+            <h1>Talewright Adventures</h1>
             <div class="card">
                 <h2>Player Ages</h2>
                 <p>Age helps tailor the story (Recommended: 6-99).</p>
@@ -209,7 +210,7 @@
 
         <!-- Player Names Screen -->
         <div id="nameInputScreen" class="screen hidden">
-            <h1>Adventure Stories</h1>
+            <h1>Talewright Adventures</h1>
             <div class="card">
                 <h2>Player Names</h2>
                 <div id="nameInputsContainer" class="input-grid">
@@ -506,9 +507,9 @@
 
         <!-- About Screen -->
         <div id="aboutScreen" class="screen hidden">
-            <h1>About Adventure Stories</h1>
+            <h1>About Talewright Adventures</h1>
             <div class="card about-content">
-                 <p>Adventure Stories is an AI-powered, text-based RPG where your choices shape the narrative, guided by an AI storyteller.</p>
+                 <p>Talewright Adventures is an AI-powered, text-based RPG where your choices shape the narrative, guided by an AI storyteller.</p>
                  <p>Create characters, explore themed worlds, battle monsters, find items, and complete your adventure goal! The storyteller is a free online AI (Google, Groq or OpenRouter keys, set once in AI Settings; the smart switcher picks whichever is working).</p>
                  <p><strong>Features:</strong> 13 themes plus your own, five approaches with Safe / Bold / Reckless danger each turn, stats and levels, fights that keep pace with you, rest spots and treasure, lucky charms that fuse, a shop, god mode after victory, and local saves you can export.</p>
                  <hr>

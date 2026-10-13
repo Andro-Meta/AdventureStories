@@ -65,7 +65,7 @@ async function forward(req, res) {
   try {
     const r = await fetch(`https://${host}${req.url.slice(host.length + 1)}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}`, 'X-Title': 'Adventure Stories' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}`, 'X-Title': 'Talewright Adventures' },
       body,
     });
     status = r.status; text = await r.text();
@@ -100,4 +100,4 @@ http.createServer((req, res) => {
   if (req.method === 'POST' && (req.url === '/openrouter.ai/api/v1/chat/completions' || req.url === '/generativelanguage.googleapis.com/v1beta/openai/chat/completions')) return forward(req, res);
   if (req.method === 'GET' || req.method === 'HEAD') return serveFile(req, res);
   res.writeHead(405); res.end();
-}).listen(PORT, '127.0.0.1', () => console.log(`Adventure Stories with your keys (${Object.entries(KEYS).filter(([, [, k]]) => k).map(([s]) => s).join(', ')}): http://127.0.0.1:${PORT}  (Ctrl+C to stop)`));
+}).listen(PORT, '127.0.0.1', () => console.log(`Talewright Adventures with your keys (${Object.entries(KEYS).filter(([, [, k]]) => k).map(([s]) => s).join(', ')}): http://127.0.0.1:${PORT}  (Ctrl+C to stop)`));

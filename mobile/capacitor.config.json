@@ -1,6 +1,6 @@
 {
   "appId": "com.androsmeta.adventurestories",
-  "appName": "Adventure Stories",
+  "appName": "Talewright Adventures",
   "webDir": "www",
   "bundledWebRuntime": false,
   "android": {
@@ -15,8 +15,8 @@
   "plugins": {
     "SplashScreen": {
       "launchShowDuration": 2000,
-      "backgroundColor": "#1a1a2e",
-      "showSpinner": true,
+      "backgroundColor": "#ff9a76",
+      "showSpinner": false,
       "spinnerColor": "#FFD700"
     }
   },

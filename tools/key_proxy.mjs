@@ -32,7 +32,7 @@ http.createServer(async (req, res) => {
   try {
     const r = await fetch(`https://${HOST}/${rest.join('/')}`, {
       method: req.method,
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${KEY}`, 'X-Title': 'Adventure Stories test' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${KEY}`, 'X-Title': 'Talewright Adventures test' },
       body: req.method === 'GET' ? undefined : body,
     });
     const text = await r.text();

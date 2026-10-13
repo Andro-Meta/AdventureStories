@@ -2090,3 +2090,4 @@ body::after { bottom: 0; height: env(safe-area-inset-bottom); }
 .stat-chip.reading-flag { background: rgba(255, 170, 0, 0.25); box-shadow: inset 0 0 0 1px #ffaa00; }
 .reading-row { margin: 6px 0; line-height: 1.4; }
 .reading-row.flagged { color: #ffcc66; }
+.menu-logo { display: block; margin: 8px auto -6px; border-radius: 22px; box-shadow: 0 6px 18px rgba(255, 154, 118, 0.25); }

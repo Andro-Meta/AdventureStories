@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Network security policy for Adventure Stories (Capacitor APK).
+    Network security policy for Talewright Adventures (Capacitor APK).
 
     cleartextTrafficPermitted=false everywhere — every cloud AI endpoint we
     call is HTTPS, including the WebView assets server (https://localhost,

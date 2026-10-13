@@ -1,4 +1,4 @@
-// sw.js — Service Worker for Adventure Stories.
+// sw.js — Service Worker for Talewright Adventures.
 //
 // LESSON LEARNED THE HARD WAY (2026-04-30):
 // The previous version of this file pre-cached state.js / setup.js / main.js

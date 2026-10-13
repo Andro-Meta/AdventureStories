@@ -1,74 +1,85 @@
-// Adventure Stories app icon, as SVG layers on a 108x108 canvas (Android
+// Talewright Adventures app icon, as SVG layers on a 108x108 canvas (Android
 // adaptive-icon units). The foreground art stays inside the 66-unit safe zone
 // (a circle of radius 33 around the centre) so no launcher mask crops it.
+// Cozy and fun (Michael 10-14): a sunset sky, and a path that winds up out of an
+// open storybook to a little hilltop cottage with a lit window.
 
 export const BACKGROUND = `
 <defs>
-  <radialGradient id="sky" cx="50%" cy="38%" r="75%">
-    <stop offset="0" stop-color="#4b2a7a"/>
-    <stop offset="0.55" stop-color="#24184a"/>
-    <stop offset="1" stop-color="#0d0b24"/>
-  </radialGradient>
+  <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#ffcf8a"/>
+    <stop offset="0.45" stop-color="#ff9a76"/>
+    <stop offset="0.8" stop-color="#c8668f"/>
+    <stop offset="1" stop-color="#7a4a9e"/>
+  </linearGradient>
 </defs>
 <rect width="108" height="108" fill="url(#sky)"/>
-<g fill="#fff">
-  <circle cx="18" cy="20" r="0.9" opacity="0.8"/><circle cx="30" cy="12" r="0.6" opacity="0.6"/>
-  <circle cx="86" cy="18" r="0.8" opacity="0.75"/><circle cx="94" cy="34" r="0.55" opacity="0.5"/>
-  <circle cx="12" cy="44" r="0.6" opacity="0.5"/><circle cx="78" cy="9" r="0.5" opacity="0.6"/>
-  <circle cx="98" cy="62" r="0.7" opacity="0.45"/><circle cx="9" cy="76" r="0.7" opacity="0.4"/>
-  <circle cx="24" cy="96" r="0.5" opacity="0.35"/><circle cx="88" cy="92" r="0.6" opacity="0.35"/>
+<g fill="#fff4e4" opacity="0.75">
+  <ellipse cx="22" cy="30" rx="10" ry="4.5"/><ellipse cx="29" cy="27.5" rx="7" ry="5"/>
+  <ellipse cx="88" cy="46" rx="9" ry="4"/><ellipse cx="82" cy="43.5" rx="6" ry="4.5"/>
+</g>
+<g fill="#fffaf0">
+  <circle cx="14" cy="14" r="0.9" opacity="0.8"/><circle cx="94" cy="12" r="0.8" opacity="0.7"/>
+  <circle cx="100" cy="26" r="0.6" opacity="0.6"/><circle cx="8" cy="52" r="0.6" opacity="0.5"/>
 </g>`;
 
 export const FOREGROUND = `
 <defs>
   <radialGradient id="glow" cx="50%" cy="50%" r="50%">
-    <stop offset="0" stop-color="#ffe9a8" stop-opacity="0.95"/>
-    <stop offset="0.35" stop-color="#ffc94d" stop-opacity="0.55"/>
-    <stop offset="1" stop-color="#ff9d2e" stop-opacity="0"/>
+    <stop offset="0" stop-color="#fff3b0" stop-opacity="0.95"/>
+    <stop offset="0.4" stop-color="#ffd166" stop-opacity="0.5"/>
+    <stop offset="1" stop-color="#ffb347" stop-opacity="0"/>
   </radialGradient>
-  <linearGradient id="star" x1="0" y1="0" x2="0" y2="1">
-    <stop offset="0" stop-color="#fff6d6"/>
-    <stop offset="0.5" stop-color="#ffd35c"/>
-    <stop offset="1" stop-color="#f0a623"/>
+  <linearGradient id="hill" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#8fd18b"/>
+    <stop offset="1" stop-color="#4f9e6a"/>
   </linearGradient>
-  <linearGradient id="pageL" x1="1" y1="0" x2="0" y2="0">
-    <stop offset="0" stop-color="#e9d3a2"/>
-    <stop offset="1" stop-color="#fbf1da"/>
+  <linearGradient id="page" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#fffaf0"/>
+    <stop offset="1" stop-color="#f1dfbd"/>
   </linearGradient>
-  <linearGradient id="pageR" x1="0" y1="0" x2="1" y2="0">
-    <stop offset="0" stop-color="#e9d3a2"/>
-    <stop offset="1" stop-color="#fbf1da"/>
-  </linearGradient>
-  <linearGradient id="beam" x1="0" y1="1" x2="0" y2="0">
-    <stop offset="0" stop-color="#ffd35c" stop-opacity="0.75"/>
-    <stop offset="1" stop-color="#ffd35c" stop-opacity="0"/>
+  <linearGradient id="path" x1="0" y1="1" x2="0" y2="0">
+    <stop offset="0" stop-color="#ffe1a6"/>
+    <stop offset="1" stop-color="#f7c873"/>
   </linearGradient>
 </defs>
 
-<g transform="translate(54 54) scale(0.88) translate(-54 -54)"><!-- scaled into the 66-unit safe circle -->
-<!-- light rising from the pages -->
-<path d="M47 64 L41 36 L67 36 L61 64 Z" fill="url(#beam)" opacity="0.55"/>
-<circle cx="54" cy="38" r="17" fill="url(#glow)"/>
+<g transform="translate(54 54) scale(0.9) translate(-54 -54)"><!-- inside the 66-unit safe circle -->
+<!-- crescent moon -->
+<mask id="moonCut"><rect width="108" height="108" fill="#fff"/><circle cx="83" cy="29" r="5.6" fill="#000"/></mask>
+<circle cx="80" cy="31" r="6.5" fill="#fff6d8" mask="url(#moonCut)"/>
 
-<!-- compass star -->
-<path d="M54 25.5 L57.2 34.8 L66.5 38 L57.2 41.2 L54 50.5 L50.8 41.2 L41.5 38 L50.8 34.8 Z" fill="url(#star)"/>
-<path d="M54 31 L55.6 36.4 L61 38 L55.6 39.6 L54 45 L52.4 39.6 L47 38 L52.4 36.4 Z" fill="#fffbea" opacity="0.9"/>
+<!-- hill with the cottage -->
+<path d="M27 59 Q40 37 56 38 Q72 39 83 59 Z" fill="url(#hill)"/>
+<circle cx="59" cy="38" r="15" fill="url(#glow)"/>
+<!-- cottage: walls, roof, door, glowing window, chimney + smoke (scaled up to read at phone size) -->
+<g transform="translate(59 40) scale(1.35) translate(-59 -40)">
+<rect x="52.5" y="35" width="13" height="9.5" rx="1" fill="#fff1dc"/>
+<path d="M50.5 36.5 L59 28.5 L67.5 36.5 Z" fill="#e0574f"/>
+<rect x="63" y="29.5" width="2.6" height="5" fill="#9a4b3f"/>
+<g fill="#fff4e4" opacity="0.85"><circle cx="64.5" cy="27" r="1.4"/><circle cx="66.2" cy="24.6" r="1.1"/><circle cx="65.4" cy="22.4" r="0.8"/></g>
+<rect x="55" y="38" width="3.6" height="3.4" rx="0.6" fill="#ffd64d"/>
+<path d="M60.8 44.5 v-4.2 a1.5 1.5 0 0 1 3 0 v4.2 Z" fill="#a8613e"/>
+</g>
+
+<!-- book cover and pages -->
+<path d="M24 66 Q39 61 54 67 Q69 61 84 66 L84 82 Q69 77 54 83 Q39 77 24 82 Z" fill="#2f8f9d"/>
+<path d="M26 64 Q40 58 54 65 L54 80 Q40 74 26 79 Z" fill="url(#page)"/>
+<path d="M82 64 Q68 58 54 65 L54 80 Q68 74 82 79 Z" fill="url(#page)"/>
+<path d="M54 65 L54 83" stroke="#1f6b77" stroke-width="1.4"/>
+<g stroke="#d9bf8c" stroke-width="0.7" fill="none" opacity="0.85" stroke-linecap="round">
+  <path d="M30 67 Q38 64 46 67.5"/><path d="M30 70.5 Q38 67.5 46 71"/>
+  <path d="M78 67 Q70 64 62 67.5"/><path d="M78 70.5 Q70 67.5 62 71"/>
+</g>
+
+<!-- the path: out of the pages, winding up the hill to the door -->
+<path d="M48.5 72.5 Q44 63.5 53 59.5 Q62 55.5 56.5 51 Q52.5 48 61.5 46 L65.5 46 Q57.5 48.4 60.8 51.2 Q67.5 57.5 57 62.2 Q51.5 65 55.5 72.5 Z" fill="url(#path)"/>
 
 <!-- sparkles -->
-<g fill="#ffe7a0">
-  <path d="M38 30 l1 2.4 2.4 1 -2.4 1 -1 2.4 -1 -2.4 -2.4 -1 2.4 -1 z"/>
-  <path d="M71 28 l0.8 1.9 1.9 0.8 -1.9 0.8 -0.8 1.9 -0.8 -1.9 -1.9 -0.8 1.9 -0.8 z"/>
-  <path d="M69 47 l0.6 1.4 1.4 0.6 -1.4 0.6 -0.6 1.4 -0.6 -1.4 -1.4 -0.6 1.4 -0.6 z" opacity="0.8"/>
+<g fill="#fff6c9">
+  <path d="M33 47 l0.9 2.1 2.1 0.9 -2.1 0.9 -0.9 2.1 -0.9 -2.1 -2.1 -0.9 2.1 -0.9 z"/>
+  <path d="M42 29 l0.7 1.6 1.6 0.7 -1.6 0.7 -0.7 1.6 -0.7 -1.6 -1.6 -0.7 1.6 -0.7 z"/>
+  <path d="M80 50 l0.6 1.4 1.4 0.6 -1.4 0.6 -0.6 1.4 -0.6 -1.4 -1.4 -0.6 1.4 -0.6 z"/>
 </g>
-
-<!-- book: cover, pages, spine -->
-<path d="M28 63 Q41 59 54 64 Q67 59 80 63 L80 79 Q67 75 54 80 Q41 75 28 79 Z" fill="#7a2335"/>
-<path d="M30 61 Q42 56 54 62 L54 77 Q42 71 30 76 Z" fill="url(#pageL)"/>
-<path d="M78 61 Q66 56 54 62 L54 77 Q66 71 78 76 Z" fill="url(#pageR)"/>
-<g stroke="#c9a96a" stroke-width="0.7" fill="none" opacity="0.8" stroke-linecap="round">
-  <path d="M34 63.5 Q42 60.5 50 64"/><path d="M34 67 Q42 64 50 67.5"/><path d="M34 70.5 Q42 67.5 50 71"/>
-  <path d="M74 63.5 Q66 60.5 58 64"/><path d="M74 67 Q66 64 58 67.5"/><path d="M74 70.5 Q66 67.5 58 71"/>
-</g>
-<path d="M54 62 L54 80" stroke="#b07a2a" stroke-width="1.4"/>
 </g>
 `;

@@ -1,5 +1,5 @@
 // spells.js
-// Core Magic & Spell System for Adventure Stories
+// Core Magic & Spell System for Talewright Adventures
 // Phase 3: Magic System Implementation
 
 import { gameState, buildGameContextBlock } from './state.js';

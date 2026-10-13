@@ -1,5 +1,5 @@
 // config.js
-// Constants for Adventure Stories.
+// Constants for Talewright Adventures.
 //
 // The storyteller is a free online model (OpenRouter or Google AI Studio),
 // called from the browser with the player's own key, saved in AI Settings.
