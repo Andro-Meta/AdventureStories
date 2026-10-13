@@ -137,24 +137,6 @@ export class QuestProgressManager {
         }
     }
 
-    /**
-     * Check if quest should be considered complete
-     */
-    shouldCompleteQuest() {
-        const progress = gameState.questProgress;
-        
-        // Multiple completion criteria
-        const criteria = {
-            highProgress: progress.completionPercentage >= 95,
-            finalMilestone: progress.milestones.some(m => m.type === 'goal_achieved'),
-            minimumTurns: gameState.turn >= 30,
-            phaseResolution: progress.currentPhase === 'resolution'
-        };
-        
-        // Need at least 2 criteria met
-        const metCriteria = Object.values(criteria).filter(Boolean).length;
-        return metCriteria >= 2;
-    }
 
 }
 

@@ -326,43 +326,12 @@ export class GodModeManager {
         UI.showPopup(tutorialMessage, 'god_mode_tutorial', 10000);
     }
 
-    /**
-     * Main-quest completion check.
-     *
-     * Order of authority (most → least authoritative):
-     *   1. gameState.isGoalComplete — the engine flips this when the
-     *      narrator emits the Act 3 final_blow milestone + isGoalComplete
-     *      diff op. This is the canonical "you won the game" signal.
-     *   2. questProgressManager.shouldCompleteQuest() — pre-Phase-4
-     *      heuristic (>=2 of high-progress / final milestone / minimum
-     *      turns / phase=resolution). Kept as a backstop in case the
-     *      narrator forgets to emit the explicit isGoalComplete op.
-     *   3. Generous fallback: 95%+ progress AND turn >= 30 AND a
-     *      milestone literally named final_blow. Earlier code looked
-     *      for `adventureGoal.includes('completed')` which never fires.
-     */
-    completeQuestViaEngine() {
-        import('./engine.js').then(E => {
-            if (!gameState.isGoalComplete) E.applyDiff([{ op: 'replace', path: '/isGoalComplete', value: true }], { strict: false });
-        }).catch(() => {});
-    }
 
     checkMainQuestlineCompletion() {
-        if (gameState.isGoalComplete === true) return true;
-        if (gameState.questProgressManager
-            && typeof gameState.questProgressManager.shouldCompleteQuest === 'function'
-            && gameState.questProgressManager.shouldCompleteQuest()) {
-            this.completeQuestViaEngine();
-            return true;
-        }
-        const milestones = gameState.questProgress?.milestones || [];
-        const hasFinalBlow = milestones.some(m => {
-            const n = String(m?.name || '').toLowerCase().replace(/[\s_-]+/g, ' ').trim();
-            return n === 'final blow' || n === 'goal achieved';
-        });
-        return hasFinalBlow
-            && (gameState.questProgress?.completionPercentage || 0) >= 95
-            && (gameState.turn || 0) >= 30;
+        // The engine is the only judge: it sets isGoalComplete when the final blow lands
+        // and refuses it while the boss stands. The old tracker's backup checks unlocked
+        // god mode (saved) with the boss alive (review 10-13).
+        return gameState.isGoalComplete === true;
     }
 
     checkCharacterMastery() {
@@ -425,7 +394,8 @@ export class GodModeManager {
         if (!data || typeof data !== 'object') return;
         const log = window.displayVisualError || console.log;
         try {
-            if (typeof data.isUnlocked === 'boolean') this.isUnlocked = data.isUnlocked;
+            // An unlock saved by the old tracker's early check, boss still standing, doesn't count.
+            if (typeof data.isUnlocked === 'boolean') this.isUnlocked = data.isUnlocked && gameState.isGoalComplete === true;
             if (typeof data.isActive === 'boolean') this.isActive = data.isActive;
             const restoreMap = (target, entries) => {
                 if (!Array.isArray(entries)) return;

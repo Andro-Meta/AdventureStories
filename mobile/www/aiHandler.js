@@ -233,10 +233,24 @@ export async function processAIResponse(prompt) {
         const type = ['Weapon', 'Armor', 'Consumable', 'Consumable'][Math.floor(Math.random() * 4)];
         treasure = Items.generateThemedItem(gameState.adventureTheme, Items.lootTierFor(Items.partyLevel()), type);
     }
+    // A trap is the game's to apply, like a rest (review 10-13: its HP op was dropped as a
+    // duplicate on every rolled turn, so traps never hurt). The roll decides: a failed or
+    // fumbled Bold/Reckless move springs it on the hero who acted (a Safe one never hurts).
+    let trapLine = 'A TRAP THIS TURN: a hidden danger (a snare, a collapsing floor, a cursed object) springs, and the hero dodges it just in time. No fight.';
+    if (beat === 'trap') {
+        const out = gameState.narrativeContext?.lastOutcome;
+        const victim = gameState.players?.[pIdx];
+        if (victim && /fail|fumble/.test(out?.band || '') && (out?.roll?.type || 'Bold') !== 'Safe') {
+            const dmg = Math.min(Math.max(1, (victim.hp || 1) - 1), Math.max(3, Math.round((victim.maxHp || 100) * 0.12))); // hurts, never downs
+            victim.hp = Math.max(1, (victim.hp || 1) - dmg);
+            trapLine = `A TRAP THIS TURN: a hidden danger (a snare, a collapsing floor, a cursed object) catches ${victim.name}, who loses ${dmg} HP (the game applied it: do not add it in "ops"). No fight.`;
+            try { UI.showPopup(`⚠️ A trap! ${victim.name} −${dmg} HP`, 'damage', 2500); UI.renderPlayerCards(); } catch (_) {}
+        }
+    }
     const BEAT_LINES = {
         rest: 'A SAFE PLACE THIS TURN: the heroes come upon somewhere to recover (a spring, a camp, a kindly healer, a quiet inn, a hidden nook) that fits this place. Show them resting and recovering; the game restores their HP and MP. No fight this turn.',
         treasure: treasure ? `A TREASURE THIS TURN: the hero who acted finds ${treasure.name} (${treasure.type}); show where it was hidden. The game puts it in their pack: do not add it in "ops".` : '',
-        trap: 'A TRAP THIS TURN: a hidden danger (a snare, a collapsing floor, a cursed object) springs; the hero\'s action decides whether they dodge it. No fight.',
+        trap: trapLine,
         stranger: 'A STRANGER THIS TURN: someone new appears who needs help, offers a deal, or knows a secret about the quest. Give them a name.',
         puzzle: 'A PUZZLE THIS TURN: a riddle, lock, mechanism or strange sign blocks the way; clever thinking or a lucky guess could solve it.'
     };

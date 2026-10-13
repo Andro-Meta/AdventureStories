@@ -3,6 +3,7 @@
 /* Root Variables */
 :root {
     --primary-color: #6a11cb;     /* Deep Purple */
+    --primary-text: #b794f6;      /* the purple for text on dark cards: 6.8:1 (#6a11cb was 2.0:1, review 10-13) */
     --secondary-color: #2575fc;   /* Bright Blue */
     --accent-color: var(--secondary-color); /* was used 8x but never defined: loader bar, spinner, title were invisible */
     --text-color: #f0f0f0;         /* Light Grey */
@@ -126,7 +127,7 @@ a {
 }
 
 a:hover {
-    color: var(--primary-color);
+    color: var(--primary-text);
     text-decoration: underline;
 }
 
@@ -1519,7 +1520,7 @@ footer { margin-top: 2rem; text-align: center; }
 
 #questPhase {
     font-weight: bold;
-    color: var(--primary-color);
+    color: var(--primary-text);
     text-transform: capitalize;
 }
 
@@ -1566,7 +1567,7 @@ footer { margin-top: 2rem; text-align: center; }
 }
 
 .collapsible-header:hover {
-    color: var(--primary-color);
+    color: var(--primary-text);
 }
 
 .toggle-icon {
@@ -1626,7 +1627,7 @@ footer { margin-top: 2rem; text-align: center; }
 
 #objectivesList li:before {
     content: "-> ";
-    color: var(--primary-color);
+    color: var(--primary-text);
     font-weight: bold;
 }
 
