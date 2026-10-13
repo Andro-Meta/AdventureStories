@@ -2689,6 +2689,18 @@ await block(async () => {
   check(AIm.simplifyForYoungReader(ok) === ok, 'short sentences are left alone');
 });
 
+await block(async () => {
+  // Live 10-13: "Katie, HP 100/100, Coins 50, felt the sea breeze" (game numbers in the story).
+  const AIm = await import('../aiHandler.js');
+  const s = AIm.scrubStats;
+  check(s?.('Katie, HP 100/100, Coins 50, felt the sea breeze.') === 'Katie felt the sea breeze.' && s('Toby (HP 40/100) staggers back.') === 'Toby staggers back.' && s('Mira | HP 30/30 | Coins 12 waves.') === 'Mira waves.',
+    `game numbers are cut from the story ("${s?.('Katie, HP 100/100, Coins 50, felt the sea breeze.')}")`);
+  const prose = 'She counted fifty coins.  He has 50 coins left , barely.';
+  check(s?.(prose) === prose, 'story prose about coins is left exactly as written');
+  fresh();
+  check(!/\w, HP \d/.test(AIm.generateSystemPrompt()), 'the state block no longer reads like a sentence ("Katie, HP ...")');
+});
+
 console.error = realError;
 out(`\nfetch attempts blocked: ${fetchCalls}; elapsed ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 out(failed ? `✗ ${failed} mechanics check(s) failed` : '✓ all mechanics checks passed');
