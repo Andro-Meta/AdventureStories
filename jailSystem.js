@@ -31,6 +31,7 @@
 
 import { gameState } from './state.js';
 import { recalculateCharacterStats } from './combat.js';
+import { itemValue } from './items.js';
 
 /**
  * Theme-specific jail flavor. Each entry provides a name + description that
@@ -103,12 +104,14 @@ export function transitionToJail() {
 
     // Confiscate 50% of gold (rounded down).
     gameState.confiscatedGold = 0;
+    gameState.confiscatedGoldBy = {}; // who lost what, so the escape pays each hero back
     if (Array.isArray(gameState.players)) {
         gameState.players.forEach(p => {
             if (!p) return;
             const taken = Math.floor((p.coins || 0) * 0.5);
             p.coins = (p.coins || 0) - taken;
             gameState.confiscatedGold += taken;
+            gameState.confiscatedGoldBy[p.name] = (gameState.confiscatedGoldBy[p.name] || 0) + taken;
         });
     }
 
@@ -179,9 +182,12 @@ export function completeJailEscape() {
     log('JailSystem: Party has escaped from ' + (gameState.jail?.name || 'jail'));
 
     // Restore ~75% of confiscated items, distributed back to original owners.
+    // Each hero gets back ~75% of their own things, losing their least valuable
+    // (review 10-13: the first 75% of one list came back, so the last hero lost the most).
     const items = gameState.confiscatedItems || [];
-    const restoreCount = Math.ceil(items.length * 0.75);
-    const toRestore = items.slice(0, restoreCount);
+    const byOwner = new Map();
+    items.forEach(it => byOwner.set(it._ownerName, [...(byOwner.get(it._ownerName) || []), it]));
+    const toRestore = [...byOwner.values()].flatMap(list => [...list].sort((a, b) => itemValue(b) - itemValue(a)).slice(0, Math.ceil(list.length * 0.75)));
     const playersByName = new Map();
     if (Array.isArray(gameState.players)) {
         gameState.players.forEach(p => { if (p?.name) playersByName.set(p.name, p); });
@@ -202,13 +208,13 @@ export function completeJailEscape() {
     });
     (gameState.players || []).forEach(p => p && recalculateCharacterStats(p));
 
-    // Restore ~75% of gold, split across living players.
-    const goldRestored = Math.floor((gameState.confiscatedGold || 0) * 0.75);
-    const livingPlayers = (gameState.players || []).filter(p => p && p.hp > 0);
-    if (livingPlayers.length > 0 && goldRestored > 0) {
-        const perPlayer = Math.floor(goldRestored / livingPlayers.length);
-        livingPlayers.forEach(p => { p.coins = (p.coins || 0) + perPlayer; });
+    // ~75% of each hero's own gold comes back to them (it was split evenly before).
+    let goldBy = gameState.confiscatedGoldBy || {};
+    if (!Object.keys(goldBy).length && gameState.confiscatedGold > 0) { // jailed on an older version: split as before
+        const living = (gameState.players || []).filter(p => p && p.hp > 0);
+        goldBy = Object.fromEntries(living.map(p => [p.name, gameState.confiscatedGold / living.length]));
     }
+    (gameState.players || []).forEach(p => { if (p) p.coins = (p.coins || 0) + Math.floor((goldBy[p.name] || 0) * 0.75); });
 
     // Return to capture location (or a fallback location for the theme).
     if (gameState.captureLocation) {
@@ -219,6 +225,7 @@ export function completeJailEscape() {
     gameState.imprisoned = false;
     gameState.confiscatedItems = [];
     gameState.confiscatedGold = 0;
+    gameState.confiscatedGoldBy = {};
     gameState.captureLocation = null;
     gameState.jail = null;
     if (gameState.jailEscape) {
@@ -230,7 +237,7 @@ export function completeJailEscape() {
     // another jail or game-over from a stale counter.
     gameState.consecutiveWipes = 0;
 
-    log(`JailSystem: Restored ${toRestore.length}/${items.length} items, ${goldRestored} gold.`);
+    log(`JailSystem: Restored ${toRestore.length}/${items.length} items and each hero's gold (75%).`);
 }
 
 /**

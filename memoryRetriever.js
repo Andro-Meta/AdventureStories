@@ -20,7 +20,9 @@ import { gameState, recordStoryBeat } from './state.js';
 // died and how?"). Only the game changes a person's status; the storyteller
 // reports changes with an op (or the 5-turn summary does), and the dead stay dead.
 const STATUS = [['defeated', /defeat|vanquish|overthrown/], ['dead', /dead|died|killed|slain|fallen|perish|destroyed/], ['captured', /captur|prison|taken|caught|held/],
-    ['missing', /missing|lost|vanish|disappear/], ['with you', /with|party|join|compan|follow|travel/]];
+    ['missing', /missing|lost|vanish|disappear/],
+    // Someone who left or said no is not travelling with you (review 10-13: 'left the party' matched 'party').
+    ['away', /\bleft\b|leav|refus|declin|part(ed|s) ways|depart|no longer|went (home|away)|stay(ed|s)? behind/], ['with you', /with|party|join|compan|follow|travel/]];
 const BONDS = [[3, /loyal|bonded|devoted|family/], [2, /ally|friend|compan|trust/], [-3, /nemesis|arch/], [-2, /enemy|hostile|foe|betray/], [-1, /wary|rival|suspic|distrust/]];
 export const statusOf = (s) => (STATUS.find(([, re]) => re.test(String(s || '').toLowerCase())) || ['away'])[0];
 export function bondOf(rel, fallback = 0) {

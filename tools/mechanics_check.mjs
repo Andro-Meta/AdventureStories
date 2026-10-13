@@ -2862,6 +2862,68 @@ await block(async () => {
   check(got?.ok === 1, `an empty 200 moves the request to the next provider (${hosts.join(' -> ')}${err ? `; error ${err}` : ''})`);
 });
 
+await block(async () => {
+  // Review 10-13 (low): a trap's HP op was dropped as a duplicate on every rolled turn,
+  // so traps never hurt. The game applies it now: a failed roll springs it.
+  const AIm = await import('../aiHandler.js');
+  const offline = globalThis.fetch;
+  globalThis.fetch = window.fetch = async () => ({ ok: true, status: 200, statusText: '200', headers: { get: () => null }, json: async () => ({ choices: [{ message: { content: JSON.stringify({ narration: 'A floor tile clicks.', ops: [], choices: ['brave', 'clever', 'sneaky', 'kind', 'luck'].map(stat => ({ stat, safe: `S ${stat}`, bold: `B ${stat}`, reckless: `R ${stat}` })) }) } }] }), text: async () => '' });
+  localStorage.setItem('adv.cloudProvider', 'groq_qwen'); localStorage.setItem('adv.apiKey.api.groq.com', 'test');
+  const run = async (band) => {
+    const { p } = fresh(); p.hp = p.maxHp = 100; p.mp = p.maxMp = 20; gameState.turnsSinceFight = 0; gameState.encounterOwed = false; gameState.lastRestTurn = -99; // odds: rest .12, treasure .08, trap .07 -> 0.22 is a trap
+    gameState.narrativeContext = { ...(gameState.narrativeContext || {}), lastOutcome: { band, roll: { type: 'Bold', band } } };
+    pinRandom(0.22); try { await AIm.processAIResponse('Michael chose (Brave, Bold): "Open the door". Already applied by the game: Brave check failed.'); } catch (_) {} finally { unpinRandom(); }
+    return p.hp;
+  };
+  try {
+    const hurt = await run('fail'), dodged = await run('success');
+    check(hurt < 100 && hurt > 0 && dodged === 100, `a trap hurts on a failed roll (HP 100 -> ${hurt}) and is dodged on a success (${dodged})`);
+  } finally { globalThis.fetch = window.fetch = offline; localStorage.removeItem('adv.apiKey.api.groq.com'); localStorage.removeItem('adv.cloudProvider'); }
+});
+
+await block(async () => {
+  // Review 10-13 (low): the escape restored the first 75% of one list (the last hero lost most)
+  // and split the gold evenly instead of returning each hero's own.
+  const J = await import('../jailSystem.js'); const S = await import('../state.js');
+  S.resetGameState(); gameState.adventureTheme = 'pirate';
+  const a = S.createNewPlayer('Ava', 10), b = S.createNewPlayer('Ben', 10); a.id = 'player_a'; b.id = 'player_b';
+  a.coins = 200; b.coins = 0;
+  a.inventory = [1, 2, 3, 4].map(i => ({ id: `a${i}`, name: `Ava thing ${i}`, type: 'Weapon', stats: { atk: 3 * i } })); // the jail takes gear
+  b.inventory = [1, 2, 3, 4].map(i => ({ id: `b${i}`, name: `Ben thing ${i}`, type: 'Armor', stats: { def: 2 * i } }));
+  gameState.players = [a, b];
+  J.transitionToJail(); J.completeJailEscape();
+  const own = (p, k) => p.inventory.filter(i => i.name.startsWith(k)).length;
+  check(own(a, 'Ava') === 3 && own(b, 'Ben') === 3 && !a.inventory.some(i => i.name === 'Ava thing 1') && a.coins === 100 + 75 && b.coins === 0,
+    `each hero gets back 3 of their 4 things (Ava ${own(a, 'Ava')}, Ben ${own(b, 'Ben')}; least valuable lost) and their own gold (Ava ${a.coins}, Ben ${b.coins})`);
+});
+
+await block(async () => {
+  // Review 10-13 (low): "left the party" and "refused to join" counted as travelling with you.
+  const M = await import('../memoryRetriever.js');
+  const got = ['left the party', 'refused to join', 'parted ways', 'joined the party', 'travels with you'].map(M.statusOf);
+  check(got.join(',') === 'away,away,away,with you,with you', `who left is not with you (${got.join(', ')})`);
+});
+
+await block(async () => {
+  // Review 10-13 (low): the old tracker's backup check unlocked god mode with the boss alive.
+  const { godModeManager } = await import('../godMode.js');
+  fresh(); gameState.isGoalComplete = false;
+  gameState.questProgressManager = { shouldCompleteQuest: () => true };
+  const early = godModeManager.checkMainQuestlineCompletion();
+  godModeManager.restoreFromJSON({ isUnlocked: true, isActive: false });
+  check(early === false && godModeManager.isUnlocked === false, `god mode waits for the real win (backup check ${early}, saved early unlock -> ${godModeManager.isUnlocked})`);
+  delete gameState.questProgressManager;
+});
+
+await block(async () => {
+  // Review 10-13 (low): offline, "Check for updates" said "Up to date".
+  const U = await import('../updates.js');
+  const offline = globalThis.fetch;
+  globalThis.fetch = window.fetch = async () => { throw new Error('offline'); };
+  try { await U.checkForUpdate(true); } finally { globalThis.fetch = window.fetch = offline; }
+  check(U.lastCheckFailed?.() === true, 'an update check that could not reach GitHub says so');
+});
+
 console.error = realError;
 out(`\nfetch attempts blocked: ${fetchCalls}; elapsed ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 out(failed ? `✗ ${failed} mechanics check(s) failed` : '✓ all mechanics checks passed');

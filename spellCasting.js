@@ -137,8 +137,8 @@ export async function castSpell(caster, spell, target = null) {
         // Increase school affinity
         increaseSchoolAffinity(caster, spell.school);
         
-        // Check for spell learning opportunities
-        await checkSpellLearning(caster, spell);
+        // (Casting used to roll a chance to learn a new spell outside level-up; new spells
+        // come from level-up picks and scrolls only, review 10-13.)
         
         // Learn from spell casting using dynamic system
         const wasSuccessful = results.length > 0;
@@ -671,55 +671,6 @@ function increaseSchoolAffinity(caster, school) {
     log(`${caster.name}'s ${school} affinity increased by ${increase} to ${caster.spellcasting.schoolAffinities[school]}`);
 }
 
-/**
- * Check for spell learning opportunities
- * @param {Player} caster - The caster
- * @param {Spell} spell - The spell that was cast
- */
-async function checkSpellLearning(caster, spell) {
-    // Chance to learn a related spell based on school affinity
-    const schoolAffinity = caster.spellcasting?.schoolAffinities?.[spell.school] || 0;
-    const learningChance = Math.min(0.1, schoolAffinity / 1000); // Max 10% chance
-    
-    if (Math.random() < learningChance) {
-        const log = window.displayVisualError || console.log;
-        log(`${caster.name} has a chance to learn a new ${spell.school} spell!`);
-        
-        try {
-            // Generate a new spell in the same school but different type
-            const availableTypes = Object.keys(Spells.SPELL_TYPES).filter(t => t !== spell.type);
-            const newType = availableTypes[Math.floor(Math.random() * availableTypes.length)];
-            const newLevel = Math.min(spell.level + 1, caster.spellcasting.maxSpellLevel);
-            
-            const context = {
-                situation: 'spell_learning',
-                playerId: caster.id,
-                playerNeeds: ['spell_progression'],
-                learnedFrom: spell.id,
-                storyContext: `learned from casting ${spell.name}`
-            };
-            
-            const newSpell = await Spells.generateDynamicSpell(spell.school, newType, newLevel, context);
-            
-            if (newSpell && !caster.spellcasting.knownSpells.some(x => String(x?.name).toLowerCase() === String(newSpell.name).toLowerCase())) { // never the same spell twice
-                // Add to known spells
-                caster.spellcasting.knownSpells.push(newSpell);
-                
-                // Add to prepared spells if there's room
-                if (caster.spellcasting.preparedSpells.length < 10) {
-                    caster.spellcasting.preparedSpells.push(newSpell);
-                }
-                log(`${caster.name} learned new ${spell.school} spell: ${newSpell.name}!`);
-                UI.showPopup(`${caster.name} learned: ${newSpell.name}!`, 'success', 4000);
-                
-                // Update UI to show new spell
-                UI.updateGameUI();
-            }
-        } catch (error) {
-            log(`Spell learning failed: ${error.message}`);
-        }
-    }
-}
 
 export default {
     castSpell,
