@@ -71,3 +71,6 @@ mobile/offline-models/
 # Local test output (screenshots, phone save backups, story dumps): never publish
 test-results/*
 !test-results/.last-run.json
+
+# Claude Code worktrees
+.claude/worktrees/
