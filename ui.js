@@ -26,6 +26,9 @@ import { calculateItemPrice } from './actionHandler.js';
 
 // --- DOM Element References ---
 // (Keep the existing elements object definition as is)
+// Numbers shown in HTML are always real numbers (review 10-13: a storyteller or imported-save
+// value like hp:'<img onerror=...>' ran as script).
+const num = (v, d = 0) => (Number.isFinite(Number(v)) && v !== '' && v !== null ? Math.round(Number(v)) : d);
 export const elements = {
     // Screens
     mainMenuScreen: document.getElementById('mainMenuScreen'),
@@ -552,8 +555,8 @@ function renderBattleHud() {
             if (bars[0]) bars[0].style.width = `${Math.max(0, Math.min(100, Math.round(100 * c.hp / (c.maxHp || 1))))}%`;
             if (bars[1]) bars[1].style.width = `${Math.max(0, Math.min(100, Math.round(100 * (c.mp || 0) / (c.maxMp || 1))))}%`;
             const nums = row.querySelectorAll('.bh-num');
-            if (nums[0]) nums[0].textContent = `${c.hp}/${c.maxHp}`;
-            if (nums[1]) nums[1].textContent = `${c.mp || 0}/${c.maxMp || 0}`;
+            if (nums[0]) nums[0].textContent = `${num(c.hp)}/${num(c.maxHp)}`;
+            if (nums[1]) nums[1].textContent = `${num(c.mp, 0)}/${num(c.maxMp, 0)}`;
             const st = row.querySelector('.bh-fx'); if (st) st.textContent = fx(c);
         }
         document.documentElement.style.setProperty('--hud-h', `${hud.offsetHeight}px`);
@@ -564,13 +567,13 @@ function renderBattleHud() {
     const actor = gameState.players?.[gameState.currentPlayerIndex]?.id;
     hud.innerHTML = `<div class="bh-side">${(gameState.players || []).filter(Boolean).map(p => `
         <div class="bh-row${p.id === actor ? ' bh-actor' : ''}${p.isDowned ? ' bh-down' : ''}" data-character-id="${sanitizeText(p.id)}">
-          <span class="bh-name">${sanitizeText(p.name)} <small>Lv ${p.level || 1}</small> <span class="bh-fx">${fx(p)}</span></span>
-          ${bar(p.hp, p.maxHp, 'bh-hp')}<span class="bh-num">${p.hp}/${p.maxHp}</span>
-          ${bar(p.mp || 0, p.maxMp || 1, 'bh-mp')}<span class="bh-num bh-mpn">${p.mp || 0}/${p.maxMp || 0}</span></div>`).join('')}</div>
+          <span class="bh-name">${sanitizeText(p.name)} <small>Lv ${num(p.level, 1)}</small> <span class="bh-fx">${fx(p)}</span></span>
+          ${bar(p.hp, p.maxHp, 'bh-hp')}<span class="bh-num">${num(p.hp)}/${num(p.maxHp)}</span>
+          ${bar(p.mp || 0, p.maxMp || 1, 'bh-mp')}<span class="bh-num bh-mpn">${num(p.mp, 0)}/${num(p.maxMp, 0)}</span></div>`).join('')}</div>
       <div class="bh-side bh-foes">${foes.map(e => `
         <div class="bh-row bh-foe${e.isBoss ? ' bh-boss' : ''}" data-character-id="${sanitizeText(e.id)}">
           <span class="bh-name">${e.isBoss ? '👑 ' : ''}${sanitizeText(e.name)} <span class="bh-fx">${fx(e)}</span></span>
-          ${bar(e.hp, e.maxHp, 'bh-foehp')}<span class="bh-num">${e.hp}/${e.maxHp}</span></div>`).join('')}</div>`;
+          ${bar(e.hp, e.maxHp, 'bh-foehp')}<span class="bh-num">${num(e.hp)}/${num(e.maxHp)}</span></div>`).join('')}</div>`;
     document.documentElement.style.setProperty('--hud-h', `${hud.offsetHeight}px`);
 }
 
@@ -631,24 +634,24 @@ function createCharacterCard(character, type, index, configRef) {
         <div class="card-details hidden">
              ${isPlayer ? `<p>Status: <span class="${type}-status">${isDowned ? 'Downed' : 'Okay'}</span></p>` : ''}
              ${isPlayer ? statsExplainer(character) : ''}
-             <p>ATK: <span class="${type}-atk">${character.atk ?? '?'}</span> | DEF: <span class="${type}-def">${character.def ?? '?'}</span></p>
+             <p>ATK: <span class="${type}-atk">${num(character.atk, '?')}</span> | DEF: <span class="${type}-def">${num(character.def, '?')}</span></p>
              ${isPlayer ? `<p>Weapon: <span class="${type}-weapon">${sanitizeText(weaponName)} ${weaponTier ? `(${sanitizeText(weaponTier)})` : ''}</span></p>` : ''}
              ${isPlayer ? `<p>Armor: <span class="${type}-armor">${sanitizeText(armorName)} ${armorTier ? `(${sanitizeText(armorTier)})` : ''}</span></p>` : ''}
-             ${isPlayer ? `<p>Coins: <span class="${type}-coins">${character.coins ?? 0}</span>💰</p>` : ''}
+             ${isPlayer ? `<p>Coins: <span class="${type}-coins">${num(character.coins, 0)}</span>💰</p>` : ''}
              ${!isPlayer ? `<p>Abilities: <span class="${type}-abilities">${character.abilities?.map(sanitizeText).join(', ') || 'None'}</span></p>` : ''}
              <p>Effects: <span class="status-effects">${statusEffectString}</span></p>
 
         </div>
         <div class="card-header collapsible">
-            <span class="${type}-name">${sanitizeText(character.name)}${isPlayer ? ` <small class="hero-level">Lv ${character.level || 1}</small>` : ''}</span>
+            <span class="${type}-name">${sanitizeText(character.name)}${isPlayer ? ` <small class="hero-level">Lv ${num(character.level, 1)}</small>` : ''}</span>
             <div class="${type}-hp">
                 <span class="hp-icon">❤️</span>
-                <span class="hp-value">${character.hp ?? '?'}</span>&nbsp;/&nbsp;<span class="hp-max">${character.maxHp ?? '?'}</span>
+                <span class="hp-value">${num(character.hp, '?')}</span>&nbsp;/&nbsp;<span class="hp-max">${num(character.maxHp, '?')}</span>
             </div>
             ${isPlayer ? `
             <div class="${type}-mp">
                 <span class="mp-icon">🔮</span>
-                <span class="mp-value">${character.mp ?? 0}</span>&nbsp;/&nbsp;<span class="mp-max">${character.maxMp ?? 0}</span>
+                <span class="mp-value">${num(character.mp, 0)}</span>&nbsp;/&nbsp;<span class="mp-max">${num(character.maxMp, 0)}</span>
             </div>` : ''}
             <span class="expand-icon">▼</span>
         </div>
@@ -668,7 +671,7 @@ function heroStatsRow(hero) {
         + (Progression.luckOf(hero) ? `<span class="stat-chip" title="Lucky charm: helps luck rolls; crits from ${Progression.critFromLuck(Progression.luckOf(hero))}">🍀${Progression.luckOf(hero)}</span>` : '')
         + readingChip(hero);
     return `<div class="hero-stats">${chips}
-        <span class="xp-wrap" title="${hero.xp}/${need} XP to level ${hero.level + 1}"><span class="xp-bar"><span style="width:${pct}%"></span></span><small>${hero.xp}/${need} XP</small></span>
+        <span class="xp-wrap" title="${num(hero.xp)}/${need} XP to level ${num(hero.level) + 1}"><span class="xp-bar"><span style="width:${pct}%"></span></span><small>${num(hero.xp)}/${need} XP</small></span>
         ${Math.min(hero.statPoints || 0, Progression.statRoom(hero)) > 0 ? `<button class="spend-points" data-hero="${sanitizeText(hero.id)}">⭐ +${Math.min(hero.statPoints, Progression.statRoom(hero))} stat</button>` : ''}
         ${hero.abilityPicks > 0 ? `<button class="spend-points" data-hero="${sanitizeText(hero.id)}">✨ new special</button>` : ''}</div>`;
 }
@@ -697,7 +700,7 @@ function statsExplainer(hero) {
     Progression.ensureStats(hero);
     const rows = Object.entries(Progression.STATS).map(([k, s]) =>
         `<li>${s.icon} <b>${s.name} ${hero.stats[k]}</b>/${Progression.STAT_MAX}: ${s.does}. In fights: ${s.fight}.${hero.stats[k] < Progression.STAT_MAX ? ` <small>Practice ${hero.sparks[k] || 0}/${Progression.SPARKS_PER_POINT}</small>` : ' <small>Mastered</small>'}</li>`).join('');
-    return `<div class="stats-explainer"><p><b>Level ${hero.level}</b> · ${hero.xp}/${Progression.xpForLevel(hero.level)} XP</p>
+    return `<div class="stats-explainer"><p><b>Level ${num(hero.level)}</b> · ${num(hero.xp)}/${Progression.xpForLevel(hero.level)} XP</p>
         <ul>${rows}</ul>${readingLine(hero)}
         <p class="stats-how"><small>Every choice is a roll: a 20-sided die plus the stat the action uses (the icon on the button), and the % is your chance. Each point in a stat adds +5% to every choice that uses it. The marks show the danger: no mark is safe (a failure just complicates things), ⚠ is bold (a failure can hurt), ⚠⚠ is reckless (a failure will hurt, but it pays the most). 🍀 choices are absurd long shots: harder than the rest, but if one works the payoff is spectacular. A lucky charm in your bag helps those and makes a 19 count as a critical success too.${Progression.luckOf(hero) ? ` You carry luck +${Progression.luckOf(hero)}.` : ''} Every roll gives XP; each level lets you raise a stat; ${Progression.SPARKS_PER_POINT} successes with a stat raise it as well.</small></p></div>`;
 }
@@ -726,7 +729,7 @@ export async function promptStatPoints(heroId = null) {
                     label: `${s.icon} ${s.name} ${hero.stats[k]} → ${Math.min(Progression.STAT_MAX, hero.stats[k] + 1)}`,
                     detail: `${s.does}; in fights ${s.fight}`, key: k, disabled: hero.stats[k] >= Progression.STAT_MAX
                 }));
-                const pick = await pickBattleOption(`⭐ ${hero.name} reached level ${hero.level}: raise a stat (${hero.statPoints} to spend)`, opts);
+                const pick = await pickBattleOption(`⭐ ${hero.name} reached level ${num(hero.level)}: raise a stat (${hero.statPoints} to spend)`, opts);
                 if (!pick) { Progression.snoozeStatPrompt(hero); break; } // later: the ⭐ button on the card
                 Progression.spendStatPoint(hero, pick.key);
                 showPopup(`${Progression.STATS[pick.key].icon} ${hero.name}'s ${Progression.STATS[pick.key].name} is now ${hero.stats[pick.key]}!`, 'success', 2500);
@@ -1483,7 +1486,7 @@ export function updateHelpAllyModal(downedAllies, revivalItemCount, revivalItemN
             const button = document.createElement('button');
             button.className = 'selectAllyBtn';
             button.dataset.playerId = ally.id; // Store target player ID
-            button.textContent = `Help ${String(ally.name)} (HP: ${ally.hp ?? '?'}/${ally.maxHp ?? '?'})`;
+            button.textContent = `Help ${String(ally.name)} (HP: ${num(ally.hp, '?')}/${num(ally.maxHp, '?')})`;
             // Disable button if no revival items available OR if game is loading
             button.disabled = revivalItemCount <= 0 || gameState.isLoading;
             elements.helpAllyTargetList.appendChild(button);
