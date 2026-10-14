@@ -4,7 +4,7 @@
 
 It runs on Android (install the APK from [Releases](https://github.com/Andro-Meta/AdventureStories/releases)) or in any web browser on a PC. The AI is free: you paste a free key from Google, Groq or OpenRouter once, and the game handles the rest.
 
-> *Made with ❤️ for Brookston, Vincent, Toby, and Katie by their Dad.*
+> *Made with ❤️ by a dad, for his kids.*
 
 ---
 
