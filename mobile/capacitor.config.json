@@ -18,6 +18,9 @@
       "backgroundColor": "#ff9a76",
       "showSpinner": false,
       "spinnerColor": "#FFD700"
+    },
+    "SystemBars": {
+      "style": "DARK"
     }
   },
   "server": {
