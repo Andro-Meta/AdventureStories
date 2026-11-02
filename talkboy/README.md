@@ -24,13 +24,22 @@ A pocket tape recorder for kids, inspired by the classic 90s handheld voice reco
 - All knobs work *while the tape is playing*.
 - **Save a magic copy** bakes the current effect into a new tape.
 
-**More magic**: Auto-Tune (Smooth or Robot, any key), Twin Voices, Echo (amount and time) and Reverb, plus Robot Star, Choir, Canyon and Cave presets.
+**More magic** (Easy view: presets and one knob per effect; Studio view: every engineer's knob):
+- **Auto-Tune**: Smooth (keeps your vibrato) or Robot, any of 7 scales in any key, **Find my key** listens to the tape; Studio: retune speed, keep vibrato, strength, flex.
+- **Harmony**: up to 3 backing singers that follow you in key (3rd, 5th, chord, octaves, choir), each a slightly different person.
+- **Talk-box**: your words on a synth (Robot note, Synth melody, Chord, Bass), consonants kept clear.
+- **Whisper**, **Places** (phone, walkie-talkie with squelch + roger beep, old radio, megaphone, underwater), **Old Tape**, **Wobble** (tremolo, vibrato, jet flanger, phaser).
+- **Room**: twin voices, echo, reverb. **Ghost Swell**: reverse reverb that rises before each word. **Fly-Around**: binaural circle / side to side / zoom past (Doppler) / overhead.
+- **Auto Stutter** ("h-h-hello"), **Hold to Freeze**, **Hold to Stutter**, and **scratch** by dragging the cassette.
+- **Clean-up**: spectral noise reduction (Wiener, whole-tape noise profile) + vocal channel strip (low cut, de-esser, compressor, presence/air, auto-level, limiter).
+- 35 presets in 5 rows: Funny voices, Music & robots, Places, Spooky & wild, Studio.
+- **A/B loop** with click-free wrap, zoomable waveform, mini deck that stays on screen.
 
 **My Tapes**: any number of tapes with names and colour labels; rename, share (as a WAV), or throw away (with a confirm). Press STOP when stopped (it becomes EJECT) to open the tape box.
 
 ## How the sound works
 
-Pure Kotlin, no native code. `audio/VoiceFx.kt` is the voice, `audio/Space.kt` the room:
+Pure Kotlin, no native code, in `audio/`: `Spectral.kt` (vocoder, noise reduction, talk-box carrier), `Voices.kt` (lead + harmony engine), `Tuning.kt` (auto-tune, key finder), `Render.kt` (playhead, signal chain), `Character.kt`, `Spatial.kt`, `Polish.kt`, `Space.kt`, `Performance.kt`:
 
 - A streaming **phase vocoder** (2048-point FFT, 4× overlap) does Talk Speed and pitch shift. Peaks move as whole regions with their phases locked together (Laroche-Dolson), and phases reset on sudden onsets so consonants stay crisp.
 - The voice shape is a **true envelope** (iterated cepstrum) whose detail follows the voice's own pitch (YIN detector): sharp enough to keep the vowel's formants apart, never sharp enough to trace the harmonics. Pitch divides it out and puts it back (voice keeps its vowels); Voice Size stretches it, which moves the formants instead of just tilting the treble.

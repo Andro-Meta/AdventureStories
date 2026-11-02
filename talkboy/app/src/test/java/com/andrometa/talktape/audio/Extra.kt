@@ -1,21 +1,17 @@
 package com.andrometa.talktape.audio
 
+import com.andrometa.talktape.PRESETS
 import java.io.File
 
-/** The new-only voices (stereo effects, auto-tune) for [DemoRender]. */
+/** Every preset, for [DemoRender]: written to presets/<group>/<name>.wav next to the sample. */
 object Extra {
-    private val voices = mapOf(
-        "robot_star" to Fx(tune = Tune.Robot, layers = 1, reverb = 0.3f),
-        "autotune_smooth" to Fx(tune = Tune.Gentle),
-        "choir" to Fx(layers = 4, reverb = 0.45f),
-        "canyon" to Fx(echo = 0.55f, echoTime = 0.6f, reverb = 0.2f),
-        "cave" to Fx(pitch = -2f, echo = 0.25f, echoTime = 0.1f, reverb = 0.9f),
-    )
-
     fun render(src: ShortArray, dir: File, tag: String) {
-        for ((name, fx) in voices) {
-            val out = TapeRenderer.renderAll(Pcm(src, 1), fx, 44100)
-            DemoRender.write(File(dir, "${name}_$tag.wav"), out.data, out.channels)
+        val peaks = FloatArray(src.size / 441 + 1) { b -> var m = 0; for (i in b * 441 until minOf(src.size, (b + 1) * 441)) m = maxOf(m, kotlin.math.abs(src[i].toInt())); m / 32768f }
+        val onsets = TapeRenderer.onsetsOf(peaks, 441)
+        for (p in PRESETS) {
+            val out = TapeRenderer.renderAll(Pcm(src, 1), p.fx, 44100, onsets)
+            val d = File(dir, "presets_$tag/${p.group.replace(Regex("[^A-Za-z]+"), "_")}").apply { mkdirs() }
+            DemoRender.write(File(d, p.name.replace(Regex("[^A-Za-z0-9-]+"), "_") + ".wav"), out.data, out.channels)
         }
     }
 }

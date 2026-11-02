@@ -45,19 +45,19 @@ class SpaceTest {
         // 452 Hz is 47 cents sharp of A (440): robot snaps it onto A.
         val src = tone(452.0, 1.0)
         val raw = pitchAt(src, sr / 2)
-        val out = TapeRenderer.renderAll(src, src.size, Fx(tune = Tune.Robot), sr)
+        val out = TapeRenderer.renderAll(src, src.size, Fx(tune = TuneFx(Tune.Robot)), sr)
         val tuned = pitchAt(out, sr / 2)
         println("autotune robot: in ${"%.1f".format(raw)} Hz, out ${"%.1f".format(tuned)} Hz")
         assertTrue("was ${cents(tuned, 440.0)} cents off A", abs(cents(tuned, 440.0)) < 10)
         // Gentle gets there too once the note is held.
-        val gentle = pitchAt(TapeRenderer.renderAll(src, src.size, Fx(tune = Tune.Gentle), sr), sr / 2)
+        val gentle = pitchAt(TapeRenderer.renderAll(src, src.size, Fx(tune = TuneFx(Tune.Gentle)), sr), sr / 2)
         assertTrue("gentle ${cents(gentle, 440.0)} cents", abs(cents(gentle, 440.0)) < 15)
     }
 
     @Test fun autoTuneKeySkipsWrongNotes() {
         // 470 Hz is nearest A♯ (466), which isn't in C major: it must go to A (440) or B (494).
         val src = tone(470.0, 1.0)
-        val out = pitchAt(TapeRenderer.renderAll(src, src.size, Fx(tune = Tune.Robot, key = 0), sr), sr / 2)
+        val out = pitchAt(TapeRenderer.renderAll(src, src.size, Fx(tune = TuneFx(Tune.Robot, key = 0, scale = Scale.Major)), sr), sr / 2)
         println("autotune C major: 470 -> ${"%.1f".format(out)}")
         assertTrue(abs(cents(out, 440.0)) < 10 || abs(cents(out, 493.88)) < 10)
     }
@@ -133,7 +133,7 @@ class SpaceTest {
 
     @Test fun fastEnoughForAPhone() {
         val src = tone(150.0, 10.0, harmonics = 12)
-        val fx = Fx(pitch = -5f, formant = -4f, tune = Tune.Robot, layers = 3, echo = 0.4f, reverb = 0.6f)
+        val fx = Fx(pitch = -5f, formant = -4f, tune = TuneFx(Tune.Robot), layers = 3, echo = 0.4f, reverb = 0.6f)
         TapeRenderer.renderAll(Pcm(src.copyOf(sr), 1), fx, sr) // warm up the JIT
         val t = System.nanoTime()
         TapeRenderer.renderAll(Pcm(src, 1), fx, sr)

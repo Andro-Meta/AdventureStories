@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlin.math.sqrt
 
-enum class Mode { Idle, Playing, Recording, Cueing, Live }
+enum class Mode { Idle, Playing, Recording, Cueing, Live, Scratching }
 
 data class DeckState(
     val mode: Mode = Mode.Idle,
@@ -47,6 +47,37 @@ class TapeDeck(private val sampleRate: Int, private val maxFrames: Int) {
 
     /** Play through both speakers the same (mono) instead of in stereo. */
     @Volatile var monoOutput = false
+
+    /** Held performance buttons (freeze, stutter): read by the audio thread every block. */
+    val hands = Hands()
+
+    /** Per-tape helpers worked out in the background: noise for clean-up, ghost swell, word starts. */
+    @Volatile var noiseProfile: DoubleArray? = null
+    @Volatile var ghostTrack: FloatArray? = null
+    @Volatile var onsets: IntArray? = null
+
+    @Volatile private var scratchTarget = 0.0
+    private var resumeAfterScratch = false
+
+    /** A finger lands on the reels: the tape stops under it, like a hand on a turning reel. */
+    fun scratchStart() {
+        val s = _state.value
+        if (length == 0 || s.mode == Mode.Recording || s.mode == Mode.Live) return
+        resumeAfterScratch = s.mode == Mode.Playing && !s.paused
+        halt()
+        scratchTarget = s.position.toDouble()
+        start(Mode.Scratching, s.position) { scratchLoop(it) }
+    }
+
+    /** The finger moved the tape by [frames] (negative = backwards). */
+    fun scratchBy(frames: Double) { scratchTarget = (scratchTarget + frames).coerceIn(0.0, length.toDouble()) }
+
+    fun scratchEnd() {
+        if (_state.value.mode != Mode.Scratching) return
+        halt()
+        _state.update { it.copy(mode = Mode.Idle, level = 0f, speed = 0f) }
+        if (resumeAfterScratch) play()
+    }
 
     /** Called on the worker thread with a fresh copy of the tape after a recording ends. */
     var onRecorded: ((Pcm) -> Unit)? = null
@@ -187,6 +218,8 @@ class TapeDeck(private val sampleRate: Int, private val maxFrames: Int) {
 
     fun release() = stop()
 
+    fun tell(msg: String) = say(msg)
+
     private fun say(msg: String) = _state.update { it.copy(message = msg) }
 
     private fun start(mode: Mode, pos: Int, body: (Int) -> Unit) {
@@ -263,6 +296,7 @@ class TapeDeck(private val sampleRate: Int, private val maxFrames: Int) {
     private fun playLoop(startPos: Int) {
         val r = TapeRenderer(sampleRate, channels)
         r.reset(startPos.toDouble())
+        r.hands = hands
         val fbuf = FloatArray(r.block * 2)
         val sbuf = ShortArray(r.block * 2)
         val track = newTrack(lowLatency = false)
@@ -275,6 +309,7 @@ class TapeDeck(private val sampleRate: Int, private val maxFrames: Int) {
             while (running) {
                 val cue = cueDir
                 val f = if (cue != 0) Fx(tapeSpeed = CUE_SPEED, reverse = cue < 0) else fx
+                r.noiseProfile = noiseProfile; r.ghostTrack = ghostTrack; r.onsets = onsets
                 if (r.finished(length, f)) { ended = true; break }
                 val t0 = System.nanoTime()
                 r.render(samples, length, f, fbuf)
@@ -353,10 +388,39 @@ class TapeDeck(private val sampleRate: Int, private val maxFrames: Int) {
         if (full) { finishedOnItsOwn(pos); say("Tape full! That's the end of this tape.") }
     }
 
+    private fun scratchLoop(startPos: Int) {
+        val r = TapeRenderer(sampleRate, channels)
+        r.reset(startPos.toDouble())
+        r.hands = hands
+        val fbuf = FloatArray(r.block * 2)
+        val sbuf = ShortArray(r.block * 2)
+        val track = newTrack(lowLatency = true)
+        track.play()
+        // Voice magic off while scratching (it needs a steady tape); the room effects stay.
+        val roomOnly = fx.let { Fx(layers = it.layers, echo = it.echo, echoTime = it.echoTime, reverb = it.reverb) }
+        var tick = 0
+        try {
+            while (running) {
+                r.scratch(samples, length, scratchTarget, roomOnly, fbuf)
+                downmixIfMono(fbuf)
+                for (i in sbuf.indices) sbuf[i] = TapeRenderer.toPcm(fbuf[i])
+                track.write(sbuf, 0, sbuf.size)
+                if (tick++ % 2 == 0) {
+                    val pos = r.position.toInt().coerceIn(0, length)
+                    _state.update { it.copy(position = pos, level = levelOf(sbuf, sbuf.size), speed = r.scratchSpeed.toFloat()) }
+                }
+            }
+        } finally {
+            track.pause(); track.flush(); track.release()
+        }
+        _state.update { it.copy(position = r.position.toInt().coerceIn(0, length)) }
+    }
+
     private fun liveLoop() {
         // VOICE_COMMUNICATION turns on the phone's echo canceller where it has one: fewer squeals.
         val rec = newRecorder(MediaRecorder.AudioSource.VOICE_COMMUNICATION) ?: return
         val lv = LiveVoice(sampleRate)
+        lv.hands = hands
         val inBuf = ShortArray(lv.block)
         val fbuf = FloatArray(lv.block * 2)
         val outBuf = ShortArray(lv.block * 2)
