@@ -10,13 +10,14 @@ class Hands {
 }
 
 /**
- * Everything after the voice, in studio order: polish (channel strip) -> character
+ * Everything after the voice, in studio order: polish (channel strip) -> drive -> character
  * (places, old tape, wobble) -> freeze ->
  * fly-around -> ghost swell -> twin voices / echo / reverb / limiter. Stereo in place, then
  * interleaved into the output.
  */
 class PostChain(sampleRate: Int) {
     private val polish = Polish(sampleRate)
+    private val drive = Drive(sampleRate)
     private val character = CharacterFx(sampleRate)
     private val freezer = Freezer(sampleRate)
     private val fly = FlyAround(sampleRate)
@@ -24,10 +25,11 @@ class PostChain(sampleRate: Int) {
 
     val silent get() = space.silent && !freezer.active
 
-    fun reset() { polish.reset(); character.reset(); freezer.reset(); fly.reset(); space.reset() }
+    fun reset() { polish.reset(); drive.reset(); character.reset(); freezer.reset(); fly.reset(); space.reset() }
 
     fun process(l: FloatArray, r: FloatArray, n: Int, fx: Fx, hands: Hands?, ghost: FloatArray?, out: FloatArray) {
         if (fx.polish.amount > 0f) polish.process(l, r, n, fx.polish)
+        drive.process(l, r, n, fx.drive)
         character.process(l, r, n, fx.place, fx.oldTape, fx.wobble)
         // Always listening (cheap), so a press can freeze what was just heard.
         if (hands != null) freezer.process(l, r, n, hands.freeze)

@@ -22,7 +22,7 @@ import kotlin.math.sqrt
  * formant    semitones up/down of the voice "size" only: down = giant, up = tiny
  * reverse    play backwards
  * tune       auto-tune (see TuneFx); harmony, talk (talk-box), whisper 0..1: more voice magic
- * clean      0..1 noise clean-up; polish: the vocal channel strip (see PolishFx)
+ * clean      0..1 noise clean-up; polish: the vocal channel strip (see PolishFx); drive: distortion
  * place, oldTape, wobble: character (telephone, walkie... / old tape / tremolo, flanger...)
  * fly, ghost, stutter: fly-around, reverse-reverb swell, word stutter
  * layers     extra copies of your voice, slightly out of tune and time with each other (0 = off)
@@ -41,6 +41,7 @@ data class Fx(
     val whisper: Float = 0f,
     val clean: Float = 0f,
     val polish: PolishFx = PolishFx(),
+    val drive: DriveFx = DriveFx(),
     val place: PlaceFx = PlaceFx(),
     val oldTape: OldTapeFx = OldTapeFx(),
     val wobble: WobbleFx = WobbleFx(),

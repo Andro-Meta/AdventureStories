@@ -8,6 +8,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.andrometa.talktape.audio.Fly
 import com.andrometa.talktape.audio.FlyFx
+import com.andrometa.talktape.audio.DriveFx
 import com.andrometa.talktape.audio.Fx
 import com.andrometa.talktape.audio.Ghost
 import com.andrometa.talktape.audio.GhostFx
@@ -50,10 +51,39 @@ private const val MUSIC = "Music & robots"
 private const val PLACES = "Places"
 private const val SPOOKY = "Spooky & wild"
 private const val STUDIO = "Studio"
+private const val HAUNTED = "Haunted Mound"
 
-val PRESET_GROUPS = listOf(VOICES, MUSIC, PLACES, SPOOKY, STUDIO)
+val PRESET_GROUPS = listOf(HAUNTED, VOICES, MUSIC, PLACES, SPOOKY, STUDIO)
 
 val PRESETS = listOf(
+    // Built from how critics describe these artists' records (no published chain exists):
+    // Cemetery: deep "baritone evilness", hard robot auto-tune, layered and stacked, blown-out
+    // distortion + heavy compression, digital crush, phaser, dark room.
+    Preset("🪦", "Cemetery", Fx(
+        pitch = -4f, formant = -4f,
+        tune = TuneFx(Tune.Robot, speed = 0f, humanize = 0f),
+        harmony = HarmonyFx(Harmony.Low, mix = 0.28f, spread = 0.3f, humanize = 0.3f),
+        layers = 2,
+        polish = PolishFx(amount = 0.8f, compress = 0.9f, presence = 0.6f),
+        drive = DriveFx(amount = 0.75f, tone = 0.45f, crush = 0.25f),
+        wobble = WobbleFx(Wobble.Phaser, rate = 0.3f, depth = 0.55f, mix = 0.5f),
+        reverb = 0.35f, echo = 0.15f, echoTime = 0.3f,
+    ), HAUNTED),
+    // Ghost Mountain: deep, flat, "half-dead" singing that floats like a ghost, smoother
+    // (softened robot) auto-tune, a little breath, lighter grit, lo-fi haze, long dark reverb and echo.
+    Preset("⛰️", "Ghost Mountain", Fx(
+        pitch = -3f, formant = -4f,
+        tune = TuneFx(Tune.Robot, speed = 0.04f, humanize = 0.2f),
+        whisper = 0.12f,
+        layers = 1,
+        polish = PolishFx(amount = 0.6f, compress = 0.7f, presence = 0.3f),
+        drive = DriveFx(amount = 0.35f, tone = 0.3f),
+        oldTape = OldTapeFx(amount = 0.3f, hiss = 0.3f, wow = 0.3f),
+        reverb = 0.7f, echo = 0.3f, echoTime = 0.45f,
+        ghost = GhostFx(amount = 0.35f, length = 0.5f),
+    ), HAUNTED),
+    Preset("🔥", "Blown Out", Fx(drive = DriveFx(amount = 0.9f, tone = 0.55f, crush = 0.35f), polish = PolishFx(amount = 0.7f, compress = 1f)), HAUNTED),
+
     Preset("🙂", "Normal", Fx(), VOICES),
     Preset("🐿️", "Chipmunk", Fx(tapeSpeed = 1.6f), VOICES),
     Preset("🐢", "Slow-Mo", Fx(tapeSpeed = 0.62f), VOICES),

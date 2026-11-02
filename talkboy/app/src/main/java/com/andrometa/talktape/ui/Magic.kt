@@ -198,6 +198,15 @@ fun MagicPanel(
             if (studio) Amount("🎚️ Amount", "Blend with your real voice", "🙂", "📞", pl.amount, pct(pl.amount)) { onFx(fx.copy(place = pl.copy(amount = it))) }
         }
 
+        // ── Drive ──
+        val dr = fx.drive
+        EffectCard("🔥", "Distortion", "Grit, growl and fully blown-out", dr.on, { onFx(fx.copy(drive = dr.copy(amount = if (it) 0.5f else 0f))) }) {
+            Amount("🔥 How dirty", "A little grit or totally blown out", "🙂", "🔥", dr.amount, pct(dr.amount)) { onFx(fx.copy(drive = dr.copy(amount = it.coerceAtLeast(0.02f)))) }
+            Amount("🌗 Tone", "Dark and muddy, or bright and harsh", "🌑", "☀️", dr.tone, pct(dr.tone)) { onFx(fx.copy(drive = dr.copy(tone = it))) }
+            Amount("👾 Crush", "Broken digital grit", "🙂", "👾", dr.crush, pct(dr.crush)) { onFx(fx.copy(drive = dr.copy(crush = it))) }
+            if (studio) Amount("🎚️ Mix", "Clean vs distorted (parallel)", "🙂", "🔥", dr.mix, pct(dr.mix)) { onFx(fx.copy(drive = dr.copy(mix = it))) }
+        }
+
         // ── Old tape ──
         val ot = fx.oldTape
         EffectCard("📼", "Old Tape", "Warbly, hissy, warm, like grandpa's cassettes", ot.amount > 0f, { onFx(fx.copy(oldTape = ot.copy(amount = if (it) 0.7f else 0f))) }) {
