@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.andrometa.talktape.audio.Fx
 import com.andrometa.talktape.audio.TapeDeck
 import com.andrometa.talktape.audio.TapeRenderer
+import com.andrometa.talktape.audio.Tune
 import com.andrometa.talktape.data.Tape
 import com.andrometa.talktape.data.TapeStore
 import kotlinx.coroutines.Dispatchers
@@ -32,6 +33,10 @@ val PRESETS = listOf(
     Preset("🐘", "Giant", Fx(pitch = -3f, formant = -8f)),
     Preset("👽", "Alien", Fx(pitch = 6f, formant = -5f)),
     Preset("🚀", "Speedy", Fx(tempo = 1.8f)),
+    Preset("🤖", "Robot Star", Fx(tune = Tune.Robot, layers = 1, reverb = 0.3f)),
+    Preset("👯", "Choir", Fx(layers = 4, reverb = 0.45f)),
+    Preset("🏜️", "Canyon", Fx(echo = 0.55f, echoTime = 0.6f, reverb = 0.2f)),
+    Preset("🦇", "Cave", Fx(pitch = -2f, echo = 0.25f, echoTime = 0.1f, reverb = 0.9f)),
 )
 
 class DeckViewModel(app: Application) : AndroidViewModel(app) {
@@ -40,7 +45,7 @@ class DeckViewModel(app: Application) : AndroidViewModel(app) {
     private val prefs = app.getSharedPreferences("talktape", Context.MODE_PRIVATE)
     private val saveLock = Mutex()
 
-    val deck = TapeDeck(sr, maxSamples = MAX_MINUTES * 60 * sr)
+    val deck = TapeDeck(sr, maxFrames = MAX_MINUTES * 60 * sr)
     val maxSamples = MAX_MINUTES * 60 * sr
 
     private val _tapes = MutableStateFlow<List<Tape>>(emptyList())
@@ -54,16 +59,22 @@ class DeckViewModel(app: Application) : AndroidViewModel(app) {
     val peaks: StateFlow<FloatArray> = _peaks
     private val _busy = MutableStateFlow(false)
     val busy: StateFlow<Boolean> = _busy
+    private val _stereoRec = MutableStateFlow(prefs.getBoolean("stereoRec", false))
+    val stereoRec: StateFlow<Boolean> = _stereoRec
+    private val _monoPlay = MutableStateFlow(prefs.getBoolean("monoPlay", false))
+    val monoPlay: StateFlow<Boolean> = _monoPlay
 
     /** Shown the "use headphones" tip already this run. */
     var liveTipShown = false
 
     init {
-        deck.onRecorded = { data ->
+        deck.stereoRecording = _stereoRec.value
+        deck.monoOutput = _monoPlay.value
+        deck.onRecorded = { pcm ->
             val tape = _current.value
             if (tape != null) viewModelScope.launch(Dispatchers.IO) {
-                saveLock.withLock { store.save(tape.id, data, data.size) }
-                _peaks.value = peaksOf(data)
+                saveLock.withLock { store.save(tape.id, pcm) }
+                _peaks.value = peaksOf(pcm.data)
                 refresh()
             }
         }
@@ -77,6 +88,10 @@ class DeckViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setFx(f: Fx) { _fx.value = f; deck.fx = f }
 
+    fun setStereoRec(on: Boolean) { _stereoRec.value = on; deck.stereoRecording = on; prefs.edit().putBoolean("stereoRec", on).apply() }
+
+    fun setMonoPlay(on: Boolean) { _monoPlay.value = on; deck.monoOutput = on; prefs.edit().putBoolean("monoPlay", on).apply() }
+
     fun select(tape: Tape) {
         deck.stop()
         _current.value = tape
@@ -84,7 +99,7 @@ class DeckViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             val data = saveLock.withLock { store.load(tape.id) }
             withContext(Dispatchers.Main) { if (_current.value?.id == tape.id) deck.load(data) }
-            _peaks.value = peaksOf(data)
+            _peaks.value = peaksOf(data.data)
         }
     }
 
@@ -119,7 +134,7 @@ class DeckViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.Default) {
             try {
                 val src = saveLock.withLock { store.load(tape.id) }
-                val out = TapeRenderer.renderAll(src, src.size, f, sr)
+                val out = TapeRenderer.renderAll(src, f, sr)
                 val label = PRESETS.firstOrNull { it.fx == f }?.name ?: "Magic"
                 val copy = store.create("${tape.name} $label".take(30), (tape.color + 1) % LABEL_COLORS, out)
                 refresh()

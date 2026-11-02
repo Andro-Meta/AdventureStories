@@ -23,6 +23,7 @@ data class DeckState(
     val level: Float = 0f,
     /** How fast the tape moves (negative = backwards), drives the reel animation. */
     val speed: Float = 0f,
+    val stereo: Boolean = false,
     val message: String? = null,
 )
 
@@ -30,19 +31,27 @@ data class DeckState(
  * The tape machine. One worker thread at a time does the audio work (play, record,
  * cue or live); everything public is called from the main thread.
  */
-class TapeDeck(private val sampleRate: Int, private val maxSamples: Int) {
+class TapeDeck(private val sampleRate: Int, private val maxFrames: Int) {
     private val _state = MutableStateFlow(DeckState())
     val state: StateFlow<DeckState> = _state
 
     /** Effects for playback and live; safe to change while playing. */
     @Volatile var fx = Fx()
 
+    /** New (empty) tapes record in stereo. A tape keeps the channels it was first recorded in. */
+    @Volatile var stereoRecording = false
+
+    /** Play through both speakers the same (mono) instead of in stereo. */
+    @Volatile var monoOutput = false
+
     /** Called on the worker thread with a fresh copy of the tape after a recording ends. */
-    var onRecorded: ((ShortArray) -> Unit)? = null
+    var onRecorded: ((Pcm) -> Unit)? = null
 
     // Owned by the worker while it runs, by the main thread otherwise (join() hands it over).
     private var samples = ShortArray(0)
+    /** Length in frames (one sample per channel). */
     private var length = 0
+    private var channels = 1
 
     private var worker: Thread? = null
     @Volatile private var running = false
@@ -50,10 +59,10 @@ class TapeDeck(private val sampleRate: Int, private val maxSamples: Int) {
     @Volatile private var cueDir = 0
     private var resumeAfterCue = false
 
-    fun load(tape: ShortArray) {
+    fun load(tape: Pcm) {
         stop()
-        samples = tape; length = tape.size
-        _state.value = DeckState(length = length)
+        samples = tape.data; channels = tape.channels; length = tape.frames
+        _state.value = DeckState(length = length, stereo = channels == 2)
     }
 
     val isEmpty get() = _state.value.length == 0
@@ -74,7 +83,7 @@ class TapeDeck(private val sampleRate: Int, private val maxSamples: Int) {
         val s = _state.value
         if (s.mode == Mode.Recording && !s.paused) return
         halt()
-        if (s.position >= maxSamples) { say("This tape is full! Grab a new tape."); return }
+        if (s.position >= maxFrames) { say("This tape is full! Grab a new tape."); return }
         start(Mode.Recording, s.position) { recordLoop(it) }
     }
 
@@ -178,53 +187,69 @@ class TapeDeck(private val sampleRate: Int, private val maxSamples: Int) {
         _state.update { it.copy(mode = Mode.Idle, paused = false, position = pos, level = 0f, speed = 0f) }
     }
 
+    /** Always stereo: the effects are stereo even when the tape isn't. */
     private fun newTrack(lowLatency: Boolean): AudioTrack {
-        val min = AudioTrack.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
+        val min = AudioTrack.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT)
         return AudioTrack.Builder()
             .setAudioAttributes(AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_MEDIA)
                 .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
             .setAudioFormat(AudioFormat.Builder()
                 .setSampleRate(sampleRate)
-                .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
                 .setEncoding(AudioFormat.ENCODING_PCM_16BIT).build())
-            .setBufferSizeInBytes(if (lowLatency) min else maxOf(min, 8192))
+            .setBufferSizeInBytes(if (lowLatency) min else maxOf(min, 16384))
             .setTransferMode(AudioTrack.MODE_STREAM)
             .apply { if (lowLatency) setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY) }
             .build()
     }
 
     @SuppressLint("MissingPermission") // checked by the UI before any recording starts
-    private fun newRecorder(source: Int): AudioRecord? {
-        val min = AudioRecord.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
+    private fun newRecorder(source: Int, stereo: Boolean = false): AudioRecord? {
+        val mask = if (stereo) AudioFormat.CHANNEL_IN_STEREO else AudioFormat.CHANNEL_IN_MONO
+        val min = AudioRecord.getMinBufferSize(sampleRate, mask, AudioFormat.ENCODING_PCM_16BIT)
         val rec = try {
-            AudioRecord(source, sampleRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, maxOf(min, 8192))
+            AudioRecord(source, sampleRate, mask, AudioFormat.ENCODING_PCM_16BIT, maxOf(min, 16384))
         } catch (e: SecurityException) {
             finishedOnItsOwn(_state.value.position); say("TalkTape needs the microphone to record."); return null
+        } catch (e: IllegalArgumentException) {
+            null
         }
-        if (rec.state != AudioRecord.STATE_INITIALIZED) {
-            rec.release()
+        if (rec == null || rec.state != AudioRecord.STATE_INITIALIZED) {
+            rec?.release()
+            if (stereo) return null // caller falls back to mono
             finishedOnItsOwn(_state.value.position); say("The microphone is busy. Close other apps using it and try again.")
             return null
         }
         return rec
     }
 
+    /** Both speakers the same, when the mono switch is on. */
+    private fun downmixIfMono(buf: FloatArray) {
+        if (!monoOutput) return
+        for (i in 0 until buf.size / 2) { val m = 0.5f * (buf[2 * i] + buf[2 * i + 1]); buf[2 * i] = m; buf[2 * i + 1] = m }
+    }
+
     private fun playLoop(startPos: Int) {
-        val r = TapeRenderer(sampleRate)
+        val r = TapeRenderer(sampleRate, channels)
         r.reset(startPos.toDouble())
-        val fbuf = FloatArray(r.block)
-        val sbuf = ShortArray(r.block)
+        val fbuf = FloatArray(r.block * 2)
+        val sbuf = ShortArray(r.block * 2)
         val track = newTrack(lowLatency = false)
         track.play()
         var ended = false
         var tick = 0
+        var dspNanos = 0L
+        var blocks = 0
         try {
             while (running) {
                 val cue = cueDir
                 val f = if (cue != 0) Fx(tapeSpeed = CUE_SPEED, reverse = cue < 0) else fx
                 if (r.finished(length, f)) { ended = true; break }
+                val t0 = System.nanoTime()
                 r.render(samples, length, f, fbuf)
+                dspNanos += System.nanoTime() - t0; blocks++
+                downmixIfMono(fbuf)
                 val gain = if (cue != 0) 0.6f else 1f
                 for (i in sbuf.indices) sbuf[i] = TapeRenderer.toPcm(fbuf[i] * gain)
                 track.write(sbuf, 0, sbuf.size)
@@ -245,31 +270,53 @@ class TapeDeck(private val sampleRate: Int, private val maxSamples: Int) {
             }
             track.release()
         }
+        // Over 100% of real time = stutter. One line per play, for checking slower phones.
+        if (blocks > 0) android.util.Log.i("TalkTape", "dsp load %.0f%% of real time (%d ch, %s)".format(
+            dspNanos / 1e9 / (blocks * r.block.toDouble() / sampleRate) * 100, channels, fx))
         val pos = r.position.toInt().coerceIn(0, length)
         if (ended) finishedOnItsOwn(pos) else _state.update { it.copy(position = pos) }
     }
 
     private fun recordLoop(startPos: Int) {
-        val rec = newRecorder(MediaRecorder.AudioSource.MIC) ?: return
-        val buf = ShortArray(sampleRate / 20)
+        // A blank tape takes the Mono/Stereo setting; a used one keeps what it is.
+        if (length == 0) { channels = if (stereoRecording) 2 else 1; samples = ShortArray(0) }
+        // CAMCORDER is the source phones wire to their stereo mic pair.
+        var rec = if (channels == 2) newRecorder(MediaRecorder.AudioSource.CAMCORDER, stereo = true) else null
+        if (channels == 2 && rec == null && length == 0) {
+            channels = 1
+            say("This phone can't record in stereo, so this tape is mono.")
+        }
+        val inCh = if (rec != null) 2 else 1
+        if (rec == null) rec = newRecorder(MediaRecorder.AudioSource.MIC) ?: return
+        _state.update { it.copy(stereo = channels == 2) }
+        val buf = ShortArray(sampleRate / 20 * inCh)
         var pos = startPos
         var full = false
         rec.startRecording()
         try {
             while (running) {
-                val n = rec.read(buf, 0, buf.size)
+                val n = rec.read(buf, 0, buf.size) / inCh
                 if (n <= 0) continue
-                val take = minOf(n, maxSamples - pos)
-                if (pos + take > samples.size) samples = samples.copyOf(minOf(maxSamples, maxOf(pos + take, samples.size * 2, sampleRate * 10)))
-                System.arraycopy(buf, 0, samples, pos, take)
+                val take = minOf(n, maxFrames - pos)
+                if ((pos + take) * channels > samples.size) {
+                    samples = samples.copyOf(minOf(maxFrames, maxOf(pos + take, samples.size / channels * 2, sampleRate * 10)) * channels)
+                }
+                for (i in 0 until take) {
+                    val o = (pos + i) * channels
+                    when {
+                        inCh == channels -> System.arraycopy(buf, i * inCh, samples, o, inCh)
+                        channels == 2 -> { samples[o] = buf[i]; samples[o + 1] = buf[i] }
+                        else -> samples[o] = ((buf[2 * i] + buf[2 * i + 1]) / 2).toShort()
+                    }
+                }
                 pos += take
                 if (pos > length) length = pos
-                _state.update { it.copy(position = pos, length = length, level = levelOf(buf, n), speed = 1f) }
-                if (pos >= maxSamples) { full = true; break }
+                _state.update { it.copy(position = pos, length = length, level = levelOf(buf, n * inCh), speed = 1f) }
+                if (pos >= maxFrames) { full = true; break }
             }
         } finally {
             rec.stop(); rec.release()
-            onRecorded?.invoke(samples.copyOf(length))
+            onRecorded?.invoke(Pcm(samples.copyOf(length * channels), channels))
         }
         if (full) { finishedOnItsOwn(pos); say("Tape full! That's the end of this tape.") }
     }
@@ -279,8 +326,8 @@ class TapeDeck(private val sampleRate: Int, private val maxSamples: Int) {
         val rec = newRecorder(MediaRecorder.AudioSource.VOICE_COMMUNICATION) ?: return
         val lv = LiveVoice(sampleRate)
         val inBuf = ShortArray(lv.block)
-        val fbuf = FloatArray(lv.block)
-        val outBuf = ShortArray(lv.block)
+        val fbuf = FloatArray(lv.block * 2)
+        val outBuf = ShortArray(lv.block * 2)
         val track = newTrack(lowLatency = true)
         rec.startRecording(); track.play()
         var tick = 0
@@ -294,6 +341,7 @@ class TapeDeck(private val sampleRate: Int, private val maxSamples: Int) {
                 }
                 if (got < inBuf.size) break
                 lv.process(inBuf, fx, fbuf)
+                downmixIfMono(fbuf)
                 for (i in outBuf.indices) outBuf[i] = TapeRenderer.toPcm(fbuf[i])
                 track.write(outBuf, 0, outBuf.size)
                 if (tick++ % 3 == 0) _state.update { it.copy(level = levelOf(outBuf, outBuf.size)) }

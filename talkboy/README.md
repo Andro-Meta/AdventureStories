@@ -24,16 +24,26 @@ A pocket tape recorder for kids, inspired by the classic 90s handheld voice reco
 - All knobs work *while the tape is playing*.
 - **Save a magic copy** bakes the current effect into a new tape.
 
+**More magic**: Auto-Tune (Smooth or Robot, any key), Twin Voices, Echo (amount and time) and Reverb, plus Robot Star, Choir, Canyon and Cave presets.
+
 **My Tapes**: any number of tapes with names and colour labels; rename, share (as a WAV), or throw away (with a confirm). Press STOP when stopped (it becomes EJECT) to open the tape box.
 
 ## How the sound works
 
-All in `app/src/main/java/com/andrometa/talktape/audio/VoiceFx.kt`, pure Kotlin, no native code:
+Pure Kotlin, no native code. `audio/VoiceFx.kt` is the voice, `audio/Space.kt` the room:
 
-- A streaming **phase vocoder** (2048-point FFT, 4× overlap) does time-stretch (Talk Speed) and pitch shift.
-- Pitch shifting divides out the **cepstral spectral envelope** first and puts it back afterwards, so the voice keeps its formants; Voice Size stretches that envelope on its own.
-- Tape Speed and Backwards are done by how the playhead reads the tape (fractional step, either direction), so they mix freely with the rest.
-- With every knob at Normal it is transparent (>40 dB SNR, checked by a test).
+- A streaming **phase vocoder** (2048-point FFT, 4× overlap) does Talk Speed and pitch shift. Peaks move as whole regions with their phases locked together (Laroche-Dolson), and phases reset on sudden onsets so consonants stay crisp.
+- The voice shape is a **true envelope** (iterated cepstrum) whose detail follows the voice's own pitch (YIN detector): sharp enough to keep the vowel's formants apart, never sharp enough to trace the harmonics. Pitch divides it out and puts it back (voice keeps its vowels); Voice Size stretches it, which moves the formants instead of just tilting the treble.
+- **Auto-Tune** uses the same pitch detector: Smooth glides onto the nearest note (70 ms), Robot snaps instantly; pick any note or a major key.
+- **Twin Voices**: up to 4 copies, each a few cents out of tune (two-tap rotating delay), 19–43 ms late and drifting, panned left/right.
+- **Echo**: stereo ping-pong with darkening repeats. **Reverb**: 8-line feedback delay network with diffusers, damping and modulation; one knob grows room size, decay and level together.
+- A limiter at the end means stacked effects never clip. Tape Speed and Backwards are just how the playhead reads the tape (Hermite interpolation), so they skip the vocoder entirely.
+- **Mono or stereo**: new tapes record in either (stereo uses the phone's mic pair); playback is stereo or both-speakers mono.
+- With every knob at Normal it is bit-transparent; checks in `app/src/test` cover formant placement, auto-tune, echo timing, reverb tail, layer loudness, clipping and speed.
+
+On a Galaxy S22 Ultra a stereo tape with the heaviest preset uses about half of one core (each play logs `dsp load` to logcat under `TalkTape`).
+
+To hear the voices on a PC: `TALKTAPE_SAMPLE=<mono 44.1 kHz wav> ./gradlew :app:testDebugUnitTest --tests '*DemoRender*'` writes one wav per voice next to it.
 
 ## Build
 
