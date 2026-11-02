@@ -25,6 +25,10 @@ data class DeckState(
     val speed: Float = 0f,
     val stereo: Boolean = false,
     val message: String? = null,
+    /** Loop points in frames, -1 = not set (the loop then uses the tape's start / end). */
+    val loopStart: Int = -1,
+    val loopEnd: Int = -1,
+    val looping: Boolean = false,
 )
 
 /**
@@ -62,7 +66,7 @@ class TapeDeck(private val sampleRate: Int, private val maxFrames: Int) {
     fun load(tape: Pcm) {
         stop()
         samples = tape.data; channels = tape.channels; length = tape.frames
-        _state.value = DeckState(length = length, stereo = channels == 2)
+        _state.value = DeckState(length = length, stereo = channels == 2, looping = _state.value.looping)
     }
 
     val isEmpty get() = _state.value.length == 0
@@ -76,8 +80,34 @@ class TapeDeck(private val sampleRate: Int, private val maxFrames: Int) {
         // Kid-friendly: pressing play at the end starts again instead of doing nothing.
         if (!fx.reverse && pos >= length - sampleRate / 10) pos = 0
         if (fx.reverse && pos <= sampleRate / 10) pos = length
+        if (s.looping) {
+            val (a, b) = loopRange(s)
+            if (pos < a || pos >= b) pos = if (fx.reverse) b else a
+        }
         start(Mode.Playing, pos) { playLoop(it) }
     }
+
+    /** The stretch that loops: the markers that are set, the tape's ends for the rest. */
+    private fun loopRange(s: DeckState): Pair<Int, Int> {
+        val a = if (s.loopStart >= 0) s.loopStart else 0
+        val b = if (s.loopEnd >= 0) s.loopEnd else length
+        return minOf(a, b) to maxOf(a, b)
+    }
+
+    fun toggleLoop() = _state.update { it.copy(looping = !it.looping) }
+
+    /** Marks the loop start (or end) at [pos]; a start after the end swaps them. */
+    fun setLoopStart(pos: Int) = setLoop(pos, _state.value.loopEnd)
+    fun setLoopEnd(pos: Int) = setLoop(_state.value.loopStart, pos)
+
+    fun setLoop(start: Int, end: Int) {
+        var a = start.coerceAtMost(length); var b = end.coerceAtMost(length)
+        if (a >= 0 && b >= 0 && a > b) { val t = a; a = b; b = t }
+        if (a >= 0 && b >= 0 && b - a < sampleRate / 5) { say("That loop is too short. Pick points further apart!"); return }
+        _state.update { it.copy(loopStart = a, loopEnd = b) }
+    }
+
+    fun clearLoop() = _state.update { it.copy(loopStart = -1, loopEnd = -1) }
 
     fun record() {
         val s = _state.value
@@ -249,6 +279,8 @@ class TapeDeck(private val sampleRate: Int, private val maxFrames: Int) {
                 val t0 = System.nanoTime()
                 r.render(samples, length, f, fbuf)
                 dspNanos += System.nanoTime() - t0; blocks++
+                val st = _state.value
+                if (st.looping && cue == 0) loopRange(st).let { (a, b) -> r.wrapLoop(a, b, f) }
                 downmixIfMono(fbuf)
                 val gain = if (cue != 0) 0.6f else 1f
                 for (i in sbuf.indices) sbuf[i] = TapeRenderer.toPcm(fbuf[i] * gain)

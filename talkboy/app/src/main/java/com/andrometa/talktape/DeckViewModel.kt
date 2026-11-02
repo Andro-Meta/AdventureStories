@@ -7,6 +7,7 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.andrometa.talktape.audio.Fx
+import com.andrometa.talktape.audio.Pcm
 import com.andrometa.talktape.audio.TapeDeck
 import com.andrometa.talktape.audio.TapeRenderer
 import com.andrometa.talktape.audio.Tune
@@ -54,7 +55,7 @@ class DeckViewModel(app: Application) : AndroidViewModel(app) {
     val current: StateFlow<Tape?> = _current
     private val _fx = MutableStateFlow(Fx())
     val fx: StateFlow<Fx> = _fx
-    /** Loudness outline of the tape for the scrub strip. */
+    /** Loudness outline of the tape for the scrub strip: one bar per [PEAK_FRAMES] frames. */
     private val _peaks = MutableStateFlow(FloatArray(0))
     val peaks: StateFlow<FloatArray> = _peaks
     private val _busy = MutableStateFlow(false)
@@ -74,7 +75,7 @@ class DeckViewModel(app: Application) : AndroidViewModel(app) {
             val tape = _current.value
             if (tape != null) viewModelScope.launch(Dispatchers.IO) {
                 saveLock.withLock { store.save(tape.id, pcm) }
-                _peaks.value = peaksOf(pcm.data)
+                _peaks.value = peaksOf(pcm)
                 refresh()
             }
         }
@@ -99,7 +100,7 @@ class DeckViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             val data = saveLock.withLock { store.load(tape.id) }
             withContext(Dispatchers.Main) { if (_current.value?.id == tape.id) deck.load(data) }
-            _peaks.value = peaksOf(data.data)
+            _peaks.value = peaksOf(data)
         }
     }
 
@@ -171,11 +172,13 @@ class DeckViewModel(app: Application) : AndroidViewModel(app) {
     companion object {
         const val MAX_MINUTES = 5
         const val LABEL_COLORS = 8
-        private const val BARS = 160
+        /** 10 ms per bar: fine enough to zoom right in on a word. */
+        const val PEAK_FRAMES = 441
 
-        fun peaksOf(s: ShortArray): FloatArray {
+        fun peaksOf(pcm: Pcm): FloatArray {
+            val s = pcm.data
             if (s.isEmpty()) return FloatArray(0)
-            val per = maxOf(1, s.size / BARS)
+            val per = PEAK_FRAMES * pcm.channels
             return FloatArray((s.size + per - 1) / per) { b ->
                 var m = 0
                 for (i in b * per until minOf(s.size, (b + 1) * per)) m = maxOf(m, abs(s[i].toInt()))

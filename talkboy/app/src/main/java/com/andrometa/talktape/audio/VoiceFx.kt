@@ -233,6 +233,9 @@ class VoiceProcessor(private val sampleRate: Int, val size: Int = 2048) {
     private var prevEnergy = 0.0
     private var fresh = true
 
+    /** The input just jumped (a loop): take phases from the new input, keep the overlap tail as a crossfade. */
+    fun restartPhases() { fresh = true }
+
     fun reset() {
         lastPhase.fill(0.0); prevOutPhase.fill(0.0); accum.fill(0.0)
         prevEnergy = 0.0; fresh = true
@@ -409,8 +412,24 @@ class TapeRenderer(private val sampleRate: Int, private val channels: Int = 1) {
     var position = 0.0
 
     fun reset(at: Double) {
-        position = at; tail = 0; primed = false
+        position = at; tail = 0; primed = false; jumpFrom = Double.NaN
         procs.forEach { it.reset() }; tune.reset(); space.reset()
+    }
+
+    private var jumpFrom = Double.NaN
+
+    /** Moves the playhead without a click: the next block crossfades from where it was. */
+    fun jump(to: Double) {
+        if (jumpFrom.isNaN()) jumpFrom = position
+        position = to
+        procs.forEach { it.restartPhases() }
+    }
+
+    /** Looping: keeps the playhead inside [a, b), carrying any overshoot round. Call after each render. */
+    fun wrapLoop(a: Int, b: Int, fx: Fx) {
+        if (b - a < sampleRate / 10) return
+        if (!fx.reverse && position >= b) jump(a + (position - b))
+        else if (fx.reverse && position <= a) jump(b - (a - position))
     }
 
     fun atEnd(length: Int, fx: Fx) = if (fx.reverse) position <= 0.0 else position >= length
@@ -430,6 +449,11 @@ class TapeRenderer(private val sampleRate: Int, private val channels: Int = 1) {
             if (primed) { primed = false; procs.forEach { it.reset() }; tune.reset() }
             val step = fx.tapeSpeed * dir
             for (c in 0 until channels) for (i in 0 until block) voice[c][i] = sampleAt(samples, length, c, position + i * step).toFloat()
+            if (!jumpFrom.isNaN()) for (c in 0 until channels) for (i in 0 until block) {
+                val w = i.toFloat() / block
+                val old = sampleAt(samples, length, c, jumpFrom + i * step).toFloat()
+                voice[c][i] = old * (1 - w) + voice[c][i] * w
+            }
         } else {
             if (!primed) {
                 // Overlap-add needs the frames before this one, or the sound fades in.
@@ -440,6 +464,7 @@ class TapeRenderer(private val sampleRate: Int, private val channels: Int = 1) {
             }
             voiceBlock(samples, length, fx)
         }
+        jumpFrom = Double.NaN // the vocoder's overlap tail already blends a jump
         space.process(voice[0], voice[channels - 1], fx, out)
         if (atEnd(length, fx)) tail += block
         position += advance

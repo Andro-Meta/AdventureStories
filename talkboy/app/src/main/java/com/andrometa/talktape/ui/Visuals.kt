@@ -162,51 +162,6 @@ private fun lerp(a: Color, b: Color, t: Float) = Color(
     a.red + (b.red - a.red) * t, a.green + (b.green - a.green) * t, a.blue + (b.blue - a.blue) * t, 1f,
 )
 
-/** The tape as a wavy strip; tap or drag to move the playhead. */
-@Composable
-fun TapeStrip(
-    peaks: FloatArray, progress: Float, enabled: Boolean, accent: Color,
-    onSeek: (Float) -> Unit, modifier: Modifier = Modifier,
-) {
-    var drag by remember { mutableStateOf<Float?>(null) }
-    val shown = drag ?: progress
-    val seek by rememberUpdatedState(onSeek)
-    Canvas(
-        modifier.fillMaxWidth().height(56.dp)
-            .semantics { contentDescription = "Tape position ${(progress * 100).toInt()} percent. Tap to jump." }
-            .pointerInput(enabled) {
-                if (!enabled) return@pointerInput
-                detectTapGestures { seek((it.x / size.width).coerceIn(0f, 1f)) }
-            }
-            .pointerInput(enabled) {
-                if (!enabled) return@pointerInput
-                detectHorizontalDragGestures(
-                    onDragStart = { drag = (it.x / size.width).coerceIn(0f, 1f) },
-                    onDragEnd = { drag?.let(seek); drag = null },
-                    onDragCancel = { drag = null },
-                ) { change, _ -> drag = (change.position.x / size.width).coerceIn(0f, 1f) }
-            },
-    ) {
-        val r = CornerRadius(size.height / 4)
-        drawRoundRect(Palette.Plastic, cornerRadius = r)
-        val mid = size.height / 2
-        if (peaks.isEmpty()) {
-            drawLine(Color.White.copy(alpha = 0.25f), Offset(16f, mid), Offset(size.width - 16f, mid), 3f)
-        } else {
-            val bw = size.width / peaks.size
-            peaks.forEachIndexed { i, p ->
-                val x = (i + 0.5f) * bw
-                val hgt = (p.coerceAtLeast(0.02f)) * size.height * 0.42f
-                val played = (i + 0.5f) / peaks.size <= shown
-                drawLine(if (played) accent else Color.White.copy(alpha = 0.45f), Offset(x, mid - hgt), Offset(x, mid + hgt), (bw * 0.6f).coerceAtLeast(2f))
-            }
-        }
-        val px = shown.coerceIn(0f, 1f) * size.width
-        drawLine(Color.White, Offset(px, 4f), Offset(px, size.height - 4f), 6f)
-        drawCircle(Color.White, 10f, Offset(px, 8f))
-    }
-}
-
 enum class Glyph { Rec, Play, Rew, Ff, Stop, Pause }
 
 /** Transport symbols drawn by hand so they look the same on every phone. */

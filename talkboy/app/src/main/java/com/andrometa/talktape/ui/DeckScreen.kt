@@ -1,5 +1,12 @@
 package com.andrometa.talktape.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
@@ -91,6 +98,9 @@ fun DeckScreen(vm: DeckViewModel, host: Host) {
     val sr = TapeStore.SAMPLE_RATE
 
     var showTapes by rememberSaveable { mutableStateOf(false) }
+    val strip = remember(tape?.id) { StripView() }
+    // Where the bottom of the big keys is on screen; once it scrolls off the top the mini deck shows.
+    var keysBottom by remember { mutableStateOf(Float.MAX_VALUE) }
     var askOverwrite by remember { mutableStateOf(false) }
     var askLive by remember { mutableStateOf(false) }
     val snack = remember { SnackbarHostState() }
@@ -142,17 +152,25 @@ fun DeckScreen(vm: DeckViewModel, host: Host) {
                     Spacer(Modifier.height(14.dp))
                     Cassette(tape?.name ?: "", label, progress, if (st.paused) 0f else st.speed)
                     Spacer(Modifier.height(12.dp))
+                    val stripOn = st.mode != Mode.Recording && st.mode != Mode.Live && st.length > 0
                     TapeStrip(
-                        peaks, progress,
-                        enabled = st.mode != Mode.Recording && st.mode != Mode.Live && st.length > 0,
-                        accent = label,
-                        onSeek = { deck.seek((it * st.length).toInt()) },
+                        peaks, DeckViewModel.PEAK_FRAMES,
+                        StripState(st.position, st.length, st.loopStart, st.loopEnd, st.looping, st.mode == Mode.Playing && !st.paused),
+                        strip, enabled = stripOn, accent = label,
+                        onSeek = deck::seek, onLoop = deck::setLoop,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    LoopBar(
+                        st, strip, maxZoom = (st.length / sr.toFloat()).coerceIn(1f, 64f), enabled = stripOn,
+                        onStart = { deck.setLoopStart(st.position) }, onEnd = { deck.setLoopEnd(st.position) },
+                        onLoop = deck::toggleLoop, onClear = deck::clearLoop,
                     )
                     Spacer(Modifier.height(14.dp))
                     Keys(st, rec, deck::play, deck::togglePause,
                         stop = { if (st.mode == Mode.Idle && !st.paused) showTapes = true else deck.stop() },
                         rew = { deck.skip(-5) }, ff = { deck.skip(5) },
-                        cue = deck::cueStart, cueEnd = deck::cueEnd)
+                        cue = deck::cueStart, cueEnd = deck::cueEnd,
+                        modifier = Modifier.onGloballyPositioned { keysBottom = it.positionInRoot().y + it.size.height })
                 }
 
                 Spacer(Modifier.height(16.dp))
@@ -171,8 +189,16 @@ fun DeckScreen(vm: DeckViewModel, host: Host) {
                     color = Color.White.copy(alpha = 0.85f), fontSize = 14.sp, textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Spacer(Modifier.height(24.dp))
+                // Room for the mini deck, so it never covers the last controls.
+                Spacer(Modifier.height(110.dp))
             }
+        }
+        val stop = { if (st.mode == Mode.Idle && !st.paused) showTapes = true else deck.stop() }
+        AnimatedVisibility(
+            keysBottom < 0f, Modifier.align(Alignment.BottomCenter).windowInsetsPadding(WindowInsets.safeDrawing).padding(bottom = 8.dp),
+            enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut(),
+        ) {
+            MiniDeck(st, clock(st.position), label, rec, deck::play, deck::togglePause, stop, deck::toggleLoop)
         }
         SnackbarHost(snack, Modifier.align(Alignment.BottomCenter).windowInsetsPadding(WindowInsets.safeDrawing))
     }
@@ -270,10 +296,10 @@ private fun Lcd(st: DeckState, reverse: Boolean, maxSamples: Int, modifier: Modi
 @Composable
 private fun Keys(
     st: DeckState, rec: () -> Unit, play: () -> Unit, pause: () -> Unit, stop: () -> Unit,
-    rew: () -> Unit, ff: () -> Unit, cue: (Int) -> Unit, cueEnd: () -> Unit,
+    rew: () -> Unit, ff: () -> Unit, cue: (Int) -> Unit, cueEnd: () -> Unit, modifier: Modifier = Modifier,
 ) {
     val on = !st.paused
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         val m = Modifier.weight(1f)
         PianoKey(Glyph.Rec, "REC", Palette.Rec, st.mode == Mode.Recording && on, m, rec)
         PianoKey(Glyph.Play, "PLAY", Palette.Play, st.mode == Mode.Playing && on, m, play)
