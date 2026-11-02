@@ -1,5 +1,6 @@
 package com.andrometa.talktape.ui
 
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -94,6 +95,7 @@ fun DeckScreen(vm: DeckViewModel, host: Host) {
     val busy by vm.busy.collectAsStateWithLifecycle()
     val stereoRec by vm.stereoRec.collectAsStateWithLifecycle()
     val monoPlay by vm.monoPlay.collectAsStateWithLifecycle()
+    val studio by vm.studio.collectAsStateWithLifecycle()
     val deck = vm.deck
     val sr = TapeStore.SAMPLE_RATE
 
@@ -150,7 +152,16 @@ fun DeckScreen(vm: DeckViewModel, host: Host) {
                         Lcd(st, fx.reverse, vm.maxSamples, Modifier.weight(1f))
                     }
                     Spacer(Modifier.height(14.dp))
-                    Cassette(tape?.name ?: "", label, progress, if (st.paused) 0f else st.speed)
+                    // Drag the cassette to scratch: its width is about 1.5 s of tape.
+                    Box(Modifier.pointerInput(st.length) {
+                        if (st.length == 0) return@pointerInput
+                        detectHorizontalDragGestures(
+                            onDragStart = { deck.scratchStart() },
+                            onDragEnd = { deck.scratchEnd() }, onDragCancel = { deck.scratchEnd() },
+                        ) { change, dx -> change.consume(); deck.scratchBy(dx / size.width * 1.5 * sr) }
+                    }) {
+                        Cassette(tape?.name ?: "", label, progress, if (st.paused) 0f else st.speed)
+                    }
                     Spacer(Modifier.height(12.dp))
                     val stripOn = st.mode != Mode.Recording && st.mode != Mode.Live && st.length > 0
                     TapeStrip(
@@ -180,6 +191,8 @@ fun DeckScreen(vm: DeckViewModel, host: Host) {
                     fx, vm::setFx,
                     canSave = st.length > 0 && !fx.isNeutral && st.mode != Mode.Recording,
                     busy = busy, onSave = vm::saveMagicCopy,
+                    studio = studio, onStudio = vm::setStudio, onFindKey = vm::findKey,
+                    onFreeze = { deck.hands.freeze = it }, onStutter = { deck.hands.stutter = it },
                 )
                 Spacer(Modifier.height(16.dp))
                 SoundSetup(stereoRec, vm::setStereoRec, monoPlay, vm::setMonoPlay)
@@ -264,6 +277,7 @@ private fun Lcd(st: DeckState, reverse: Boolean, maxSamples: Int, modifier: Modi
         st.mode == Mode.Playing -> if (reverse) "◀ BACKWARDS" else "▶ PLAYING"
         st.mode == Mode.Cueing -> if (st.speed < 0) "◀◀ REWIND" else "▶▶ FAST"
         st.mode == Mode.Live -> "🎤 LIVE VOICE"
+        st.mode == Mode.Scratching -> "💿 SCRATCH!"
         st.length == 0 -> "EMPTY TAPE"
         else -> "■ STOPPED"
     }
