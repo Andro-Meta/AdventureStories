@@ -63,7 +63,7 @@ class SpaceFx(private val sr: Int) {
 }
 
 /** Delay line with fractional reads, power-of-two sized. */
-private class Line(minSamples: Int) {
+internal class Line(minSamples: Int) {
     private val buf = DoubleArray(Integer.highestOneBit(maxOf(minSamples, 2) * 2))
     private val mask = buf.size - 1
     private var w = 0
