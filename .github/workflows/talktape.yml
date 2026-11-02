@@ -1,0 +1,37 @@
+# TalkTape (talkboy/) — Android build + tests. Only runs when the app changes.
+name: TalkTape Android
+
+on:
+  push:
+    branches: [main]
+    paths: ['talkboy/**', '.github/workflows/talktape.yml']
+  pull_request:
+    paths: ['talkboy/**', '.github/workflows/talktape.yml']
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: talkboy
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '21' }
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Unit tests (voice effects + screen render)
+        run: ./gradlew --no-daemon :app:testDebugUnitTest
+      - name: Build APKs
+        run: ./gradlew --no-daemon :app:assembleDebug :app:assembleRelease
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TalkTape-apks
+          path: |
+            talkboy/app/build/outputs/apk/debug/app-debug.apk
+            talkboy/app/build/outputs/apk/release/app-release.apk
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: TalkTape-screenshots
+          path: talkboy/app/build/screenshots/
