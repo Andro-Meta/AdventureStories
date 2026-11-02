@@ -39,7 +39,15 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.andrometa.talktape.PRESETS
+import com.andrometa.talktape.audio.AutoTune
 import com.andrometa.talktape.audio.Fx
+import com.andrometa.talktape.audio.Tune
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import kotlin.math.abs
 import kotlin.math.log2
 import kotlin.math.pow
@@ -110,6 +118,39 @@ fun MagicPanel(fx: Fx, onFx: (Fx) -> Unit, canSave: Boolean, busy: Boolean, onSa
         ) { onFx(fx.copy(formant = it)) }
 
         Spacer(Modifier.height(10.dp))
+        Text("🎤 Auto-Tune", fontSize = 17.sp, fontWeight = FontWeight.Black, color = Palette.Plastic)
+        Text("Snaps your voice onto the notes, like a pop star", fontSize = 13.sp, color = Palette.Plastic.copy(alpha = 0.65f))
+        Spacer(Modifier.height(6.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(Tune.Off to "Off", Tune.Gentle to "🎶 Smooth", Tune.Robot to "🤖 Robot").forEach { (t, name) ->
+                Choice(name, fx.tune == t, Modifier.weight(1f)) { onFx(fx.copy(tune = t)) }
+            }
+        }
+        if (fx.tune != Tune.Off) {
+            Spacer(Modifier.height(8.dp))
+            KeyPicker(fx.key) { onFx(fx.copy(key = it)) }
+        }
+
+        Spacer(Modifier.height(8.dp))
+        val layerText = when (fx.layers) { 0 -> "Normal"; 1 -> "1 twin"; else -> "${fx.layers + 1} of you" }
+        KnobRow(
+            "👯 Twin Voices", "Copies of you singing along, left and right",
+            "🙂", "👯", layerText, fx.layers.toFloat(), 0f..Fx.MAX_LAYERS.toFloat(), steps = Fx.MAX_LAYERS - 1,
+        ) { onFx(fx.copy(layers = it.roundToInt())) }
+        AmountSlider(
+            "🏜️ Echo", "Hello… hello… hello…", "🔇", "🏜️", fx.echo,
+            listOf("a little", "lots", "loads"),
+        ) { onFx(fx.copy(echo = it)) }
+        if (fx.echo > 0f) KnobRow(
+            "⏳ Echo Time", "Quick slap-back or a giant canyon", "⚡", "🏔️",
+            "%.2f s".format(0.08f + 0.72f * fx.echoTime), fx.echoTime, 0f..1f,
+        ) { onFx(fx.copy(echoTime = it)) }
+        AmountSlider(
+            "⛪ Reverb", "From a small room to a giant cave", "🚪", "⛪", fx.reverb,
+            listOf("small room", "big hall", "giant cave"),
+        ) { onFx(fx.copy(reverb = it)) }
+
+        Spacer(Modifier.height(10.dp))
         Button(
             onClick = onSave, enabled = canSave && !busy,
             modifier = Modifier.fillMaxWidth().height(56.dp),
@@ -149,25 +190,90 @@ private fun PresetTile(emoji: String, name: String, selected: Boolean, modifier:
     }
 }
 
+/** Recording and playback channels. */
+@Composable
+fun SoundSetup(stereoRec: Boolean, onStereoRec: (Boolean) -> Unit, monoPlay: Boolean, onMonoPlay: (Boolean) -> Unit) {
+    Column(Modifier.fillMaxWidth().clip(CardShape).background(Color.White.copy(alpha = 0.94f)).padding(16.dp)) {
+        Text("🎧 Sound Setup", fontSize = 20.sp, fontWeight = FontWeight.Black, color = Palette.Plastic)
+        Spacer(Modifier.height(8.dp))
+        Text("Record new tapes in", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Palette.Plastic)
+        Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Choice("🔈 Mono", !stereoRec, Modifier.weight(1f)) { onStereoRec(false) }
+            Choice("🔊 Stereo", stereoRec, Modifier.weight(1f)) { onStereoRec(true) }
+        }
+        Text("Play back in", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Palette.Plastic)
+        Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Choice("🔈 Mono", monoPlay, Modifier.weight(1f)) { onMonoPlay(true) }
+            Choice("🎧 Stereo", !monoPlay, Modifier.weight(1f)) { onMonoPlay(false) }
+        }
+        Text(
+            "Stereo uses two microphones, so you can hear where sounds are. Echo, reverb and twin voices sound best in stereo with headphones.",
+            fontSize = 13.sp, color = Palette.Plastic.copy(alpha = 0.65f),
+        )
+    }
+}
+
+@Composable
+private fun Choice(name: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(14.dp)
+    Box(
+        modifier.clip(shape)
+            .background(if (selected) Palette.BgTop.copy(alpha = 0.16f) else Palette.BodyLight)
+            .border(if (selected) 3.dp else 1.dp, if (selected) Palette.BgTop else Palette.BodyDark, shape)
+            .clickable(role = Role.RadioButton, onClick = onClick)
+            .semantics { stateDescription = if (selected) "On" else "Off" }
+            .padding(vertical = 10.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(name, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Palette.Plastic, maxLines = 1)
+    }
+}
+
+/** Auto-tune key: any note, or the notes of one major key. */
+@Composable
+private fun KeyPicker(key: Int, onKey: (Int) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val name = if (key < 0) "Any note" else "${AutoTune.KEY_NAMES[key]} major"
+    Box {
+        Choice("🎹 Key: $name ▾", false, Modifier.fillMaxWidth()) { open = true }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(text = { Text("Any note (easiest)") }, onClick = { onKey(-1); open = false })
+            AutoTune.KEY_NAMES.forEachIndexed { i, k ->
+                DropdownMenuItem(text = { Text("$k major") }, onClick = { onKey(i); open = false })
+            }
+        }
+    }
+}
+
+/** 0..1 effect amount, 0 snapping to Off so it's easy to switch off again. */
+@Composable
+private fun AmountSlider(
+    title: String, help: String, left: String, right: String, value: Float, words: List<String>,
+    onChange: (Float) -> Unit,
+) {
+    val text = if (value <= 0f) "Off" else words[(value * words.size).toInt().coerceAtMost(words.size - 1)]
+    KnobRow(title, help, left, right, text, value, 0f..1f) { onChange(if (it < 0.04f) 0f else it) }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun KnobRow(
     title: String, help: String, left: String, right: String, valueText: String,
-    value: Float, range: ClosedFloatingPointRange<Float>, onChange: (Float) -> Unit,
+    value: Float, range: ClosedFloatingPointRange<Float>, steps: Int = 0, onChange: (Float) -> Unit,
 ) {
     Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(title, fontSize = 17.sp, fontWeight = FontWeight.Black, color = Palette.Plastic, modifier = Modifier.weight(1f))
             Text(
                 valueText, fontSize = 14.sp, fontWeight = FontWeight.Bold,
-                color = if (valueText == "Normal") Palette.Plastic.copy(alpha = 0.5f) else Palette.BgTop,
+                color = if (valueText == "Normal" || valueText == "Off") Palette.Plastic.copy(alpha = 0.5f) else Palette.BgTop,
             )
         }
         Text(help, fontSize = 13.sp, color = Palette.Plastic.copy(alpha = 0.65f))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(left, fontSize = 24.sp)
             Slider(
-                value = value, onValueChange = onChange, valueRange = range,
+                value = value, onValueChange = onChange, valueRange = range, steps = steps,
                 modifier = Modifier.weight(1f).padding(horizontal = 6.dp)
                     .semantics { contentDescription = title; stateDescription = valueText },
                 colors = SliderDefaults.colors(

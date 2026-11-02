@@ -85,6 +85,8 @@ fun DeckScreen(vm: DeckViewModel, host: Host) {
     val fx by vm.fx.collectAsStateWithLifecycle()
     val peaks by vm.peaks.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
+    val stereoRec by vm.stereoRec.collectAsStateWithLifecycle()
+    val monoPlay by vm.monoPlay.collectAsStateWithLifecycle()
     val deck = vm.deck
     val sr = TapeStore.SAMPLE_RATE
 
@@ -161,6 +163,8 @@ fun DeckScreen(vm: DeckViewModel, host: Host) {
                     canSave = st.length > 0 && !fx.isNeutral && st.mode != Mode.Recording,
                     busy = busy, onSave = vm::saveMagicCopy,
                 )
+                Spacer(Modifier.height(16.dp))
+                SoundSetup(stereoRec, vm::setStereoRec, monoPlay, vm::setMonoPlay)
                 Spacer(Modifier.height(16.dp))
                 Text(
                     "Tip: hold ⏩ or ⏪ to zoom through the tape. Press ■ twice to swap tapes.",
@@ -241,7 +245,7 @@ private fun Lcd(st: DeckState, reverse: Boolean, maxSamples: Int, modifier: Modi
         Mode.Recording -> "tape left ${clock(maxSamples - st.position)}"
         Mode.Live -> "talk now!"
         else -> "of ${clock(st.length)}"
-    }
+    } + if (st.stereo) "  STEREO" else ""
     Column(
         modifier.clip(RoundedCornerShape(16.dp)).background(Palette.Plastic).padding(6.dp)
             .clip(RoundedCornerShape(12.dp)).background(Palette.Lcd).padding(horizontal = 12.dp, vertical = 8.dp),
