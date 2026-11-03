@@ -5,7 +5,10 @@ import org.junit.Test
 import kotlin.math.PI
 import kotlin.math.sin
 
-/** What each heavy setting costs, per 10 s of mono tape on this PC (a phone core is ~3x slower). */
+/**
+ * What each heavy setting costs, per 10 s of mono tape. Limits are in units of a fixed FFT
+ * workload timed on the same machine, so a slower CI runner doesn't fail a fast-enough build.
+ */
 class CostTest {
     @Test fun costs() {
         val sr = 44100
@@ -24,18 +27,35 @@ class CostTest {
                 whisper = 0.3f, clean = 0.5f, polish = PolishFx(amount = 1f), place = PlaceFx(Place.Radio), oldTape = OldTapeFx(amount = 0.5f),
                 wobble = WobbleFx(Wobble.Phaser), fly = FlyFx(Fly.Circle), reverb = 0.6f, echo = 0.4f, layers = 2),
         )
+        val ref = reference()
         var worst = 0.0
         var all = 0.0
+        var worstName = ""
         for ((name, fx) in cases) {
             TapeRenderer.renderAll(Pcm(src.copyOf(sr * 2), 1), fx, sr)
             val t = System.nanoTime()
             TapeRenderer.renderAll(Pcm(src, 1), fx, sr)
             val ms = (System.nanoTime() - t) / 1e6
-            println("cost $name: ${"%.0f".format(ms)} ms per 10 s")
-            if (name == "everything") all = ms else worst = maxOf(worst, ms)
+            println("cost $name: ${"%.0f".format(ms)} ms per 10 s (${"%.1f".format(ms / ref)} x reference)")
+            if (name == "everything") all = ms / ref else if (ms / ref > worst) { worst = ms / ref; worstName = name }
         }
-        // Any one effect well under 1 s per 10 s here; even all of them at once under 2.5 s.
-        // (S22 Ultra measured ~5x slower than this PC per core: check "dsp load" in logcat.)
-        assertTrue(worst < 800 && all < 2500)
+        // On the dev PC (reference 256 ms) the heaviest single effect is 1.9x and everything 6.8x;
+        // limits leave ~1.5x headroom for slow effects to show up. (Phone: check "dsp load" in logcat.)
+        val report = "reference ${"%.0f".format(ref)} ms; worst single ($worstName) ${"%.1f".format(worst)}x (limit 3.0); everything ${"%.1f".format(all)}x (limit 10.0)"
+        println(report)
+        assertTrue(report, worst < 3.0 && all < 10.0)
+    }
+
+    /** Fixed CPU workload: 6000 forward 2048-point FFTs, best of 3 (ms). */
+    private fun reference(): Double {
+        val fft = Fft(2048)
+        val re = DoubleArray(2048) { sin(it * 0.37) }; val im = DoubleArray(2048)
+        var best = Double.MAX_VALUE
+        repeat(4) { run ->
+            val t = System.nanoTime()
+            repeat(6000) { re.fill(0.5, 0, 1); im.fill(0.0); fft.transform(re, im, false) }
+            if (run > 0) best = minOf(best, (System.nanoTime() - t) / 1e6)
+        }
+        return best
     }
 }
