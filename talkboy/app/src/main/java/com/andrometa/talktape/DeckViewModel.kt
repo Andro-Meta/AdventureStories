@@ -3,12 +3,14 @@ package com.andrometa.talktape
 import android.app.Application
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.andrometa.talktape.audio.Fly
 import com.andrometa.talktape.audio.FlyFx
 import com.andrometa.talktape.audio.DriveFx
+import com.andrometa.talktape.audio.Edits
 import com.andrometa.talktape.audio.Fx
 import com.andrometa.talktape.audio.Ghost
 import com.andrometa.talktape.audio.GhostFx
@@ -30,6 +32,7 @@ import com.andrometa.talktape.audio.TapeDeck
 import com.andrometa.talktape.audio.TapeRenderer
 import com.andrometa.talktape.audio.Tune
 import com.andrometa.talktape.audio.TuneFx
+import com.andrometa.talktape.data.AudioImport
 import com.andrometa.talktape.data.Tape
 import com.andrometa.talktape.data.TapeStore
 import kotlinx.coroutines.Dispatchers
@@ -155,6 +158,17 @@ class DeckViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setStudio(on: Boolean) { _studio.value = on; prefs.edit().putBoolean("studio", on).apply() }
 
+    private val _editMode = MutableStateFlow(prefs.getBoolean("edit", false))
+    /** Edit mode: cut, trim, fade and put effects on part of a tape, or on a sound file. */
+    val editMode: StateFlow<Boolean> = _editMode
+
+    fun setEditMode(on: Boolean) { _editMode.value = on; prefs.edit().putBoolean("edit", on).apply() }
+
+    /** Older versions of the tape in the deck, newest last. */
+    private val undo = ArrayDeque<Pcm>()
+    private val _canUndo = MutableStateFlow(false)
+    val canUndo: StateFlow<Boolean> = _canUndo
+
     /** Shown the "use headphones" tip already this run. */
     var liveTipShown = false
 
@@ -229,11 +243,12 @@ class DeckViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setMonoPlay(on: Boolean) { _monoPlay.value = on; deck.monoOutput = on; prefs.edit().putBoolean("monoPlay", on).apply() }
 
-    fun select(tape: Tape) {
+    fun select(tape: Tape): Job {
         deck.stop()
+        if (_current.value?.id != tape.id) { undo.clear(); _canUndo.value = false }
         _current.value = tape
         prefs.edit().putString("current", tape.id).apply()
-        viewModelScope.launch(Dispatchers.IO) {
+        return viewModelScope.launch(Dispatchers.IO) {
             val data = saveLock.withLock { store.load(tape.id) }
             withContext(Dispatchers.Main) { if (_current.value?.id == tape.id) deck.load(data) }
             _peaks.value = peaksOf(data)
@@ -283,6 +298,121 @@ class DeckViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** The picked part of the tape (A to B; an unset flag means that end of the tape), or null. */
+    private fun picked(): Pair<Int, Int>? {
+        val s = deck.state.value
+        if (s.loopStart < 0 && s.loopEnd < 0) return null
+        val a = if (s.loopStart >= 0) s.loopStart else 0
+        val b = if (s.loopEnd >= 0) s.loopEnd else s.length
+        return minOf(a, b) to maxOf(a, b)
+    }
+
+    /**
+     * One edit on the tape in the deck, on the picked part ([a], [b]) or the whole tape. Saved
+     * straight away; the old version goes on the undo pile. [keepPick] puts the A/B flags back.
+     */
+    private fun edit(done: String, keepPick: Boolean, op: (Pcm, Int, Int) -> Pcm) {
+        val tape = _current.value ?: return
+        val src = loaded ?: return
+        if (src.frames == 0 || _busy.value) return
+        val (a, b) = picked() ?: (0 to src.frames)
+        if (b - a < Edits.XFADE) return
+        deck.stop()
+        _busy.value = true
+        viewModelScope.launch(Dispatchers.Default) {
+            try {
+                val out = op(src, a, b)
+                saveLock.withLock { store.save(tape.id, out) }
+                undo.addLast(src)
+                // ponytail: memory cap, not a step count: about 120 MB of old takes (~11 min of stereo).
+                while (undo.size > 1 && undo.sumOf { it.data.size } > 60_000_000) undo.removeFirst()
+                _canUndo.value = true
+                show(out, if (keepPick && out.frames == src.frames) a to b else null, a)
+                deck.tell(done)
+            } finally {
+                _busy.value = false
+            }
+        }
+    }
+
+    private suspend fun show(pcm: Pcm, pick: Pair<Int, Int>?, at: Int) {
+        withContext(Dispatchers.Main) {
+            deck.load(pcm)
+            pick?.let { deck.setLoop(it.first, it.second) }
+            deck.seek(at.coerceAtMost(pcm.frames))
+        }
+        _peaks.value = peaksOf(pcm)
+        prepare(pcm)
+        refresh()
+    }
+
+    fun keepPicked() = edit("✂️ Kept just that part", false) { p, a, b -> Edits.keep(p, a, b) }
+    fun cutPicked() = edit("🗑️ Cut it out", false, Edits::cut)
+    fun repeatPicked() = edit("🔁 Now it plays twice", false, Edits::repeat)
+    fun reversePicked() = edit("⏪ Flipped backwards", true, Edits::reverse)
+    fun louder() = edit("🔊 Louder", true) { p, a, b -> Edits.gain(p, a, b, 1.41f) }
+    fun quieter() = edit("🔉 Quieter", true) { p, a, b -> Edits.gain(p, a, b, 0.71f) }
+    fun maxVolume() = edit("📏 As loud as it can go without crackling", true, Edits::normalize)
+    fun silencePicked() = edit("🤫 Shhh", true, Edits::silence)
+
+    /** Nothing picked: fades the first (or last) two seconds. */
+    fun fade(out: Boolean) = edit(if (out) "🌇 Fades out" else "🌅 Fades in", true) { p, a, b ->
+        val whole = picked() == null
+        val len = minOf(2 * sr, b - a)
+        when {
+            !whole -> Edits.fade(p, a, b, out)
+            out -> Edits.fade(p, b - len, b, true)
+            else -> Edits.fade(p, a, a + len, false)
+        }
+    }
+
+    /** Bakes the effects you're hearing into the picked part (or all of it), then turns them off. */
+    fun applyFx() {
+        val f = _fx.value
+        if (f.isNeutral) return
+        edit("✨ Magic is on it for good", false) { p, a, b ->
+            val part = Edits.keep(p, a, b)
+            Edits.splice(p, a, b, TapeRenderer.renderAll(part, f, sr, TapeRenderer.onsetsOf(peaksOf(part), PEAK_FRAMES)))
+        }
+        setFx(Fx())
+    }
+
+    fun undoEdit() {
+        val tape = _current.value ?: return
+        if (_busy.value) return
+        val old = undo.removeLastOrNull() ?: return
+        _canUndo.value = undo.isNotEmpty()
+        deck.stop()
+        viewModelScope.launch(Dispatchers.IO) {
+            saveLock.withLock { store.save(tape.id, old) }
+            show(old, null, 0)
+            deck.tell("↩️ Back the way it was")
+        }
+    }
+
+    /** A sound file from the phone (or shared from another app) becomes a new tape. */
+    fun import(uri: Uri) {
+        if (_busy.value) return
+        deck.stop()
+        _busy.value = true
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val ctx = getApplication<Application>()
+                val pcm = AudioImport.decode(ctx, uri, IMPORT_MINUTES * 60 * sr)
+                val t = store.create(AudioImport.nameOf(ctx, uri).take(30), _tapes.value.size % LABEL_COLORS, pcm)
+                refresh()
+                withContext(Dispatchers.Main) { select(t) }.join()
+                deck.tell("📥 ${t.name} is in the deck!")
+            } catch (e: AudioImport.TooLong) {
+                deck.tell("That one is too long. Sounds up to $IMPORT_MINUTES minutes fit.")
+            } catch (e: Exception) {
+                deck.tell("I couldn't open that sound file 😕")
+            } finally {
+                _busy.value = false
+            }
+        }
+    }
+
     /** Share sheet for a tape, as "<name>.wav". */
     suspend fun shareIntent(tape: Tape): Intent = withContext(Dispatchers.IO) {
         val ctx = getApplication<Application>()
@@ -308,6 +438,7 @@ class DeckViewModel(app: Application) : AndroidViewModel(app) {
 
     companion object {
         const val MAX_MINUTES = 5
+        const val IMPORT_MINUTES = 10
         const val LABEL_COLORS = 8
         /** 10 ms per bar: fine enough to zoom right in on a word. */
         const val PEAK_FRAMES = 441

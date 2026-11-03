@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
@@ -43,6 +44,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         volumeControlStream = AudioManager.STREAM_MUSIC
         val host = Host(::withMic, ::hasHeadphones)
+        if (savedInstanceState == null) openShared(intent)
         setContent {
             MaterialTheme(colorScheme = lightColorScheme(primary = Palette.BgTop, secondary = Palette.BgBottom)) {
                 DeckScreen(vm, host)
@@ -69,6 +71,23 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        openShared(intent)
+    }
+
+    /** A sound shared to TalkTape (or opened with it) becomes a tape, shown in the editor. */
+    private fun openShared(intent: Intent?) {
+        val uri = when (intent?.action) {
+            Intent.ACTION_SEND -> if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+                else @Suppress("DEPRECATION") intent.getParcelableExtra(Intent.EXTRA_STREAM)
+            Intent.ACTION_VIEW -> intent.data
+            else -> null
+        } ?: return
+        vm.setEditMode(true)
+        vm.import(uri)
     }
 
     private fun withMic(then: () -> Unit) {

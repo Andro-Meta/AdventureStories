@@ -1,5 +1,11 @@
 package com.andrometa.talktape.ui
 
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.selection.toggleable
+import android.content.ActivityNotFoundException
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -96,6 +102,11 @@ fun DeckScreen(vm: DeckViewModel, host: Host) {
     val stereoRec by vm.stereoRec.collectAsStateWithLifecycle()
     val monoPlay by vm.monoPlay.collectAsStateWithLifecycle()
     val studio by vm.studio.collectAsStateWithLifecycle()
+    val editing by vm.editMode.collectAsStateWithLifecycle()
+    val canUndo by vm.canUndo.collectAsStateWithLifecycle()
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val openFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(vm::import) }
     val deck = vm.deck
     val sr = TapeStore.SAMPLE_RATE
 
@@ -138,7 +149,7 @@ fun DeckScreen(vm: DeckViewModel, host: Host) {
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Column(Modifier.widthIn(max = 560.dp).fillMaxWidth()) {
-                TopBar(tape?.name ?: "…", label) { showTapes = true }
+                TopBar(tape?.name ?: "…", label, editing, vm::setEditMode) { showTapes = true }
                 Spacer(Modifier.height(14.dp))
 
                 // ── The tape machine ──
@@ -185,7 +196,13 @@ fun DeckScreen(vm: DeckViewModel, host: Host) {
                 }
 
                 Spacer(Modifier.height(16.dp))
-                LiveButton(st.mode == Mode.Live, st.level, live)
+                if (editing) EditPanel(
+                    vm, st, hasMagic = !fx.isNeutral, canUndo = canUndo, busy = busy,
+                    onOpenFile = { openFile.launch(arrayOf("audio/*")) },
+                    onShare = {
+                        tape?.let { t -> scope.launch { try { ctx.startActivity(vm.shareIntent(t)) } catch (_: ActivityNotFoundException) {} } }
+                    },
+                ) else LiveButton(st.mode == Mode.Live, st.level, live)
                 Spacer(Modifier.height(16.dp))
                 MagicPanel(
                     fx, vm::setFx,
@@ -241,11 +258,12 @@ fun DeckScreen(vm: DeckViewModel, host: Host) {
 }
 
 @Composable
-private fun TopBar(tapeName: String, color: Color, onTapes: () -> Unit) {
+private fun TopBar(tapeName: String, color: Color, editing: Boolean, onEditing: (Boolean) -> Unit, onTapes: () -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text("📼", fontSize = 30.sp)
+        Text(if (editing) "✂️" else "📼", fontSize = 30.sp)
         Spacer(Modifier.size(6.dp))
-        Text("TalkTape", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Black, modifier = Modifier.weight(1f))
+        Text(if (editing) "Editor" else "TalkTape", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Black,
+            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
         Row(
             Modifier.clip(CircleShape).background(Color.White.copy(alpha = 0.22f))
                 .clickable(onClickLabel = "Open my tapes", onClick = onTapes)
@@ -255,8 +273,24 @@ private fun TopBar(tapeName: String, color: Color, onTapes: () -> Unit) {
             Box(Modifier.size(14.dp).background(color, CircleShape).border(2.dp, Color.White, CircleShape))
             Spacer(Modifier.size(8.dp))
             Text(tapeName, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 1,
-                overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 140.dp))
+                overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 110.dp))
             Text("  ▾", color = Color.White, fontSize = 16.sp)
+        }
+        Spacer(Modifier.size(8.dp))
+        // Flips between the tape deck and the editor.
+        Row(
+            Modifier.clip(CircleShape).background(if (editing) Palette.Pause else Color.White.copy(alpha = 0.22f))
+                .toggleable(editing, role = Role.Switch, onValueChange = onEditing)
+                .semantics { contentDescription = "Edit mode" }
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("✂️", fontSize = 16.sp)
+            Spacer(Modifier.size(6.dp))
+            Box(Modifier.size(width = 30.dp, height = 18.dp).clip(CircleShape).background(Color.White.copy(alpha = if (editing) 0.9f else 0.4f))) {
+                Box(Modifier.padding(2.dp).size(14.dp).align(if (editing) Alignment.CenterEnd else Alignment.CenterStart)
+                    .clip(CircleShape).background(if (editing) Palette.Plastic else Color.White))
+            }
         }
     }
 }

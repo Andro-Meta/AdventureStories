@@ -75,7 +75,7 @@ import kotlin.math.log2
 import kotlin.math.pow
 import kotlin.math.roundToInt
 
-private val CardShape = RoundedCornerShape(26.dp)
+internal val CardShape = RoundedCornerShape(26.dp)
 
 /**
  * All the sound magic. Easy mode: presets, big hold pads, and one knob per effect.
@@ -408,7 +408,7 @@ fun SoundSetup(stereoRec: Boolean, onStereoRec: (Boolean) -> Unit, monoPlay: Boo
 }
 
 @Composable
-private fun Choice(name: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+internal fun Choice(name: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
     val shape = RoundedCornerShape(14.dp)
     Box(
         modifier.clip(shape)
