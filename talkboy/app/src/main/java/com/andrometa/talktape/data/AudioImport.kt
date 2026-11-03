@@ -8,6 +8,7 @@ import android.media.MediaFormat
 import android.net.Uri
 import android.provider.OpenableColumns
 import com.andrometa.talktape.audio.Edits
+import com.andrometa.talktape.audio.HearingRange
 import com.andrometa.talktape.audio.Pcm
 import java.io.IOException
 import java.nio.ByteOrder
@@ -87,7 +88,9 @@ object AudioImport {
                 codec.stop(); codec.release()
             }
             if (n == 0) throw IOException("no sound decoded")
-            return Pcm(Edits.resample(out.copyOf(n), ch, rate, TapeStore.SAMPLE_RATE), ch)
+            val pcm = Edits.resample(out.copyOf(n), ch, rate, TapeStore.SAMPLE_RATE)
+            HearingRange(TapeStore.SAMPLE_RATE, ch).process(pcm, pcm.size / ch)
+            return Pcm(pcm, ch)
         } finally {
             ex.release()
         }

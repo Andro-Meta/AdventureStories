@@ -122,3 +122,26 @@ object Edits {
 
     private fun clip(v: Float) = v.coerceIn(-32768f, 32767f).toInt().toShort()
 }
+
+/**
+ * The front door for all sound coming in (mic, live voice, imported files): drops what ears
+ * can't hear. 4th-order Butterworth high-pass at 20 Hz (rumble, wind thumps, DC offset) and
+ * low-pass at 20 kHz, per channel on interleaved 16-bit audio, in place.
+ */
+class HearingRange(sampleRate: Int, private val channels: Int) {
+    private val stages = Array(channels) {
+        arrayOf(
+            Biquad().apply { highPass(sampleRate, 20.0, 0.5412) }, Biquad().apply { highPass(sampleRate, 20.0, 1.3066) },
+            Biquad().apply { lowPass(sampleRate, 20_000.0, 0.5412) }, Biquad().apply { lowPass(sampleRate, 20_000.0, 1.3066) },
+        )
+    }
+
+    fun process(buf: ShortArray, frames: Int) {
+        for (i in 0 until frames) for (c in 0 until channels) {
+            val j = i * channels + c
+            var v = buf[j].toDouble()
+            for (s in stages[c]) v = s.process(v)
+            buf[j] = v.coerceIn(-32768.0, 32767.0).toInt().toShort()
+        }
+    }
+}

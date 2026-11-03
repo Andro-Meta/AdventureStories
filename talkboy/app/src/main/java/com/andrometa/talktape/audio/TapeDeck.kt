@@ -357,6 +357,7 @@ class TapeDeck(private val sampleRate: Int, private val maxFrames: Int) {
         if (rec == null) rec = newRecorder(MediaRecorder.AudioSource.MIC) ?: return
         _state.update { it.copy(stereo = channels == 2) }
         val buf = ShortArray(sampleRate / 20 * inCh)
+        val ears = HearingRange(sampleRate, inCh)
         var pos = startPos
         var full = false
         rec.startRecording()
@@ -364,6 +365,7 @@ class TapeDeck(private val sampleRate: Int, private val maxFrames: Int) {
             while (running) {
                 val n = rec.read(buf, 0, buf.size) / inCh
                 if (n <= 0) continue
+                ears.process(buf, n)
                 val take = minOf(n, maxFrames - pos)
                 if ((pos + take) * channels > samples.size) {
                     samples = samples.copyOf(minOf(maxFrames, maxOf(pos + take, samples.size / channels * 2, sampleRate * 10)) * channels)
@@ -422,6 +424,7 @@ class TapeDeck(private val sampleRate: Int, private val maxFrames: Int) {
         val lv = LiveVoice(sampleRate)
         lv.hands = hands
         val inBuf = ShortArray(lv.block)
+        val ears = HearingRange(sampleRate, 1)
         val fbuf = FloatArray(lv.block * 2)
         val outBuf = ShortArray(lv.block * 2)
         val track = newTrack(lowLatency = true)
@@ -436,6 +439,7 @@ class TapeDeck(private val sampleRate: Int, private val maxFrames: Int) {
                     got += n
                 }
                 if (got < inBuf.size) break
+                ears.process(inBuf, inBuf.size)
                 lv.process(inBuf, fx, fbuf)
                 downmixIfMono(fbuf)
                 for (i in outBuf.indices) outBuf[i] = TapeRenderer.toPcm(fbuf[i])
