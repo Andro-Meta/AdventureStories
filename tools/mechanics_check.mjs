@@ -1718,11 +1718,15 @@ await block(async () => {
 
   // The turn prompt calls the encounter, the count resets when a fight starts, and an ignored call stays owed.
   const offline = globalThis.fetch; let asked = '';
-  const reply = (fightStarts) => JSON.stringify({ narration: 'Something moves in the dark.', ops: fightStarts ? [{ op: 'add', path: '/enemies/-', value: { name: 'Grave Hound', hp: 30, atk: 7, def: 3 } }, { op: 'replace', path: '/inCombat', value: true }] : [],
-    choices: fightStarts ? ['Attack', 'Special', 'Item', 'Run'].map(type => ({ type, text: type === 'Attack' ? 'Strike the Grave Hound' : `${type} now` }))
+  // fightStarts: true = enemy + inCombat ops; 'enemyOnly' = the enemy but no inCombat op; 'choicesOnly' = fight choices, no ops (#13).
+  const reply = (fightStarts) => JSON.stringify({ narration: 'Something moves in the dark.', ops: fightStarts === true ? [{ op: 'add', path: '/enemies/-', value: { name: 'Grave Hound', hp: 30, atk: 7, def: 3 } }, { op: 'replace', path: '/inCombat', value: true }]
+      : fightStarts === 'enemyOnly' ? [{ op: 'add', path: '/enemies/-', value: { name: 'Bone Rat', hp: 20, atk: 5, def: 2 } }] : [],
+    // As seen on turn 65: battle moves tagged with exploration approaches, so nothing marks them as fight commands.
+    choices: fightStarts === 'choicesOnly' ? [['sneaky', 'Run now for the far door'], ['luck', 'Run now and hope it is slow'], ['brave', 'Attack the shadow beast'], ['clever', 'Use an item from your bag'], ['kind', 'Shield your friend from the beast']].map(([stat, t]) => ({ stat, safe: t, bold: `${t}, fast`, reckless: `${t}, wildly` }))
+      : fightStarts ? ['Attack', 'Special', 'Item', 'Run'].map(type => ({ type, text: type === 'Attack' ? 'Strike the Grave Hound' : `${type} now` }))
       : ['brave', 'clever', 'sneaky', 'kind', 'luck'].map(stat => ({ stat, safe: `${stat} s ${Math.random()}`, bold: `${stat} b ${Math.random()}`, reckless: `${stat} r ${Math.random()}` })) });
   let starts = false;
-  globalThis.fetch = window.fetch = async (u, o) => { const m = JSON.parse(o.body).messages; if (/story game|text adventure/i.test(m[0].content) && m[1].content.includes('JUST DID')) asked = m[1].content; return { ok: true, status: 200, statusText: '200', headers: { get: () => null }, json: async () => ({ choices: [{ message: { content: reply(starts) } }] }), text: async () => '' }; };
+  globalThis.fetch = window.fetch = async (u, o) => { const m = JSON.parse(o.body).messages; const story = /story game|text adventure/i.test(m[0].content) && m[1].content.includes('JUST DID'); if (story) asked = m[1].content; return { ok: true, status: 200, statusText: '200', headers: { get: () => null }, json: async () => ({ choices: [{ message: { content: reply(story || starts !== 'choicesOnly' ? starts : false) } }] }), text: async () => '' }; };
   localStorage.setItem('adv.cloudProvider', 'groq_qwen'); localStorage.setItem('adv.apiKey.api.groq.com', 'test');
   try {
     const { p } = fresh(); gameState.turnsSinceFight = 4; gameState.encounterOwed = false; gameState.foesMet = ['Spectral Butler'];
@@ -1736,6 +1740,22 @@ await block(async () => {
     await AH.handlePlayerChoice('Bold', 'Kick the next door in');
     check(/ENCOUNTER THIS TURN/.test(asked) && gameState.inCombat && gameState.turnsSinceFight === 0 && gameState.encounterOwed === false && gameState.foesMet.includes('Grave Hound'),
       `owed fight called again, it starts: count reset, foe remembered (${gameState.foesMet.join(', ')})`);
+    // #13: the storyteller added the foe but left out /inCombat: the fight starts anyway.
+    gameState.inCombat = false; if (gameState.combat) gameState.combat.isActive = false; gameState.enemies = [];
+    gameState.isLoading = false; gameState.turnsSinceFight = 4; gameState.encounterOwed = true; starts = 'enemyOnly';
+    gameState.currentChoices = [{ type: 'Bold', stat: 'brave', text: 'Open the crypt' }];
+    await AH.handlePlayerChoice('Bold', 'Open the crypt');
+    check(gameState.inCombat && gameState.enemies.some(e => e.name === 'Bone Rat'), `foe added without /inCombat: the fight starts in code (inCombat ${gameState.inCombat})`);
+    // #13: a called fight that never started: its fight-minded choices (two Runs, an attack, an item) are not shown.
+    gameState.inCombat = false; if (gameState.combat) gameState.combat.isActive = false; gameState.enemies = [];
+    gameState.isLoading = false; gameState.turnsSinceFight = 4; gameState.encounterOwed = true; starts = 'choicesOnly';
+    gameState.currentChoices = [{ type: 'Bold', stat: 'brave', text: 'Open the vault' }];
+    const mark = gameLog.length;
+    await AH.handlePlayerChoice('Bold', 'Open the vault');
+    // The harness has no choices container (its safety net redraws), so read the set the turn chose from its log.
+    const used = gameLog.slice(mark).filter(l => l.startsWith('Ladders:')).pop() || '';
+    const fightish = (used.match(/Run now|Attack the shadow|Use an item from your bag|Shield your friend/g) || []).length;
+    check(!gameState.inCombat && used && fightish === 0, `fight choices with no fight are dropped: ${fightish} fight texts in the set used`);
   } finally { globalThis.fetch = window.fetch = offline; localStorage.removeItem('adv.apiKey.api.groq.com'); localStorage.removeItem('adv.cloudProvider'); gameState.inCombat = false; }
 });
 

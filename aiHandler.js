@@ -308,6 +308,7 @@ ${buildDiffInstructions(pIdx)}`;
             turnOps = turnOps.filter(o => !/^\/players\/\d+\/(coins|hp)$/.test(String(o.path)));
             if (turnOps.length < before) log(`dropped ${before - turnOps.length} duplicate coin/HP op(s) (game already applied them)`);
         }
+        const foesBefore = new Set((gameState.enemies || []).map(e => e?.id));
         const appliedDiff = applyDiff(turnOps, { strict: false });
         log(`narrative diff: applied ${appliedDiff.length}/${(validated.diff.ops || []).length} ops`);
         // The opening names the starting place; if the narrator skipped the
@@ -336,8 +337,20 @@ ${buildDiffInstructions(pIdx)}`;
             gameState.inCombat = false;
             if (gameState.combat) gameState.combat.isActive = false;
         }
+        // A called fight whose foe arrived without /inCombat starts here (#13: fight
+        // choices showed on an exploration turn and the fight began a turn late).
+        if (encounter && !gameState.inCombat && (gameState.enemies || []).some(e => e && !foesBefore.has(e.id) && !e.isDefeated && e.hp > 0)) {
+            applyDiff([{ op: 'replace', path: '/inCombat', value: true }], { strict: false });
+            log('Encounter: the foe arrived without /inCombat; fight started by the game.');
+        }
         // The diff may have started or ended a fight; choices must match the mode now.
         const nowInCombat = !!gameState.inCombat;
+        // A called fight that didn't start: its choices were written for the fight (battle
+        // moves tagged Brave/Clever/Sneaky, 2 Runs on turn 65), so ask for exploration ones.
+        if (encounter && !nowInCombat && payload) {
+            log('Encounter was called but no fight started; asking for exploration choices.');
+            payload.choices = [];
+        }
         // The game's side of the story moment (only once the story is told).
         if (beatLine && !nowInCombat) {
             if (beat === 'rest') {
