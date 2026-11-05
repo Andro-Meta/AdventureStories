@@ -6,8 +6,10 @@ import kotlin.math.PI
 import kotlin.math.sin
 
 /**
- * What each heavy setting costs, per 10 s of mono tape. Limits are in units of a fixed FFT
- * workload timed on the same machine, so a slower CI runner doesn't fail a fast-enough build.
+ * What each heavy setting costs, per 10 s of mono tape, in units of a fixed FFT workload timed
+ * on the same machine. Always prints; only enforces its limits with TALKTAPE_COST_LIMITS=1,
+ * because wall-clock timing is too noisy to gate CI on (the reference alone moved 256 -> 186 ms
+ * between two runs on the dev PC). The real budget is the phone: "dsp load" in logcat.
  */
 class CostTest {
     @Test fun costs() {
@@ -39,11 +41,11 @@ class CostTest {
             println("cost $name: ${"%.0f".format(ms)} ms per 10 s (${"%.1f".format(ms / ref)} x reference)")
             if (name == "everything") all = ms / ref else if (ms / ref > worst) { worst = ms / ref; worstName = name }
         }
-        // On the dev PC (reference 256 ms) the heaviest single effect is 1.9x and everything 6.8x;
-        // limits leave ~1.5x headroom for slow effects to show up. (Phone: check "dsp load" in logcat.)
-        val report = "reference ${"%.0f".format(ref)} ms; worst single ($worstName) ${"%.1f".format(worst)}x (limit 3.0); everything ${"%.1f".format(all)}x (limit 10.0)"
+        // Dev PC: heaviest single effect 1.9-2.8x, everything 6.8-9.6x across runs.
+        val report = "reference ${"%.0f".format(ref)} ms; worst single ($worstName) ${"%.1f".format(worst)}x (limit 4.0); everything ${"%.1f".format(all)}x (limit 14.0)"
         println(report)
-        assertTrue(report, worst < 3.0 && all < 10.0)
+        assertTrue("CostTest measured nothing", ref > 0 && all > 0)
+        if (System.getenv("TALKTAPE_COST_LIMITS") == "1") assertTrue(report, worst < 4.0 && all < 14.0)
     }
 
     /** Fixed CPU workload: 6000 forward 2048-point FFTs, best of 3 (ms). */

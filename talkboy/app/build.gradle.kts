@@ -54,3 +54,12 @@ dependencies {
     testImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
+
+// Show test output and full failure messages in the CI log (CostTest prints its timings).
+tasks.withType<Test>().configureEach {
+    testLogging {
+        events("failed")
+        showStandardStreams = true
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
+}
