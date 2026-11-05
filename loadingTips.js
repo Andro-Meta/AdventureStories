@@ -10,7 +10,7 @@ export class LoadingTipsManager {
         this.tipElement = null;
         this.progressElement = null;
         this.tipInterval = null;
-        this.tipRotationTime = 3000; // 3 seconds per tip
+        this.tipRotationTime = 10000; // 10 s per tip: 3 s was too fast for young readers (#10)
         this.log = window.displayVisualError || console.log;
         
         // Comprehensive tips organized by category
@@ -208,11 +208,6 @@ export class LoadingTipsManager {
         // Show first tip immediately
         this.showNextTip();
         
-        // Start rotation interval
-        this.tipInterval = setInterval(() => {
-            this.showNextTip();
-        }, this.tipRotationTime);
-        
         this.log('LoadingTips: Tip rotation started');
     }
     
@@ -233,17 +228,8 @@ export class LoadingTipsManager {
     showNextTip() {
         if (!this.tipElement) return;
         
-        const tip = this.allTips[this.currentTipIndex];
-        
-        // Fade out current tip
-        this.tipElement.style.animation = 'none';
-        this.tipElement.style.opacity = '0';
-        
-        // Change tip after short delay
-        setTimeout(() => {
-            this.tipElement.textContent = tip;
-            this.tipElement.style.animation = 'tipFadeIn 0.5s ease-in-out forwards';
-        }, 200);
+        if (this.queuedTip) { this.showTip(this.queuedTip); this.queuedTip = null; return; }
+        this.showTip(this.allTips[this.currentTipIndex]);
         
         // Move to next tip
         this.currentTipIndex = (this.currentTipIndex + 1) % this.allTips.length;
@@ -254,6 +240,18 @@ export class LoadingTipsManager {
         }
     }
     
+    /** Fade a tip in and give it the full rotation time (#10). */
+    showTip(text) {
+        this.tipElement.style.animation = 'none';
+        this.tipElement.style.opacity = '0';
+        setTimeout(() => {
+            this.tipElement.textContent = text;
+            this.tipElement.style.animation = 'tipFadeIn 0.5s ease-in-out forwards';
+        }, 200);
+        clearInterval(this.tipInterval);
+        this.tipInterval = setInterval(() => this.showNextTip(), this.tipRotationTime);
+    }
+
     /**
      * Update progress bar and text
      */
@@ -276,14 +274,8 @@ export class LoadingTipsManager {
         const categoryTips = this.tips[category];
         const randomTip = categoryTips[Math.floor(Math.random() * categoryTips.length)];
         
-        // Show the category-specific tip
-        this.tipElement.style.animation = 'none';
-        this.tipElement.style.opacity = '0';
-        
-        setTimeout(() => {
-            this.tipElement.textContent = randomTip;
-            this.tipElement.style.animation = 'tipFadeIn 0.5s ease-in-out forwards';
-        }, 200);
+        // Queued, not swapped in: replacing the tip on screen cut it short (#10).
+        this.queuedTip = randomTip;
         
         this.log(`LoadingTips: Showing ${category} tip: ${randomTip}`);
     }
