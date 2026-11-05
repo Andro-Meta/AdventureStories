@@ -491,6 +491,13 @@ function generateStatValue(tier, statType) {
 }
 
 
+/** Gear (not consumables) a hero already carries under this name: two copies in one turn felt overpowered (#12). */
+export function ownsGear(player, item) {
+    if (!item || item.type === 'Consumable') return false;
+    const low = String(item.name || '').trim().toLowerCase();
+    return (player?.inventory || []).some(i => String(i?.name || '').trim().toLowerCase() === low);
+}
+
 /**
  * Generates a themed item object.
  * @param {string} theme - The adventure theme key (e.g., 'fantasy', 'space').

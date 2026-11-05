@@ -350,7 +350,9 @@ ${buildDiffInstructions(pIdx)}`;
                     log(`Rest: ${h.name} +${h.hp - Math.max(0, hp0)} HP, +${h.mp - mp0} MP`);
                 }
                 UI.showPopup('A safe place to rest: HP and MP restored.', 'healing', 3000);
-            } else if (beat === 'treasure' && treasure) {
+            } else if (beat === 'treasure' && treasure
+                // The storyteller's ops run first; if it added the treasure itself, keep one copy (#12).
+                && !Items.ownsGear(gameState.players?.[gameState.currentPlayerIndex] || heroes[0], treasure)) {
                 const finder = gameState.players?.[gameState.currentPlayerIndex] || heroes[0];
                 finder.inventory = finder.inventory || [];
                 finder.inventory.push(treasure);

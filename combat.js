@@ -8,7 +8,7 @@ import * as Progression from './progression.js';
 // Import specific functions from utils needed here
 import { getRandomInt, getRandomElement, clamp, generateId } from './utils.js';
 // Import item functions needed for enemy loot generation
-import { generateThemedItem, lootTierFor, betterTier, partyLevel } from './items.js';
+import { generateThemedItem, lootTierFor, betterTier, partyLevel, ownsGear } from './items.js';
 // Import UI function for popups and potentially updating UI after combat actions
 import { showPopup, renderPlayerCards, renderEnemyCards, updateContextHeaders, renderInventory } from './ui.js'; // Added renderInventory
 
@@ -1009,8 +1009,10 @@ export async function handleEnemyDefeat(enemyId) {
      // scales with the party (solo: one roll, as before).
      const looters = (gameState.players || []).filter(p => p && !p.isDowned);
      for (const lootRecipient of looters) {
-         const lootItem = await rollLootItem(enemy);
-         if (!lootItem) continue;
+         let lootItem = await rollLootItem(enemy);
+         // Two foes can roll the same name (small theme pools): reroll, then skip (#12).
+         for (let i = 0; i < 3 && ownsGear(lootRecipient, lootItem); i++) lootItem = await rollLootItem(enemy);
+         if (!lootItem || ownsGear(lootRecipient, lootItem)) continue;
          if (!lootRecipient.inventory) lootRecipient.inventory = [];
          lootRecipient.inventory.push(lootItem);
          Progression.fuseCharms(lootRecipient); // a charm drop fuses with one already carried
