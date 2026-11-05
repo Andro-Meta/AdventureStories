@@ -631,17 +631,6 @@ function createCharacterCard(character, type, index, configRef) {
     const downedTurnsMax = configRef?.DOWNED_TURNS_MAX ?? 3;
 
     card.innerHTML = `
-        <div class="card-details hidden">
-             ${isPlayer ? `<p>Status: <span class="${type}-status">${isDowned ? 'Downed' : 'Okay'}</span></p>` : ''}
-             ${isPlayer ? statsExplainer(character) : ''}
-             <p>ATK: <span class="${type}-atk">${num(character.atk, '?')}</span> | DEF: <span class="${type}-def">${num(character.def, '?')}</span></p>
-             ${isPlayer ? `<p>Weapon: <span class="${type}-weapon">${sanitizeText(weaponName)} ${weaponTier ? `(${sanitizeText(weaponTier)})` : ''}</span></p>` : ''}
-             ${isPlayer ? `<p>Armor: <span class="${type}-armor">${sanitizeText(armorName)} ${armorTier ? `(${sanitizeText(armorTier)})` : ''}</span></p>` : ''}
-             ${isPlayer ? `<p>Coins: <span class="${type}-coins">${num(character.coins, 0)}</span>💰</p>` : ''}
-             ${!isPlayer ? `<p>Abilities: <span class="${type}-abilities">${character.abilities?.map(sanitizeText).join(', ') || 'None'}</span></p>` : ''}
-             <p>Effects: <span class="status-effects">${statusEffectString}</span></p>
-
-        </div>
         <div class="card-header collapsible">
             <span class="${type}-name">${sanitizeText(character.name)}${isPlayer ? ` <small class="hero-level">Lv ${num(character.level, 1)}</small>` : ''}</span>
             <div class="${type}-hp">
@@ -654,6 +643,17 @@ function createCharacterCard(character, type, index, configRef) {
                 <span class="mp-value">${num(character.mp, 0)}</span>&nbsp;/&nbsp;<span class="mp-max">${num(character.maxMp, 0)}</span>
             </div>` : ''}
             <span class="expand-icon">▼</span>
+        </div>
+        <div class="card-details hidden">
+             ${isPlayer ? `<p>Status: <span class="${type}-status">${isDowned ? 'Downed' : 'Okay'}</span></p>` : ''}
+             ${isPlayer ? statsExplainer(character) : ''}
+             <p>ATK: <span class="${type}-atk">${num(character.atk, '?')}</span> | DEF: <span class="${type}-def">${num(character.def, '?')}</span></p>
+             ${isPlayer ? `<p>Weapon: <span class="${type}-weapon">${sanitizeText(weaponName)} ${weaponTier ? `(${sanitizeText(weaponTier)})` : ''}</span></p>` : ''}
+             ${isPlayer ? `<p>Armor: <span class="${type}-armor">${sanitizeText(armorName)} ${armorTier ? `(${sanitizeText(armorTier)})` : ''}</span></p>` : ''}
+             ${isPlayer ? `<p>Coins: <span class="${type}-coins">${num(character.coins, 0)}</span>💰</p>` : ''}
+             ${!isPlayer ? `<p>Abilities: <span class="${type}-abilities">${character.abilities?.map(sanitizeText).join(', ') || 'None'}</span></p>` : ''}
+             <p>Effects: <span class="status-effects">${statusEffectString}</span></p>
+
         </div>
          ${isPlayer ? heroStatsRow(character) : ''}
          ${isDowned ? `<div class="downed-indicator">DOWNED (<span class="downed-timer">${Math.max(0, downedTurnsMax - (character.downedTurns ?? 0))}</span> turns left)</div>` : ''}

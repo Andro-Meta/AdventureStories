@@ -401,14 +401,14 @@ header#gameHeader {
 .mp-max { color: var(--text-muted-color); }
 
 .expand-icon { font-size: 0.8rem; transition: transform 0.3s ease; color: var(--text-muted-color); }
-.card-details.hidden + .card-header .expand-icon { transform: rotate(-90deg); }
-.card-details:not(.hidden) + .card-header .expand-icon { transform: rotate(0deg); }
+.card-header:has(+ .card-details.hidden) .expand-icon { transform: rotate(-90deg); }
+.card-header:has(+ .card-details:not(.hidden)) .expand-icon { transform: rotate(0deg); }
 
 .card-details {
     padding: 0.8rem 1rem;
     border-top: 1px solid var(--border-color);
     max-height: 500px; /* Allow significant height */
-    overflow: hidden; /* Keep hidden overflow for card shape */
+    overflow-y: auto; /* long hero details scroll instead of clipping (#11) */
     transition: max-height 0.4s ease-in-out, padding 0.4s ease-in-out, opacity 0.3s ease-in-out;
     opacity: 1;
 }
