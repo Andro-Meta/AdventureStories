@@ -2401,9 +2401,12 @@ await block(async () => {
     gameState.isGoalComplete = true; gameState.adventureGoal = 'Free the city';
     gameState.godModeManager = { isActive: true };
     gameState.questProgress = { milestones: [{ name: 'final_blow' }], villain: 'Director Halcyon', lair: 'the Spire', bossDefeated: true, finalBlow: 'Katie, with the special "Plasma Lance"' };
-    gameState.entityMemory = { npcs: { Vesper: { name: 'Vesper', status: 'with you', bond: 2 }, Brann: { name: 'Brann', status: 'dead', fate: 'held the bridge', bond: 2 } }, locations: { 'the Spire': { name: 'the Spire', description: 'A tower of glass.' } }, items: {} };
+    gameState.entityMemory = { npcs: { Vesper: { name: 'Vesper', status: 'with you', bond: 2 }, Brann: { name: 'Brann', status: 'dead', fate: 'held the bridge', bond: 2 },
+      Cog: { name: 'Cog', description: 'a clockwork dog', status: 'away', relationship: 'ally' } }, locations: { 'the Spire': { name: 'the Spire', description: 'A tower of glass.' } }, items: {} };
     gameState.storyThreads = [{ text: 'the locked music box' }];
-    stub({ aftermath: 'The Spire went dark, and the city exhaled.', people: [{ name: 'Vesper', line: 'Vesper opened a school in the tunnels.' }, { name: 'Brann', line: 'They carved his name on the bridge.' }],
+    gameState.storyLog = ['## Act 1', 'A letter with a broken seal arrived at the bakery at dawn.', 'More happened.'];
+    gameState.currentNarrative = 'Katie lowered the lance and the Spire fell silent at last.';
+    stub({ aftermath: 'Katie lowered the lance and the Spire fell silent at last. The Spire went dark, and the city exhaled.', people: [{ name: 'Vesper', line: 'Vesper opened a school in the tunnels.' }, { name: 'Brann', line: 'They carved his name on the bridge.' }],
       world: 'Lights came back on in the lower districts.', reflection: [{ hero: p.name, speaker: 'Vesper', lines: ['You ran at every danger.', 'You won more than you lost.', 'Then you learned to carry others.'], closing: 'The Storm-Walker.' }],
       chapters: [{ title: 'The Music Box', goal: 'Open the music box and learn who sent it', villain: '' }] });
     stub.asked.length = 0;
@@ -2413,6 +2416,10 @@ await block(async () => {
       'the world really changes: the villain is defeated and the stronghold freed');
     check(stub.asked.length === 1 && /Brann: died \(held the bridge\)/.test(asked) && /the final blow: Katie, with the special "Plasma Lance"/.test(asked) && /title: The Storm-Walker/.test(asked),
       `one call carries the facts: the fallen, the final blow, the reflection (${stub.asked.length} call)`);
+    check(/Cog: away/.test(asked), `an ally the story recorded (Cog, a clockwork dog) gets a card (#16)`);
+    check(/OPENING SCENE: A letter with a broken seal/.test(asked) && /never retell/i.test(asked), 'the ending gets the opening to call back to, and is told not to retell the final scene (#15)');
+    const echoes = (gameState.currentNarrative.match(/Spire fell silent at last/g) || []).length;
+    check(echoes === 1 && /city exhaled/.test(end.text), `an aftermath that echoes the final scene shows it once (${echoes}) (#15)`);
     check(/— The End of the Quest —/.test(end.text) && /Vesper opened a school/.test(end.text) && /— The story noticed —/.test(end.text) && /The Storm-Walker: Ava \(as Vesper saw it\)/.test(end.text),
       'the closing sequence: aftermath, what became of them, the world, the story noticed');
     const types = (gameState.currentChoices || []).map(c => c.type);

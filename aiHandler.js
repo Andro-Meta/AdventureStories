@@ -545,13 +545,17 @@ export async function writeEnding() {
     if (gameState.currentLocation) gameState.currentLocation.dangerLevel = 0.2;
     qp.worldChanges = changes;
     // 2. The people worth a card: companions, the fallen, the captured, close friends and sworn enemies.
-    const weight = (p) => (p.status === 'with you' ? 4 : 0) + (p.status === 'dead' ? 3 : 0) + (p.status === 'captured' ? 2 : 0) + Math.abs(p.bond || 0);
+    // An ally counts as a companion: a clockwork dog recorded only as relationship "ally" scored 0 and had no card (#16).
+    const weight = (p) => (p.status === 'with you' ? 4 : 0) + (p.status === 'dead' ? 3 : 0) + (p.status === 'captured' ? 2 : 0) + (p.relationship === 'ally' ? 3 : 0) + Math.abs(p.bond || 0);
     const people = Object.entries(em.npcs).filter(([n, p]) => n !== villain && weight(p) >= 2).sort((a, b) => weight(b[1]) - weight(a[1])).slice(0, 6);
     const momentOf = (name) => (gameState.storyBeats || []).filter(b => (b.involvedPlayers || []).includes(name)).sort((a, b) => b.significance - a.significance)[0]?.description;
     const peopleFacts = people.map(([n, p]) => `${n}: ${p.status === 'dead' ? `died (${p.fate || 'fell'})` : p.status}, ${p.bond >= 2 ? 'a friend' : p.bond <= -2 ? 'an enemy' : 'known'}${momentOf(n) ? `; moment: ${momentOf(n)}` : ''}`);
     // 3. What the choices revealed (worked out in code; the storyteller only words it).
     const reads = Reflection.reflectionOn() ? Reflection.readHeroes(gameState) : [];
     const open = (gameState.storyThreads || []).filter(t => t && !t.resolved).map(t => t.text);
+    // The first scene, so the ending can close the circle (#15).
+    const opening = String((gameState.storyLog || []).find(e => e && !e.startsWith('## ')) || '').slice(0, 400);
+    const finalScene = lastParagraph(gameState.currentNarrative);
     const payload = await API.getAIResponseJSON([
         { role: 'system', content: `You write the ending of a ${getThemeName()} text adventure: warm, specific, never generic. ${audienceLine()} Reply with one JSON object only.` },
         { role: 'user', content: `QUEST WON: ${gameState.adventureGoal || 'the main quest'}${villain ? `\nVILLAIN DEFEATED: ${villain}${lair ? ` at ${lair}` : ''}${qp.finalBlow ? `; the final blow: ${qp.finalBlow}` : ''}` : ''}
@@ -561,13 +565,13 @@ PEOPLE (one line each, naming something real they or the heroes did): ${peopleFa
 LOOSE THREADS: ${open.join('; ') || 'none'}${reads.length ? `
 THE STORY NOTICED (for each hero, 3 warm lines spoken to them by someone in the story who saw it all; keep each fact and its moment; strengths and growth only; never use words like profile, personality, test or diagnosis):
 ${reads.map(r => `${r.hero} (title: ${r.title}): ${r.signals.map((s, i) => `${i + 1}. ${s.text}`).join(' ')}`).join('\n')}` : ''}
-FINAL SCENE: ${lastParagraph(gameState.currentNarrative)}
+${opening ? `OPENING SCENE: ${opening}\n` : ''}FINAL SCENE (the reader just read it: continue from it, never retell it): ${finalScene}
 
-Reply exactly as {"aftermath":"2 short paragraphs: the moment after victory and how the people react","people":[{"name":"...","line":"what became of them"}],"world":"1 paragraph: how the place has changed","reflection":[{"hero":"...","speaker":"who says it","lines":["...","...","..."],"closing":"one line that gives them their title"}],"chapters":[{"title":"...","goal":"one sentence quest","villain":"a new threat's name, or empty"}, 3 in all: grown from the loose threads, a power left empty, or a friend's own quest]}` }
+Reply exactly as {"aftermath":"2 short paragraphs: what happens right after the final scene, how the people react${opening ? ', and one line that calls back to how the adventure began' : ''}","people":[{"name":"...","line":"what became of them"}],"world":"1 paragraph: how the place has changed","reflection":[{"hero":"...","speaker":"who says it","lines":["...","...","..."],"closing":"one line that gives them their title"}],"chapters":[{"title":"...","goal":"one sentence quest","villain":"a new threat's name, or empty"}, 3 in all: grown from the loose threads, a power left empty, or a friend's own quest]}` }
     ], { type: 'object', properties: { aftermath: { type: 'string' }, people: { type: 'array' }, world: { type: 'string' }, reflection: { type: 'array' }, chapters: { type: 'array' } }, required: ['aftermath', 'chapters'] },
     { jsonSchemaName: 'ending', max_tokens: 1800, temperature: 0.8 }).catch(e => { (window.displayVisualError || console.log)(`Ending call failed (${e.message}); using the game's own ending.`); return {}; });
 
-    const ending = composeEnding(payload, { reads, open, villain, lair, peopleFacts: people });
+    const ending = composeEnding(payload, { reads, open, villain, lair, peopleFacts: people, finalScene });
     ending.text = simplifyForYoungReader(scrubStats(ending.text)); // the longest prose: same clean-up as every scene
     gameState.ending = ending;
     gameState.epilogue = ending.text; // the Story Book's closing chapter
@@ -579,10 +583,15 @@ Reply exactly as {"aftermath":"2 short paragraphs: the moment after victory and 
 }
 
 /** The ending's text and next chapters from the storyteller's reply, with the game's own words wherever it fell short. */
-export function composeEnding(payload, { reads = [], open = [], villain, lair, peopleFacts = [] } = {}) {
+export function composeEnding(payload, { reads = [], open = [], villain, lair, peopleFacts = [], finalScene = '' } = {}) {
     const str = (s) => String(s || '').trim();
     const parts = [];
-    parts.push('— The End of the Quest —', str(payload?.aftermath) || `${villain ? `${villain} has fallen. ` : ''}The heroes stand together in the quiet that follows.`);
+    // Sentences the model copied from the final scene are shown once, not twice (#15).
+    const flat = (t) => String(t).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    const seen = flat(finalScene);
+    const aftermath = str(payload?.aftermath).split(/\n\s*\n/).map(para => para.split(/(?<=[.!?]["”’']?) +/)
+        .filter(x => !(seen && flat(x).length > 20 && seen.includes(flat(x)))).join(' ').trim()).filter(Boolean).join('\n\n');
+    parts.push('— The End of the Quest —', aftermath || `${villain ? `${villain} has fallen. ` : ''}The heroes stand together in the quiet that follows.`);
     const cards = (Array.isArray(payload?.people) ? payload.people : []).filter(p => p?.name && p?.line).slice(0, 6);
     if (cards.length) parts.push('— What became of them —', cards.map(p => `• ${str(p.name)}: ${str(p.line)}`).join('\n'));
     else if (peopleFacts.length) parts.push('— What became of them —', peopleFacts.map(([n, p]) => `• ${n}: ${p.status === 'dead' ? `remembered: ${p.fate || 'they fell'}` : p.status === 'with you' ? 'still at the heroes\' side' : 'their story goes on'}`).join('\n'));
