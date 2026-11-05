@@ -2126,7 +2126,7 @@ await block(async () => {
     ({ p } = fresh({ enemy: { name: 'Patrol Android', hp: 40, maxHp: 40 } }));
     startFight(); asked.length = 0; pinRandom(0.01);
     await AH.handlePlayerChoice('Run', 'Try to escape'); unpinRandom();
-    check(!gameState.inCombat && /escaped the fight/.test(lastAsk()) && !/heroes won|FINAL BLOW/.test(lastAsk()), `a successful escape is told as an escape (${asked.length} call)`);
+    check(!gameState.inCombat && /got the heroes away from .+ still out there/.test(lastAsk()) && /where they ran to/.test(lastAsk()) && !/heroes won|FINAL BLOW/.test(lastAsk()), `a successful escape is told as an escape (${asked.length} call)`);
     ({ p } = fresh({ enemy: { name: 'Patrol Android', hp: 40, maxHp: 40, atk: 5 } }));
     startFight(); asked.length = 0; pinRandom(0.99);
     await AH.handlePlayerChoice('Run', 'Try to escape'); unpinRandom();

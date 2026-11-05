@@ -599,7 +599,7 @@ export async function handlePlayerChoice(actionType, choiceText) {
                 const escaped = actionType === 'Run' && !Combat.areAllEnemiesDefeated();
                 if (gameState.questProgress?.bossDefeated && !gameState.questProgress.finalBlow && moveWas) gameState.questProgress.finalBlow = `${currentPlayer.name}, with ${moveWas.replace(/, not .*$/, '')}`;
                 const combatActionLog = `[Fight over]
-${escaped ? `${currentPlayer.name} escaped the fight.` : `The heroes won.${fallen.length ? ` Defeated: ${fallen.join(', ')}.` : ''}`}
+${escaped ? `${currentPlayer.name} got the heroes away from ${(gameState.enemies || []).filter(e => !e.isDefeated && e.hp > 0).map(e => e.name).join(', ') || 'the foe'}, who is still out there. Show where they ran to and catch their breath; the 5 choices start from that new spot (hide, regroup, find another way), not from before the fight.` :`The heroes won.${fallen.length ? ` Defeated: ${fallen.join(', ')}.` : ''}`}
 Last move: ${combatLog}${!escaped && moveWas ? `
 FINAL BLOW: ${moveWas}. Show exactly this move ending the fight, by name; never turn it into a different attack.` : ''}
 Heroes now: ${(gameState.players || []).map(p => `${p.name} (HP ${p.hp}/${p.maxHp})`).join(', ')}
